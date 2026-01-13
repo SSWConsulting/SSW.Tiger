@@ -1,0 +1,40 @@
+# Project data (transcripts, analysis, dashboards)
+projects/
+
+# Input transcripts
+dropzone/
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+
+# Downloads
+downloads/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp files
+*.tmp
+*.temp
+tmpclaude-*
+
+# Local Claude settings (user-specific permissions)
+.claude/settings.local.json

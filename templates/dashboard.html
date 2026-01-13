@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{PROJECT_NAME}} - Meeting Dashboard ({{DATE}})</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- SSW Brand: Inter font for web -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        // SSW Brand Colors Configuration
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        // SSW Primary Red: #CC4141
+                        'ssw-red': {
+                            DEFAULT: '#CC4141',
+                            50: '#FCE9E9',
+                            100: '#F8D4D4',
+                            200: '#F1A9A9',
+                            300: '#E97D7D',
+                            400: '#E25252',
+                            500: '#CC4141',
+                            600: '#A33434',
+                            700: '#7A2727',
+                            800: '#521A1A',
+                            900: '#290D0D'
+                        },
+                        // SSW Charcoal: #333333
+                        'ssw-charcoal': {
+                            DEFAULT: '#333333',
+                            50: '#F5F5F5',
+                            100: '#E8E8E8',
+                            200: '#D1D1D1',
+                            300: '#B0B0B0',
+                            400: '#888888',
+                            500: '#666666',
+                            600: '#4D4D4D',
+                            700: '#333333',
+                            800: '#1A1A1A',
+                            900: '#0D0D0D'
+                        },
+                        // SSW Gray palette
+                        'ssw-gray': {
+                            50: '#FAFAFA',
+                            100: '#F4F4F5',
+                            200: '#E4E4E7',
+                            300: '#D4D4D8',
+                            400: '#A1A1AA',
+                            500: '#71717A',
+                            600: '#52525B',
+                            700: '#3F3F46',
+                            800: '#27272A',
+                            900: '#18181B'
+                        }
+                    },
+                    fontFamily: {
+                        'sans': ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        [x-cloak] { display: none !important; }
+        
+        /* SSW Brand Typography */
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+        }
+        
+        /* Strong heading differentiation per SSW rules */
+        h1 { font-weight: 800; letter-spacing: -0.025em; }
+        h2 { font-weight: 700; letter-spacing: -0.02em; }
+        h3 { font-weight: 600; }
+        
+        @media print {
+            .no-print { display: none; }
+            .print-break { page-break-before: always; }
+        }
+        
+        /* Timeline segments with SSW red accent */
+        .timeline-segment {
+            position: relative;
+        }
+        .timeline-segment::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            border-radius: 2px;
+        }
+        
+        /* Speaker Timeline Visualization */
+        .speaker-timeline-row {
+            display: grid;
+            grid-template-columns: 150px 1fr 100px;
+            gap: 1rem;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid #f4f4f5;
+        }
+        
+        .speaker-timeline-row:last-child {
+            border-bottom: none;
+        }
+        
+        .speaker-timeline-bar-container {
+            position: relative;
+            height: 28px;
+            background: #f4f4f5;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .speaker-timeline-bar {
+            position: absolute;
+            height: 100%;
+            background: #CC4141;
+            opacity: 0.8;
+            transition: opacity 0.2s;
+            border-radius: 2px;
+        }
+        
+        .speaker-timeline-bar:hover {
+            opacity: 1;
+        }
+        
+        .speaker-timeline-bar.short {
+            background: #A33434;
+        }
+        
+        .speaker-timeline-bar.medium {
+            background: #CC4141;
+        }
+        
+        .speaker-timeline-bar.long {
+            background: #E25252;
+        }
+        .energy-high::before { background: linear-gradient(to bottom, #CC4141, #E25252); }
+        .energy-medium::before { background: linear-gradient(to bottom, #F59E0B, #FBBF24); }
+        .energy-low::before { background: linear-gradient(to bottom, #666666, #888888); }
+        
+        /* SSW-style card hover effect */
+        .ssw-card {
+            transition: all 0.2s ease;
+            border: 1px solid #E4E4E7;
+        }
+        .ssw-card:hover {
+            border-color: #CC4141;
+            box-shadow: 0 4px 12px rgba(204, 65, 65, 0.1);
+        }
+        
+        /* Tab active state with SSW red */
+        .tab-active {
+            background-color: #CC4141;
+            color: white;
+        }
+        
+        /* SSW branded scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #F4F4F5; }
+        ::-webkit-scrollbar-thumb { background: #CC4141; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #A33434; }
+        
+        /* Grade badges */
+        .grade-a { background: #059669; }
+        .grade-b { background: #0891B2; }
+        .grade-c { background: #F59E0B; }
+        .grade-d { background: #DC2626; }
+        .grade-f { background: #7F1D1D; }
+    </style>
+</head>
+<body class="bg-ssw-gray-50 min-h-screen">
+    <div x-data="{ activeTab: 'overview' }" class="max-w-6xl mx-auto py-8 px-4">
+        
+        <!-- SSW Branded Header -->
+        <header class="mb-8">
+            <div class="flex items-center justify-between flex-wrap gap-4">
+                <div class="flex items-center gap-4">
+                    <!-- SSW Logo Squares Motif -->
+                    <div class="flex gap-0.5">
+                        <div class="w-3 h-3 bg-ssw-red"></div>
+                        <div class="w-3 h-3 bg-ssw-charcoal"></div>
+                        <div class="w-3 h-3 bg-ssw-gray-400"></div>
+                        <div class="w-3 h-3 bg-ssw-red-300"></div>
+                    </div>
+                    <div>
+                        <h1 class="text-3xl text-ssw-charcoal">
+                            <span class="font-extrabold">{{PROJECT_NAME}}</span>
+                        </h1>
+                        <p class="text-ssw-gray-500 mt-1 font-medium">Meeting Dashboard</p>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <p class="text-2xl font-bold text-ssw-red">{{DATE}}</p>
+                    <p class="text-sm text-ssw-gray-500 font-medium">{{MEETING_TYPE}} • {{DURATION}}</p>
+                </div>
+            </div>
+            
+            <!-- Quick Stats Bar - SSW Red Accents -->
+            <div class="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+                {{QUICK_STATS}}
+            </div>
+        </header>
+
+        <!-- Tab Navigation - SSW Style -->
+        <nav class="flex flex-wrap gap-2 mb-6 border-b border-ssw-gray-200 pb-4 no-print">
+            <button @click="activeTab = 'overview'" 
+                    :class="activeTab === 'overview' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
+                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
+                📋 Overview
+            </button>
+            <button @click="activeTab = 'timeline'" 
+                    :class="activeTab === 'timeline' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
+                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
+                ⏱️ Timeline
+            </button>
+            <button @click="activeTab = 'people'" 
+                    :class="activeTab === 'people' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
+                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
+                👥 People & Roles
+            </button>
+            <button @click="activeTab = 'insights'" 
+                    :class="activeTab === 'insights' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
+                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
+                💡 Insights
+            </button>
+            <button @click="activeTab = 'analytics'" 
+                    :class="activeTab === 'analytics' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
+                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
+                📊 Analytics
+            </button>
+            <button @click="activeTab = 'trends'" 
+                    :class="activeTab === 'trends' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
+                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
+                📈 Trends
+            </button>
+        </nav>
+
+        <!-- Tab Content -->
+        <main>
+            <!-- Overview Tab -->
+            <div x-show="activeTab === 'overview'" x-cloak>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Summary -->
+                    <section class="bg-white rounded-xl shadow-sm ssw-card p-6">
+                        <h2 class="text-lg text-ssw-charcoal mb-3 flex items-center">
+                            <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
+                            Meeting Summary
+                        </h2>
+                        <p class="text-ssw-gray-600 leading-relaxed">{{SUMMARY}}</p>
+                    </section>
+
+                    <!-- Key Decisions -->
+                    <section class="bg-white rounded-xl shadow-sm ssw-card p-6">
+                        <h2 class="text-lg text-ssw-charcoal mb-3 flex items-center">
+                            <span class="w-3 h-3 bg-ssw-charcoal rounded-full mr-2"></span>
+                            Key Decisions
+                        </h2>
+                        <ul class="space-y-2">
+                            {{DECISIONS}}
+                        </ul>
+                    </section>
+                </div>
+
+                <!-- Action Items -->
+                <section class="mt-6 bg-white rounded-xl shadow-sm ssw-card p-6">
+                    <h2 class="text-lg text-ssw-charcoal mb-4 flex items-center">
+                        <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
+                        Action Items
+                    </h2>
+                    <div class="grid md:grid-cols-2 gap-4">
+                        {{ACTION_ITEMS}}
+                    </div>
+                </section>
+                
+                <!-- Hard Truths Section - Critical Findings -->
+                <section class="mt-6 bg-ssw-red-50 border-l-4 border-ssw-red rounded-r-xl p-6">
+                    <h2 class="text-lg text-ssw-red-700 mb-4 flex items-center font-bold">
+                        ⚠️ Hard Truths
+                    </h2>
+                    <div class="space-y-2 text-ssw-charcoal">
+                        {{HARD_TRUTHS}}
+                    </div>
+                </section>
+            </div>
+
+            <!-- Timeline Tab -->
+            <div x-show="activeTab === 'timeline'" x-cloak>
+                <!-- Speaker Timeline Visualization -->
+                <section class="bg-white rounded-xl shadow-sm ssw-card p-6 mb-6">
+                    <h2 class="text-lg text-ssw-charcoal mb-6 flex items-center">
+                        <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
+                        Speaker Timeline
+                    </h2>
+                    <div class="space-y-4">
+                        {{SPEAKER_TIMELINE}}
+                    </div>
+                </section>
+                
+                <section class="bg-white rounded-xl shadow-sm ssw-card p-6">
+                    <h2 class="text-lg text-ssw-charcoal mb-6">Meeting Timeline</h2>
+                    <div class="space-y-6">
+                        {{TIMELINE_SEGMENTS}}
+                    </div>
+                </section>
+                
+                <!-- Time Waste Analysis -->
+                <section class="mt-6 bg-ssw-red-50 border-l-4 border-ssw-red rounded-r-xl p-6">
+                    <h2 class="text-lg text-ssw-red-700 mb-4 font-bold">⏰ Time Waste Analysis</h2>
+                    {{TIME_WASTE_ANALYSIS}}
+                </section>
+                
+                <!-- Flow Analysis -->
+                <section class="mt-6 bg-white rounded-xl shadow-sm ssw-card p-6">
+                    <h2 class="text-lg text-ssw-charcoal mb-4">Flow Analysis</h2>
+                    {{FLOW_ANALYSIS}}
+                </section>
+            </div>
+
+            <!-- People & Roles Tab -->
+            <div x-show="activeTab === 'people'" x-cloak>
+                <!-- Team Dynamics Summary - SSW Red Gradient -->
+                <section class="bg-gradient-to-r from-ssw-red to-ssw-red-600 rounded-xl shadow-lg p-6 text-white mb-6">
+                    <h2 class="text-lg font-bold mb-2">Team Dynamics</h2>
+                    {{TEAM_DYNAMICS}}
+                </section>
+                
+                <!-- Power Dynamics Warning -->
+                <section class="mb-6 bg-ssw-gray-800 rounded-xl p-6 text-white">
+                    <h2 class="text-lg font-bold mb-3 flex items-center">
+                        <span class="w-2 h-2 bg-ssw-red rounded-full mr-2 animate-pulse"></span>
+                        Power Dynamics
+                    </h2>
+                    {{POWER_DYNAMICS}}
+                </section>
+
+                <!-- Participant Cards -->
+                <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {{PARTICIPANT_CARDS}}
+                </div>
+            </div>
+
+            <!-- Insights Tab -->
+            <div x-show="activeTab === 'insights'" x-cloak>
+                <!-- Team Health -->
+                <section class="bg-gradient-to-r from-ssw-charcoal to-ssw-gray-700 rounded-xl shadow-lg p-6 text-white mb-6">
+                    <h2 class="text-lg font-bold mb-2">Team Health X-Ray</h2>
+                    {{TEAM_HEALTH}}
+                </section>
+                
+                <!-- Elephants in the Room -->
+                <section class="mb-6 bg-ssw-red-50 border-2 border-ssw-red border-dashed rounded-xl p-6">
+                    <h2 class="text-lg text-ssw-red font-bold mb-4">🐘 Elephants in the Room</h2>
+                    {{ELEPHANTS}}
+                </section>
+
+                <!-- Risk Radar -->
+                <section class="mb-6 bg-white rounded-xl shadow-sm ssw-card p-6">
+                    <h2 class="text-lg text-ssw-charcoal mb-4 flex items-center">
+                        <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
+                        Risk Radar
+                    </h2>
+                    {{RISK_RADAR}}
+                </section>
+
+                <!-- Insights Grid -->
+                <div class="grid md:grid-cols-2 gap-6">
+                    {{INSIGHTS_CARDS}}
+                </div>
+
+                <!-- Notable Moments -->
+                <section class="mt-6 bg-white rounded-xl shadow-sm ssw-card p-6">
+                    <h2 class="text-lg text-ssw-charcoal mb-4">💬 Notable Moments & Hidden Truths</h2>
+                    {{NOTABLE_MOMENTS}}
+                </section>
+            </div>
+
+            <!-- Analytics Tab -->
+            <div x-show="activeTab === 'analytics'" x-cloak>
+                <!-- Meeting Cost Banner -->
+                <section class="mb-6 bg-ssw-charcoal rounded-xl p-6 text-white">
+                    <div class="flex flex-wrap items-center justify-between gap-4">
+                        <div>
+                            <h2 class="text-lg font-bold">Meeting Cost Analysis</h2>
+                            <p class="text-ssw-gray-300 text-sm mt-1">Time = Money. Waste = Loss.</p>
+                        </div>
+                        <div class="flex gap-6 text-center">
+                            <div>
+                                <p class="text-3xl font-bold text-white">{{MEETING_COST}}</p>
+                                <p class="text-ssw-gray-400 text-xs uppercase tracking-wide">Total Cost</p>
+                            </div>
+                            <div>
+                                <p class="text-3xl font-bold text-ssw-red-300">{{WASTED_COST}}</p>
+                                <p class="text-ssw-gray-400 text-xs uppercase tracking-wide">Wasted</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Time Breakdown Chart -->
+                    <section class="bg-white rounded-xl shadow-sm ssw-card p-6">
+                        <h2 class="text-lg text-ssw-charcoal mb-4">Time Breakdown</h2>
+                        <canvas id="timeChart"></canvas>
+                    </section>
+
+                    <!-- Participation Chart -->
+                    <section class="bg-white rounded-xl shadow-sm ssw-card p-6">
+                        <h2 class="text-lg text-ssw-charcoal mb-4">Participation</h2>
+                        <canvas id="participationChart"></canvas>
+                    </section>
+                </div>
+
+                <!-- Metrics Grid -->
+                <section class="mt-6 bg-white rounded-xl shadow-sm ssw-card p-6">
+                    <h2 class="text-lg text-ssw-charcoal mb-4">Key Metrics</h2>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {{METRICS_CARDS}}
+                    </div>
+                </section>
+
+                <!-- Efficiency Score with Grade -->
+                <section class="mt-6 bg-white rounded-xl shadow-sm ssw-card p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-lg text-ssw-charcoal">Meeting Effectiveness Score</h2>
+                        <span class="{{GRADE_CLASS}} text-white px-3 py-1 rounded-full font-bold text-lg">{{GRADE}}</span>
+                    </div>
+                    {{EFFICIENCY_SCORE}}
+                </section>
+                
+                <!-- Dysfunction Metrics -->
+                <section class="mt-6 bg-ssw-red-50 border-l-4 border-ssw-red rounded-r-xl p-6">
+                    <h2 class="text-lg text-ssw-red-700 mb-4 font-bold">📉 Dysfunction Metrics</h2>
+                    {{DYSFUNCTION_METRICS}}
+                </section>
+            </div>
+
+            <!-- Trends Tab -->
+            <div x-show="activeTab === 'trends'" x-cloak>
+                <!-- Trajectory Banner -->
+                <section class="mb-6 bg-gradient-to-r from-ssw-charcoal to-ssw-gray-700 rounded-xl p-6 text-white">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h2 class="text-lg font-bold">Team Trajectory</h2>
+                            <p class="text-ssw-gray-300 mt-1">{{TRAJECTORY_SUMMARY}}</p>
+                        </div>
+                        <div class="text-4xl">{{TRAJECTORY_INDICATOR}}</div>
+                    </div>
+                </section>
+                
+                <!-- Accountability Audit -->
+                <section class="mb-6 bg-white rounded-xl shadow-sm ssw-card p-6">
+                    <h2 class="text-lg text-ssw-charcoal mb-4 flex items-center">
+                        <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
+                        Accountability Audit
+                    </h2>
+                    {{ACCOUNTABILITY_AUDIT}}
+                </section>
+                
+                <!-- Recurring Issues -->
+                <section class="mb-6 bg-ssw-red-50 border-l-4 border-ssw-red rounded-r-xl p-6">
+                    <h2 class="text-lg text-ssw-red-700 mb-4 font-bold">🔄 Recurring Issues (The Graveyard)</h2>
+                    {{RECURRING_ISSUES}}
+                </section>
+                
+                {{TRENDS_CONTENT}}
+                
+                <!-- Predictions -->
+                <section class="mt-6 bg-ssw-charcoal rounded-xl p-6 text-white">
+                    <h2 class="text-lg font-bold mb-4">🔮 Predictions</h2>
+                    {{PREDICTIONS}}
+                </section>
+            </div>
+        </main>
+
+        <!-- SSW Branded Footer -->
+        <footer class="text-center text-ssw-gray-400 text-sm mt-12 pt-8 border-t border-ssw-gray-200 no-print">
+            <div class="flex items-center justify-center gap-2 mb-2">
+                <!-- SSW Logo Squares Motif -->
+                <div class="flex gap-0.5">
+                    <div class="w-2 h-2 bg-ssw-red"></div>
+                    <div class="w-2 h-2 bg-ssw-charcoal"></div>
+                    <div class="w-2 h-2 bg-ssw-gray-400"></div>
+                    <div class="w-2 h-2 bg-ssw-red-300"></div>
+                </div>
+                <span class="font-semibold text-ssw-charcoal">SSW</span>
+                <span class="text-ssw-gray-400">Meeting Summary Dashboard</span>
+            </div>
+            <p class="text-ssw-gray-400">{{GENERATED_AT}}</p>
+        </footer>
+    </div>
+
+    <!-- Chart.js Initialization with SSW Colors -->
+    <script>
+        // SSW Brand Colors for Charts
+        const sswColors = {
+            red: '#CC4141',
+            redLight: '#E25252',
+            redDark: '#A33434',
+            charcoal: '#333333',
+            gray: '#666666',
+            grayLight: '#888888',
+            // Chart palette
+            palette: ['#CC4141', '#333333', '#666666', '#E25252', '#888888', '#A33434', '#B0B0B0']
+        };
+        
+        Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
+        Chart.defaults.color = '#333333';
+        
+        {{CHART_SCRIPTS}}
+    </script>
+</body>
+</html>
