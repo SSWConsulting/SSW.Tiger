@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  meeting-processor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: meeting-summariser
+    environment:
+      # Claude Code CLI authentication
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      
+      # Surge credentials (for Claude Code to use during deployment)
+      - SURGE_LOGIN=${SURGE_EMAIL}
+      - SURGE_TOKEN=${SURGE_TOKEN}
+      
+      # Claude CLI configuration
+      - CLAUDE_CLI=claude
+      
+      # Output directory (defaults to ./output)
+      - OUTPUT_DIR=${OUTPUT_DIR:-/app/output}
+    volumes:
+      # Mount local projects directory to persist analysis
+      - ./projects:/app/projects
+      # Mount dropzone for input transcripts
+      - ./dropzone:/app/dropzone
+      # Mount output directory for generated dashboards
+      - ./output:/app/output
+      # Mount templates for customization
+      - ./templates:/app/templates:ro
+      # Mount CLAUDE.md instructions
+      - ./CLAUDE.md:/app/CLAUDE.md:ro
+      # Mount agent configurations
+      - ./.claude:/app/.claude:ro
+      # Mount error log
+      - ./error.log:/app/error.log
+    # Command override examples:
+    # Process a specific transcript:
+    # command: ["/app/dropzone/meeting.vtt", "yakshaver"]
+    
+    # Restart policy
+    restart: "no"
+    
+    # Resource limits (adjust as needed)
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '1.0'
+          memory: 512M
+
+# Example usage:
+# 
+# 1. Set your API key:
+#    export ANTHROPIC_API_KEY=your-key-here
+#
+# 2. Build the container:
+#    docker-compose build
+#
+# 3. Run with a transcript:
+#    docker-compose run --rm meeting-processor /app/dropzone/meeting.vtt projectname
+#
+# 4. View logs:
+#    docker-compose logs -f meeting-processor

@@ -1,0 +1,23 @@
+{
+  "name": "meeting-summariser",
+  "version": "1.0.0",
+  "description": "Containerized meeting transcript processor that generates analysis dashboards",
+  "main": "processor.js",
+  "scripts": {
+    "start": "node processor.js",
+    "test": "node test-wrapper.js"
+  },
+  "keywords": [
+    "meeting",
+    "transcript",
+    "analysis",
+    "dashboard",
+    "claude"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
