@@ -4,8 +4,7 @@
   "description": "Containerized meeting transcript processor that generates analysis dashboards",
   "main": "processor.js",
   "scripts": {
-    "start": "node processor.js",
-    "test": "node test-wrapper.js"
+    "start": "node processor.js"
   },
   "keywords": [
     "meeting",

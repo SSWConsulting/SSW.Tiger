@@ -33,8 +33,6 @@ services:
       - ./CLAUDE.md:/app/CLAUDE.md:ro
       # Mount agent configurations
       - ./.claude:/app/.claude:ro
-      # Mount error log
-      - ./error.log:/app/error.log
     # Command override examples:
     # Process a specific transcript:
     # command: ["/app/dropzone/meeting.vtt", "yakshaver"]

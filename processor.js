@@ -16,7 +16,6 @@ const { spawn } = require("child_process");
 const CONFIG = {
   claudeCommand: process.env.CLAUDE_CLI || "claude",
   outputDir: process.env.OUTPUT_DIR || path.join(__dirname, "output"),
-  errorLogPath: path.join(__dirname, "error.log"),
   // Auth configuration - supports both API key and subscription
   claudeApiKey: process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY,
   claudeSubscriptionToken: process.env.CLAUDE_SUBSCRIPTION_TOKEN,
@@ -37,14 +36,22 @@ class MeetingProcessor {
       message,
       ...(data && { data }),
     };
-    console.log(JSON.stringify(logEntry));
+
+    const serialized = JSON.stringify(logEntry);
+
+    if (level === "error") {
+      console.error(serialized);
+    } else {
+      console.log(serialized);
+    }
   }
 
-  async logError(error) {
-    const timestamp = new Date().toISOString();
-    const errorEntry = `[${timestamp}] ${error}\n`;
-    await fs.appendFile(CONFIG.errorLogPath, errorEntry);
-    this.log("error", error);
+  logError(error, context = null) {
+    this.log("error", error.message || String(error), {
+      name: error.name,
+      stack: error.stack,
+      ...(context && { context }),
+    });
   }
 
   validateCredentials() {
