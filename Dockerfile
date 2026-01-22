@@ -35,6 +35,7 @@ COPY processor.js ./
 COPY CLAUDE.md ./
 COPY templates/ ./templates/
 COPY entrypoint.sh ./
+COPY test-claude-auth.sh ./
 
 # Create necessary directories
 RUN mkdir -p /app/projects /app/output
@@ -42,8 +43,8 @@ RUN mkdir -p /app/projects /app/output
 # Run as non-root user for security
 RUN useradd -m nodejs && chown -R nodejs:nodejs /app
 
-# Make entrypoint executable
-RUN chmod +x /app/entrypoint.sh
+# Make scripts executable
+RUN chmod +x /app/entrypoint.sh /app/test-claude-auth.sh
 
 # Switch to nodejs user
 USER nodejs

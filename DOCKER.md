@@ -34,25 +34,8 @@ $env:ANTHROPIC_API_KEY="your-api-key-here"
 
 Create a `.env` file with subscription credentials:
 
-```bash
-CLAUDE_SUBSCRIPTION=true
-CLAUDE_SUBSCRIPTION_TOKEN=your-subscription-token-here
-CLAUDE_ENDPOINT=https://your-claude-endpoint.com
-```
-
-Or export them:
-
-```bash
-# Linux/Mac
-export CLAUDE_SUBSCRIPTION=true
-export CLAUDE_SUBSCRIPTION_TOKEN=your-token-here
-export CLAUDE_ENDPOINT=https://your-endpoint.com
-
-# Windows PowerShell
-$env:CLAUDE_SUBSCRIPTION="true"
-$env:CLAUDE_SUBSCRIPTION_TOKEN="your-token-here"
-$env:CLAUDE_ENDPOINT="https://your-endpoint.com"
-```
+Run "claude setup-token" on your local machine
+Format: sk-ant-oat01-...
 
 ### 2. Build the Container
 
@@ -111,27 +94,6 @@ for file in dropzone/*.vtt; do
   echo "Processing $name..."
   docker-compose run --rm meeting-processor "/app/dropzone/$(basename $file)" "$name"
 done
-```
-
-## Output
-
-Results are saved to `projects/<project-name>/`:
-
-```
-projects/
-  └── yakshaver/
-      ├── transcripts/
-      │   └── yakshaver.vtt
-      ├── analysis/
-      │   ├── timeline.json
-      │   ├── people.json
-      │   ├── insights.json
-      │   ├── analytics.json
-      │   ├── longitudinal.json
-      │   └── consolidated.json
-      └── dashboards/
-          └── 2026-01-21/
-              └── index.html
 ```
 
 ## Exit Codes

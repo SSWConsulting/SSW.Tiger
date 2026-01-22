@@ -6,11 +6,21 @@ services:
     container_name: meeting-summariser
     environment:
       - NODE_ENV=production
-      # Claude Code CLI authentication
-      # Pass OAuth token separately - DO NOT use as ANTHROPIC_API_KEY
+      # Claude Code CLI authentication (choose ONE method):
+
+      # Option 1: OAuth Token (Recommended for Claude Pro/Max subscriptions)
+      # Get token: Run "claude setup-token" on your local machine
+      # Format: sk-ant-oat01-...
+      # Benefits: Subscription rate limits, priority access
       - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN}
-      # API key for direct Anthropic API access
+
+      # Option 2: API Key (For pay-per-use or SDK usage)
+      # Get key: https://console.anthropic.com/settings/keys
+      # Format: sk-ant-api03-...
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+
+      # Priority: CLAUDE_CODE_OAUTH_TOKEN > ANTHROPIC_API_KEY
+      # Set ONE in your .env file (OAuth token recommended for subscriptions)
 
       # Surge credentials (for Claude Code to use during deployment)
       - SURGE_EMAIL=${SURGE_EMAIL}
