@@ -20,9 +20,9 @@ Microsoft Teams Meeting Ends
    ┌─────────────────────────────────┐
    │ 1. Fetch Transcript (Graph API) │
    │ 2. Run 5 Analysis Agents        │
-   │ 3. Consolidate Results           │
-   │ 4. Generate HTML Dashboard       │
-   │ 5. Deploy to Azure Blob/Surge    │
+   │ 3. Consolidate Results          │
+   │ 4. Generate HTML Dashboard      │
+   │ 5. Deploy to urge               │
    └─────────────────────────────────┘
          ↓
    Deployed Dashboard URL
@@ -40,7 +40,6 @@ Microsoft Teams Meeting Ends
 - ✅ Generates HTML dashboards
 - ✅ Clear exit codes (0/1)
 - ✅ JSON logging to stdout
-- ✅ Optional deployment to surge.sh or Azure Blob
 
 ### Container Output
 
@@ -229,23 +228,159 @@ az containerapp job create \
   --cpu 2.0 \
   --memory 4Gi \
   --env-vars \
-    "CLAUDE_SUBSCRIPTION=true" \
-    "CLAUDE_SUBSCRIPTION_TOKEN=secretref:claude-token" \
+    "CLAUDE_SUBSCRIPTION_TOKEN=secretref:claude-subscription-token" \
+    "CLAUDE_API_KEY=secretref:claude-api-key" \
+    "SURGE_LOGIN=secretref:surge-email" \
+    "SURGE_TOKEN=secretref:surge-token" \
     "DEPLOY_METHOD=azure-blob" \
     "AZURE_STORAGE_CONNECTION_STRING=secretref:storage-conn"
 ```
 
-### Step 3: Configure Secrets
+**Note**: The container will automatically prioritize subscription authentication if both are set. This provides flexibility to switch between authentication methods without code changes.
 
+### Step 3: Configure Secrets with Azure Key Vault
+
+**Create Key Vault and Secrets**:
 ```bash
-# Add secrets
+# Create Key Vault
+az keyvault create \
+  --name kv-tiger \
+  --resource-group rg-tiger \
+  --location australiaeast
+
+# Store Claude authentication (choose one or both)
+# Option 1: API Key (pay-as-you-go)
+az keyvault secret set \
+  --vault-name kv-tiger \
+  --name claude-api-key \
+  --value <your-claude-api-key>
+
+# Option 2: Subscription Token (preferred for high volume)
+az keyvault secret set \
+  --vault-name kv-tiger \
+  --name claude-subscription-token \
+  --value <your-subscription-token>
+
+# Store deployment credentials
+az keyvault secret set \
+  --vault-name kv-tiger \
+  --name surge-email \
+  --value <your-email@example.com>
+
+az keyvault secret set \
+  --vault-name kv-tiger \
+  --name surge-token \
+  --value <your-surge-token>
+
+az keyvault secret set \
+  --vault-name kv-tiger \
+  --name storage-connection-string \
+  --value <your-storage-connection-string>
+```
+
+**Enable Managed Identity**:
+```bash
+# Assign system-managed identity to container app
+az containerapp job identity assign \
+  --name job-tiger-processor \
+  --resource-group rg-tiger \
+  --system-assigned
+
+# Get the managed identity principal ID
+PRINCIPAL_ID=$(az containerapp job show \
+  --name job-tiger-processor \
+  --resource-group rg-tiger \
+  --query identity.principalId -o tsv)
+
+# Grant Key Vault access
+az keyvault set-policy \
+  --name kv-tiger \
+  --object-id $PRINCIPAL_ID \
+  --secret-permissions get list
+```
+
+**Configure Secrets in Container App**:
+```bash
+# Reference Key Vault secrets (choose authentication method)
 az containerapp job secret set \
   --name job-tiger-processor \
   --resource-group rg-tiger \
   --secrets \
-    claude-token=<your-claude-token> \
-    storage-conn=<your-storage-connection-string>
+    "claude-api-key=keyvaultref:https://kv-tiger.vault.azure.net/secrets/claude-api-key" \
+    "claude-subscription-token=keyvaultref:https://kv-tiger.vault.azure.net/secrets/claude-subscription-token" \
+    "surge-email=keyvaultref:https://kv-tiger.vault.azure.net/secrets/surge-email" \
+    "surge-token=keyvaultref:https://kv-tiger.vault.azure.net/secrets/surge-token" \
+    "storage-conn=keyvaultref:https://kv-tiger.vault.azure.net/secrets/storage-connection-string"
 ```
+
+---
+
+## Phase 4.5: Authentication Configuration
+
+### Choosing Authentication Method
+
+**Option A: API Key (Pay-as-you-go)**
+- Best for: Testing, low volume, variable usage
+- Cost: ~$0.30-$0.50 per meeting
+- Setup: Set `ANTHROPIC_API_KEY` or `CLAUDE_API_KEY`
+
+```bash
+az containerapp job update \
+  --name job-tiger-processor \
+  --resource-group rg-tiger \
+  --set-env-vars "CLAUDE_API_KEY=secretref:claude-api-key"
+```
+
+**Option B: Subscription (Fixed monthly cost)**
+- Best for: High volume, predictable usage, production
+- Cost: Fixed monthly fee + reduced per-request cost
+- Setup: Set `CLAUDE_SUBSCRIPTION_TOKEN`
+
+```bash
+az containerapp job update \
+  --name job-tiger-processor \
+  --resource-group rg-tiger \
+  --set-env-vars "CLAUDE_SUBSCRIPTION_TOKEN=secretref:claude-subscription-token"
+```
+
+**Option C: Both (Flexible)**
+- Container automatically uses subscription if available, falls back to API key
+- Allows seamless transition between authentication methods
+
+```bash
+az containerapp job update \
+  --name job-tiger-processor \
+  --resource-group rg-tiger \
+  --set-env-vars \
+    "CLAUDE_SUBSCRIPTION_TOKEN=secretref:claude-subscription-token" \
+    "CLAUDE_API_KEY=secretref:claude-api-key"
+```
+
+### Switching Authentication Methods
+
+No code changes needed - just update environment variables:
+
+```bash
+# Switch to subscription
+az containerapp job update \
+  --name job-tiger-processor \
+  --resource-group rg-tiger \
+  --set-env-vars "CLAUDE_SUBSCRIPTION_TOKEN=secretref:claude-subscription-token"
+
+# Switch to API key
+az containerapp job update \
+  --name job-tiger-processor \
+  --resource-group rg-tiger \
+  --set-env-vars "CLAUDE_API_KEY=secretref:claude-api-key"
+```
+
+### Priority Order
+
+The container checks authentication in this order:
+1. **CLAUDE_SUBSCRIPTION_TOKEN** (highest priority)
+2. **CLAUDE_API_KEY**
+3. **ANTHROPIC_API_KEY**
+4. Error if none found
 
 ---
 

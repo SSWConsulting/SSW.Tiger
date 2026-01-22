@@ -17,6 +17,9 @@ const CONFIG = {
   claudeCommand: process.env.CLAUDE_CLI || 'claude',
   outputDir: process.env.OUTPUT_DIR || path.join(__dirname, 'output'),
   errorLogPath: path.join(__dirname, 'error.log'),
+  // Auth configuration - supports both API key and subscription
+  claudeApiKey: process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY,
+  claudeSubscriptionToken: process.env.CLAUDE_SUBSCRIPTION_TOKEN,
 };
 
 class MeetingProcessor {
@@ -42,6 +45,48 @@ class MeetingProcessor {
     const errorEntry = `[${timestamp}] ${error}\n`;
     await fs.appendFile(CONFIG.errorLogPath, errorEntry);
     this.log('error', error);
+  }
+
+  getClaudeAuthMethod() {
+    if (
+  process.env.NODE_ENV === 'production' &&
+  !CONFIG.claudeSubscriptionToken &&
+  !CONFIG.claudeApiKey
+) {
+  throw new Error(
+    'No Claude credentials found in production. ' +
+    'Set CLAUDE_SUBSCRIPTION_TOKEN or ANTHROPIC_API_KEY.'
+  );
+}
+
+    // Prioritize subscription (lower per-request cost for high volume)
+    if (CONFIG.claudeSubscriptionToken) {
+      this.log('info', 'Using Claude subscription authentication');
+      return {
+        useSubscription: true,
+        env: {
+          CLAUDE_SUBSCRIPTION: 'true',
+          CLAUDE_SUBSCRIPTION_TOKEN: CONFIG.claudeSubscriptionToken,
+        }
+      };
+    } else if (CONFIG.claudeApiKey) {
+      this.log('info', 'Using Claude API key authentication');
+      return {
+        useSubscription: false,
+        env: {
+          ANTHROPIC_API_KEY: CONFIG.claudeApiKey,
+        }
+      };
+    } else {
+      // Fallback: Let Claude CLI use its stored session credentials
+      this.log('info', 'Using Claude CLI session authentication (logged-in user)');
+      this.log('warn', 'No explicit credentials provided. Relying on Claude CLI logged-in session.');
+      this.log('warn', 'For production, set CLAUDE_SUBSCRIPTION_TOKEN or CLAUDE_API_KEY explicitly.');
+      return {
+        useSubscription: false,
+        env: {} // Don't inject any auth vars, let Claude CLI handle it
+      };
+    }
   }
 
   async initialize(transcriptPath, projectName) {
@@ -85,6 +130,22 @@ class MeetingProcessor {
     // Ensure output directory exists
     await fs.mkdir(CONFIG.outputDir, { recursive: true });
 
+    // Get authentication configuration
+    const authConfig = this.getClaudeAuthMethod();
+
+    // Validate Surge credentials (required for deployment)
+    if (!process.env.SURGE_LOGIN || !process.env.SURGE_TOKEN) {
+      throw new Error(
+        'Surge.sh credentials are required for deployment.\n' +
+        'Please set the following environment variables:\n' +
+        '  SURGE_LOGIN=<your-email>\n' +
+        '  SURGE_TOKEN=<your-token>\n' +
+        'Get your token by running: surge token'
+      );
+    }
+
+    this.log('info', 'Surge.sh credentials validated - deployment will be performed');
+
     const prompt = `Read the instructions in CLAUDE.md and process the meeting transcript.
 
 Transcript file: ${this.transcriptPath}
@@ -92,11 +153,11 @@ Project name: ${this.projectName}
 Output dashboard to: ${path.join(CONFIG.outputDir, 'index.html')}
 
 Follow the complete workflow defined in CLAUDE.md. At the end, output a single line in this format:
-DEPLOYED_URL=<url or none>`;
+DEPLOYED_URL=<url>`;
 
     return new Promise((resolve, reject) => {
       // Spawn Claude Code CLI in print mode (non-interactive)
-      // --print: non-interactive output
+      // --print: non-interactive output (reads from stdin)
       // --permission-mode bypassPermissions: auto-accept all permissions
       // --add-dir: ensure access to workspace, output, and project directories
       const args = [
@@ -104,34 +165,73 @@ DEPLOYED_URL=<url or none>`;
         '--permission-mode', 'bypassPermissions',
         '--add-dir', __dirname,
         '--add-dir', CONFIG.outputDir,
-        '--add-dir', this.projectPath,
-        prompt
+        '--add-dir', this.projectPath
       ];
 
-      const claude = spawn(CONFIG.claudeCommand, args, {
+      // Determine command and args based on platform
+      let command = CONFIG.claudeCommand;
+      let spawnArgs = args;
+      let spawnOptions = {
         cwd: __dirname,
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: ['pipe', 'pipe', 'pipe'],
         env: {
           ...process.env,
           // Ensure trust for workspace
-          CLAUDE_WORKSPACE_TRUST: 'true'
+          CLAUDE_WORKSPACE_TRUST: 'true',
+          // Inject appropriate auth environment variables
+          ...authConfig.env
         }
+      };
+
+      // On Windows, use PowerShell shell (tested and works with stdin)
+      if (process.platform === 'win32') {
+        spawnOptions.shell = 'powershell.exe';
+        this.log('debug', 'Using PowerShell shell to invoke Claude command', {
+          command: CONFIG.claudeCommand,
+          authMethod: authConfig.useSubscription ? 'subscription' : 'api-key'
+        });
+      }
+
+      this.log('info', 'Spawning Claude CLI with flags', {
+        flags: spawnArgs.join(' '),
+        promptLength: prompt.length
       });
+
+      const claude = spawn(command, spawnArgs, spawnOptions);
+
+      // Write prompt to stdin and close
+      this.log('info', 'Sending prompt to Claude CLI...');
+      claude.stdin.write(prompt);
+      claude.stdin.end();
+      this.log('info', 'Prompt sent. Waiting for Claude analysis (this may take 5-10 minutes)...');
 
       let stdout = '';
       let stderr = '';
+      let firstOutputReceived = false;
 
       claude.stdout.on('data', (data) => {
+        if (!firstOutputReceived) {
+          firstOutputReceived = true;
+          this.log('info', 'Receiving output from Claude CLI...');
+          clearTimeout(timeout); // Clear the warning timeout
+        }
         stdout += data.toString();
         process.stdout.write(data);
       });
 
       claude.stderr.on('data', (data) => {
+        if (!firstOutputReceived) {
+          firstOutputReceived = true;
+          clearTimeout(timeout);
+        }
         stderr += data.toString();
         process.stderr.write(data);
       });
 
       claude.on('close', async (code) => {
+        clearTimeout(timeout);
+        clearInterval(progressInterval);
+
         if (code === 0) {
           this.log('info', 'Claude Code CLI completed successfully');
           // Extract deployed URL from stdout
@@ -146,10 +246,29 @@ DEPLOYED_URL=<url or none>`;
       });
 
       claude.on('error', async (err) => {
+        clearTimeout(timeout);
+        clearInterval(progressInterval);
         const error = `Failed to spawn Claude Code CLI: ${err.message}`;
         await this.logError(error);
         reject(new Error(error));
       });
+
+      // Add progress indicator (shows activity while waiting)
+      let elapsedMinutes = 0;
+      const progressInterval = setInterval(() => {
+        elapsedMinutes++;
+        if (!firstOutputReceived) {
+          this.log('info', `Still waiting for Claude... (${elapsedMinutes} minute${elapsedMinutes > 1 ? 's' : ''} elapsed)`);
+        }
+      }, 60000); // Every minute
+
+      // Add timeout warning
+      const timeout = setTimeout(() => {
+        if (!firstOutputReceived) {
+          this.log('warn', 'No output from Claude CLI after 30 seconds. This is normal for large transcripts.');
+          this.log('warn', 'Claude is analyzing the transcript with 5 specialized agents. Please wait...');
+        }
+      }, 30000);
     });
   }
 

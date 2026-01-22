@@ -8,24 +8,16 @@ RUN apk add --no-cache curl bash git && \
 # Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
-
-# Install dependencies
-RUN npm ci --only=production
-
 # Copy application code
 COPY processor.js ./
 COPY CLAUDE.md ./
 COPY templates/ ./templates/
-COPY .claude/ ./.claude/
 
-# Create necessary directories for output
-RUN mkdir -p /app/projects /app/dropzone /app/output
+# Create necessary directories
+RUN mkdir -p /app/projects /app/output
 
 # Set environment variables
 ENV NODE_ENV=production
-ENV CLAUDE_CLI=claude
 ENV OUTPUT_DIR=/app/output
 
 # Add healthcheck
