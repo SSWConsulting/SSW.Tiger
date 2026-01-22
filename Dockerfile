@@ -34,6 +34,7 @@ WORKDIR /app
 COPY processor.js ./
 COPY CLAUDE.md ./
 COPY templates/ ./templates/
+COPY entrypoint.sh ./
 
 # Create necessary directories
 RUN mkdir -p /app/projects /app/output
@@ -41,13 +42,16 @@ RUN mkdir -p /app/projects /app/output
 # Run as non-root user for security
 RUN useradd -m nodejs && chown -R nodejs:nodejs /app
 
+# Make entrypoint executable
+RUN chmod +x /app/entrypoint.sh
+
+# Switch to nodejs user
+USER nodejs
+
 # Set environment variables
 ENV NODE_ENV=production
 ENV OUTPUT_DIR=/app/output
 ENV PATH="/usr/local/bin:${PATH}"
-
-# Switch to non-root user
-USER nodejs
 
 # Verify nodejs user can access claude
 RUN which claude && claude --version
@@ -55,5 +59,5 @@ RUN which claude && claude --version
 HEALTHCHECK CMD which claude && node -v || exit 1
 
 # Default command (will be overridden by docker-compose or command line)
-ENTRYPOINT ["node", "processor.js"]
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD []

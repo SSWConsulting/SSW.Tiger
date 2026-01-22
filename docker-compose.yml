@@ -5,15 +5,15 @@ services:
       dockerfile: Dockerfile
     container_name: meeting-summariser
     environment:
-      # Claude Code CLI authentication (use one or both - subscription takes priority)
-      # Option 1: API Key (pay-as-you-go)
+      - NODE_ENV=production
+      # Claude Code CLI authentication
+      # Pass OAuth token separately - DO NOT use as ANTHROPIC_API_KEY
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN}
+      # API key for direct Anthropic API access
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
-      # Option 2: Subscription (fixed monthly cost, preferred for high volume)
-      - CLAUDE_SUBSCRIPTION_TOKEN=${CLAUDE_SUBSCRIPTION_TOKEN}
 
       # Surge credentials (for Claude Code to use during deployment)
-      - SURGE_LOGIN=${SURGE_EMAIL}
+      - SURGE_EMAIL=${SURGE_EMAIL}
       - SURGE_TOKEN=${SURGE_TOKEN}
 
       # Output directory (defaults to ./output)
@@ -58,8 +58,9 @@ services:
 # 1. Set your authentication (choose one):
 #    # Option A: API Key
 #    export ANTHROPIC_API_KEY=your-key-here
-#    # Option B: Subscription (preferred for high volume)
-#    export CLAUDE_SUBSCRIPTION_TOKEN=your-token-here
+#    # Option B: OAuth Token (subscription - get from Claude CLI)
+#    # Run on host: claude /status | grep "Auth Token"
+#    export CLAUDE_CODE_OAUTH_TOKEN=your-oauth-token-here
 #
 # 2. Set Surge credentials for deployment
 #    export SURGE_EMAIL=your-email@example.com
@@ -73,6 +74,9 @@ services:
 #
 # 5. View logs:
 #    docker-compose logs -f meeting-processor
+#
+# 6. Verify authentication in container:
+#    docker-compose run --rm meeting-processor sh -c "claude /status"
 #
 # Note: Each meeting is isolated by its filename. Multiple meetings on the same date 
 #       are supported (e.g., 2026-01-22-standup.vtt, 2026-01-22-sprint-review.vtt)

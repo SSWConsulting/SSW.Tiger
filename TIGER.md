@@ -128,18 +128,13 @@ az keyvault create \
   --resource-group rg-tiger \
   --location australiaeast
 
-# Store Claude authentication (choose one or both)
-# Option 1: API Key (pay-as-you-go)
+# Store Claude API Key
+# Get your API key from https://console.anthropic.com/settings/keys
+# If you have a subscription, this API key will inherit subscription benefits
 az keyvault secret set \
   --vault-name kv-tiger \
-  --name claude-api-key \
-  --value <your-claude-api-key>
-
-# Option 2: Subscription Token (preferred for high volume)
-az keyvault secret set \
-  --vault-name kv-tiger \
-  --name claude-subscription-token \
-  --value <your-subscription-token>
+  --name anthropic-api-key \
+  --value sk-ant-api03-YOUR-KEY-HERE
 
 # Store deployment credentials
 az keyvault secret set \
@@ -181,13 +176,12 @@ az keyvault set-policy \
 
 **Configure Secrets in Container App**:
 ```bash
-# Reference Key Vault secrets (choose authentication method)
+# Reference Key Vault secrets
 az containerapp job secret set \
   --name job-tiger-processor \
   --resource-group rg-tiger \
   --secrets \
-    "claude-api-key=keyvaultref:https://kv-tiger.vault.azure.net/secrets/claude-api-key" \
-    "claude-subscription-token=keyvaultref:https://kv-tiger.vault.azure.net/secrets/claude-subscription-token" \
+    "anthropic-api-key=keyvaultref:https://kv-tiger.vault.azure.net/secrets/anthropic-api-key" \
     "surge-email=keyvaultref:https://kv-tiger.vault.azure.net/secrets/surge-email" \
     "surge-token=keyvaultref:https://kv-tiger.vault.azure.net/secrets/surge-token" \
     "storage-conn=keyvaultref:https://kv-tiger.vault.azure.net/secrets/storage-connection-string"
@@ -199,68 +193,93 @@ az containerapp job secret set \
 
 ### Choosing Authentication Method
 
-**Option A: API Key (Pay-as-you-go)**
-- Best for: Testing, low volume, variable usage
-- Cost: ~$0.30-$0.50 per meeting
-- Setup: Set `ANTHROPIC_API_KEY` or `CLAUDE_API_KEY`
+**⚠️ IMPORTANT: OAuth Tokens Do Not Work in Docker**
+
+Claude Code OAuth tokens (`sk-ant-oat01-...`) **cannot** be used in Docker containers, even with subscriptions. For Docker/Azure deployments, you MUST use API keys.
+
+#### For Subscription Users (Claude Pro / Claude Code Subscription)
+
+If you have a Claude subscription, your API keys will automatically inherit subscription benefits:
+
+1. **Log into [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys)** with your subscription account
+2. **Create an API key** (starts with `sk-ant-api03-...`)
+3. **Use this API key in Docker** - it will have your subscription benefits:
+   - ✅ Higher rate limits
+   - ✅ Priority access during high load
+   - ✅ Access to latest models
+   - ✅ Better pricing tiers
+
+#### For Pay-as-You-Go Users
+
+Create an API key from [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) and use standard rates.
+
+### Setup Authentication in Azure
+
+**Single API Key Setup (Recommended)**:
 
 ```bash
+# Store your API key in Key Vault
+az keyvault secret set \
+  --vault-name kv-tiger \
+  --name anthropic-api-key \
+  --value sk-ant-api03-YOUR-KEY-HERE
+
+# Configure Container App to use it
 az containerapp job update \
   --name job-tiger-processor \
   --resource-group rg-tiger \
-  --set-env-vars "CLAUDE_API_KEY=secretref:claude-api-key"
+  --set-env-vars "ANTHROPIC_API_KEY=secretref:anthropic-api-key"
 ```
 
-**Option B: Subscription (Fixed monthly cost)**
-- Best for: High volume, predictable usage, production
-- Cost: Fixed monthly fee + reduced per-request cost
-- Setup: Set `CLAUDE_SUBSCRIPTION_TOKEN`
+**Alternative Names (for compatibility)**:
+
+The container accepts any of these environment variable names:
+- `ANTHROPIC_API_KEY` (recommended)
+- `CLAUDE_API_KEY` (alternative)
 
 ```bash
+# Using CLAUDE_API_KEY instead
 az containerapp job update \
   --name job-tiger-processor \
   --resource-group rg-tiger \
-  --set-env-vars "CLAUDE_SUBSCRIPTION_TOKEN=secretref:claude-subscription-token"
+  --set-env-vars "CLAUDE_API_KEY=secretref:anthropic-api-key"
 ```
 
-**Option C: Both (Flexible)**
-- Container automatically uses subscription if available, falls back to API key
-- Allows seamless transition between authentication methods
+### Verification
+
+Test that your API key works:
 
 ```bash
-az containerapp job update \
-  --name job-tiger-processor \
-  --resource-group rg-tiger \
-  --set-env-vars \
-    "CLAUDE_SUBSCRIPTION_TOKEN=secretref:claude-subscription-token" \
-    "CLAUDE_API_KEY=secretref:claude-api-key"
+# Test in local Docker first
+docker-compose run --rm --entrypoint sh meeting-processor -c "echo 'test' | claude"
+
+# Should see a response from Claude, not an auth error
 ```
 
-### Switching Authentication Methods
+### Why OAuth Tokens Don't Work
 
-No code changes needed - just update environment variables:
+| Feature | OAuth Token | API Key |
+|---------|-------------|---------|
+| **Format** | `sk-ant-oat01-...` | `sk-ant-api03-...` |
+| **Type** | Browser session token | Direct API credential |
+| **Works in Docker?** | ❌ No | ✅ Yes |
+| **Works locally?** | ✅ Yes (with `claude` CLI) | ✅ Yes |
+| **Automated flows?** | ❌ No (requires browser) | ✅ Yes |
+| **Subscription benefits?** | N/A | ✅ Inherited from account |
 
-```bash
-# Switch to subscription
-az containerapp job update \
-  --name job-tiger-processor \
-  --resource-group rg-tiger \
-  --set-env-vars "CLAUDE_SUBSCRIPTION_TOKEN=secretref:claude-subscription-token"
+### Cost Implications
 
-# Switch to API key
-az containerapp job update \
-  --name job-tiger-processor \
-  --resource-group rg-tiger \
-  --set-env-vars "CLAUDE_API_KEY=secretref:claude-api-key"
-```
+**With Subscription API Key**:
+- Fixed monthly subscription fee
+- Lower per-token costs
+- Higher rate limits
+- ~$0.20-$0.35 per meeting (reduced from $0.30-$0.50)
 
-### Priority Order
-
-The container checks authentication in this order:
-1. **CLAUDE_SUBSCRIPTION_TOKEN** (highest priority)
-2. **CLAUDE_API_KEY**
-3. **ANTHROPIC_API_KEY**
-4. Error if none found
+**Pay-as-You-Go**:
+- No monthly fee
+- Standard per-token costs
+- Standard rate limits
+- ~$0.30-$0.50 per meeting
 
 ---
 

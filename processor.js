@@ -16,9 +16,9 @@ const { spawn } = require("child_process");
 const CONFIG = {
   claudeCommand: process.env.CLAUDE_CLI || "claude",
   outputDir: process.env.OUTPUT_DIR || path.join(__dirname, "output"),
-  // Auth configuration - supports both API key and subscription
-  claudeApiKey: process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY,
-  claudeSubscriptionToken: process.env.CLAUDE_SUBSCRIPTION_TOKEN,
+  // Auth configuration - supports both API key and OAuth token
+  claudeApiKey: process.env.ANTHROPIC_API_KEY,
+  claudeOAuthToken: process.env.CLAUDE_CODE_OAUTH_TOKEN,
 };
 
 class MeetingProcessor {
@@ -63,38 +63,38 @@ class MeetingProcessor {
     // Validate Claude credentials
     if (
       process.env.NODE_ENV === "production" &&
-      !CONFIG.claudeSubscriptionToken &&
+      !CONFIG.claudeOAuthToken &&
       !CONFIG.claudeApiKey
     ) {
       throw new Error(
         "No Claude credentials found in production.\n" +
           "Set one of the following environment variables:\n" +
-          "  CLAUDE_SUBSCRIPTION_TOKEN=<your-token>\n" +
+          "  CLAUDE_CODE_OAUTH_TOKEN=<your-token>\n" +
           "  ANTHROPIC_API_KEY=<your-api-key>",
       );
     }
 
-    if (!CONFIG.claudeSubscriptionToken && !CONFIG.claudeApiKey) {
+    if (!CONFIG.claudeOAuthToken && !CONFIG.claudeApiKey) {
       this.log(
         "warn",
         "No explicit Claude credentials provided. Relying on Claude CLI logged-in session.",
       );
       this.log(
         "warn",
-        "For production, set CLAUDE_SUBSCRIPTION_TOKEN or ANTHROPIC_API_KEY explicitly.",
+        "For production, set CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY explicitly.",
       );
-    } else if (CONFIG.claudeSubscriptionToken) {
-      this.log("info", "Claude subscription credentials detected");
+    } else if (CONFIG.claudeOAuthToken) {
+      this.log("info", "Claude OAuth token credentials detected");
     } else if (CONFIG.claudeApiKey) {
       this.log("info", "Claude API key credentials detected");
     }
 
     // Validate Surge credentials (required for deployment)
-    if (!process.env.SURGE_LOGIN || !process.env.SURGE_TOKEN) {
+    if (!process.env.SURGE_EMAIL || !process.env.SURGE_TOKEN) {
       throw new Error(
         "Surge.sh credentials are required for deployment.\n" +
           "Please set the following environment variables:\n" +
-          "  SURGE_LOGIN=<your-email>\n" +
+          "  SURGE_EMAIL=<your-email>\n" +
           "  SURGE_TOKEN=<your-token>\n" +
           "Get your token by running: surge token",
       );
@@ -105,20 +105,19 @@ class MeetingProcessor {
   }
 
   getClaudeAuthMethod() {
-    // Prioritize subscription (lower per-request cost for high volume)
-    if (CONFIG.claudeSubscriptionToken) {
-      this.log("info", "Using Claude subscription authentication");
+    // Prioritize OAuth token (subscription - lower per-request cost for high volume)
+    if (CONFIG.claudeOAuthToken) {
+      this.log("info", "Using Claude OAuth token authentication");
       return {
-        useSubscription: true,
+        useOAuth: true,
         env: {
-          CLAUDE_SUBSCRIPTION: "true",
-          CLAUDE_SUBSCRIPTION_TOKEN: CONFIG.claudeSubscriptionToken,
+          CLAUDE_CODE_OAUTH_TOKEN: CONFIG.claudeOAuthToken,
         },
       };
     } else if (CONFIG.claudeApiKey) {
       this.log("info", "Using Claude API key authentication");
       return {
-        useSubscription: false,
+        useOAuth: false,
         env: {
           ANTHROPIC_API_KEY: CONFIG.claudeApiKey,
         },
@@ -130,7 +129,7 @@ class MeetingProcessor {
         "Using Claude CLI session authentication (logged-in user)",
       );
       return {
-        useSubscription: false,
+        useOAuth: false,
         env: {}, // Don't inject any auth vars, let Claude CLI handle it
       };
     }
@@ -282,13 +281,18 @@ DEPLOYED_URL=<url>`;
 
     return new Promise((resolve, reject) => {
       // Spawn Claude Code CLI in print mode (non-interactive)
-      // --print: non-interactive output (reads from stdin)
-      // --permission-mode bypassPermissions: auto-accept all permissions
+      // -p/--print: non-interactive output (reads from stdin)
+      // --dangerously-skip-permissions: skip all permission prompts (required in Docker)
+      // --allowedTools: specify tools the agent can use autonomously
       // --add-dir: ensure access to workspace, output, and project directories
       const args = [
-        "--print",
-        "--permission-mode",
-        "bypassPermissions",
+        "-p",
+        "--verbose",
+        "--output-format",
+        "stream-json",
+        "--dangerously-skip-permissions",
+        "--allowedTools",
+        "read_file,create_file,replace_string_in_file,list_dir,grep_search,run_in_terminal",
         "--add-dir",
         __dirname,
         "--add-dir",
@@ -317,7 +321,7 @@ DEPLOYED_URL=<url>`;
         spawnOptions.shell = "powershell.exe";
         this.log("debug", "Using PowerShell shell to invoke Claude command", {
           command: CONFIG.claudeCommand,
-          authMethod: authConfig.useSubscription ? "subscription" : "api-key",
+          authMethod: authConfig.useOAuth ? "oauth-token" : "api-key",
         });
       }
 
@@ -340,28 +344,98 @@ DEPLOYED_URL=<url>`;
       let stdout = "";
       let stderr = "";
       let firstOutputReceived = false;
+      let lastOutputTime = Date.now();
+      let currentActivity = "initializing";
+      let jsonBuffer = ""; // Buffer for incomplete JSON lines
+
+      // Inactivity timeout: fail if no output received for 5 minutes
+      // With stream-json, we get frequent updates, so a longer timeout is safer
+      const INACTIVITY_TIMEOUT = 300000; // 5 minutes
+      let inactivityTimer = setInterval(() => {
+        const timeSinceLastOutput = Date.now() - lastOutputTime;
+        if (timeSinceLastOutput > INACTIVITY_TIMEOUT) {
+          clearInterval(inactivityTimer);
+          clearInterval(progressInterval);
+          const error = `Claude CLI timeout: No output received for ${Math.floor(timeSinceLastOutput / 60000)} minutes. Last activity: ${currentActivity}`;
+          this.log("error", error);
+          claude.kill();
+          reject(new Error(error));
+        }
+      }, 30000); // Check every 30 seconds
+
+      // Progress indicator: shows current activity and elapsed time
+      let elapsedMinutes = 0;
+      const progressInterval = setInterval(() => {
+        elapsedMinutes++;
+        const minutesSinceLastOutput = Math.floor(
+          (Date.now() - lastOutputTime) / 60000,
+        );
+        this.log(
+          "info",
+          `Claude processing: ${currentActivity} (${elapsedMinutes}m elapsed, last output ${minutesSinceLastOutput}m ago)`,
+        );
+      }, 60000); // Every 1 minute
 
       claude.stdout.on("data", (data) => {
+        lastOutputTime = Date.now(); // Reset inactivity timer
         if (!firstOutputReceived) {
           firstOutputReceived = true;
-          this.log("info", "Receiving output from Claude CLI...");
-          clearTimeout(timeout); // Clear the warning timeout
+          this.log("info", "Receiving streaming output from Claude CLI...");
         }
-        stdout += data.toString();
-        process.stdout.write(data);
+
+        const chunk = data.toString();
+        stdout += chunk;
+
+        // Parse stream-json output for progress tracking
+        jsonBuffer += chunk;
+        const lines = jsonBuffer.split("\n");
+        jsonBuffer = lines.pop() || ""; // Keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (line.trim()) {
+            try {
+              const event = JSON.parse(line);
+
+              // Extract progress information from different event types
+              if (event.type === "tool_use") {
+                currentActivity = `using tool: ${event.name || "unknown"}`;
+                this.log("debug", `Tool invoked: ${event.name}`);
+              } else if (event.type === "content_block_start") {
+                currentActivity = "generating content";
+              } else if (event.type === "content_block_delta") {
+                // Content streaming - keep current activity
+              } else if (event.type === "message_start") {
+                currentActivity = "starting analysis";
+              } else if (event.type === "message_delta") {
+                if (event.delta?.stop_reason) {
+                  currentActivity = `completing (${event.delta.stop_reason})`;
+                }
+              } else if (event.error) {
+                currentActivity = `error: ${event.error}`;
+                this.log("error", "Claude CLI error event", {
+                  error: event.error,
+                });
+              }
+            } catch (e) {
+              // Ignore JSON parse errors for non-JSON output lines
+            }
+          }
+        }
+
+        process.stdout.write(chunk);
       });
 
       claude.stderr.on("data", (data) => {
+        lastOutputTime = Date.now(); // Reset inactivity timer
         if (!firstOutputReceived) {
           firstOutputReceived = true;
-          clearTimeout(timeout);
         }
         stderr += data.toString();
         process.stderr.write(data);
       });
 
       claude.on("close", async (code) => {
-        clearTimeout(timeout);
+        clearInterval(inactivityTimer);
         clearInterval(progressInterval);
 
         if (code === 0) {
@@ -378,24 +452,12 @@ DEPLOYED_URL=<url>`;
       });
 
       claude.on("error", async (err) => {
-        clearTimeout(timeout);
+        clearInterval(inactivityTimer);
         clearInterval(progressInterval);
         const error = `Failed to spawn Claude Code CLI: ${err.message}`;
         await this.logError(error);
         reject(new Error(error));
       });
-
-      // Add progress indicator (shows activity while waiting)
-      let elapsedMinutes = 0;
-      const progressInterval = setInterval(() => {
-        elapsedMinutes++;
-        if (!firstOutputReceived) {
-          this.log(
-            "info",
-            `Still waiting for Claude... (${elapsedMinutes} minute${elapsedMinutes > 1 ? "s" : ""} elapsed)`,
-          );
-        }
-      }, 180000); // Every 3 minutes
     });
   }
 
