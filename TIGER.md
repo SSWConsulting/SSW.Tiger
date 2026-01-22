@@ -89,12 +89,6 @@ The filename (without `.vtt`) becomes the unique meeting ID used for:
 
 ### Step 1: Create App Registration
 
-```bash
-# Using Azure CLI
-az ad app create \
-  --display-name "TIGER-MeetingSummariser" \
-  --sign-in-audience AzureADMyOrg
-```
 
 ### Step 2: Grant Graph API Permissions
 
@@ -103,29 +97,7 @@ Required permissions:
 - `Transcript.Read.All` - Download transcript content
 - `Chat.Create` - Post dashboard link to Teams
 
-```bash
-# Add permissions
-az ad app permission add \
-  --id <APP_ID> \
-  --api 00000003-0000-0000-c000-000000000000 \
-  --api-permissions \
-    883ea226-0bf2-4a8f-9f9d-92c9162a727d=Role \  # OnlineMeetings.Read.All
-    a4890a77-f890-4492-bffe-a45cb0c49e44=Role \  # Transcript.Read.All
-    9ff7295e-131b-4d94-90e1-69fde507ac11=Role    # Chat.Create
-
-# Grant admin consent
-az ad app permission admin-consent --id <APP_ID>
-```
-
 ### Step 3: Create Service Principal
-
-```bash
-az ad sp create --id <APP_ID>
-
-# Generate a secret
-az ad app credential reset --id <APP_ID>
-# Save the returned password/secret!
-```
 
 ---
 
@@ -133,62 +105,9 @@ az ad app credential reset --id <APP_ID>
 
 ### Create Azure Function App
 
-```bash
-# Create resource group
-az group create --name rg-tiger --location australiaeast
-
-# Create storage account
-az storage account create \
-  --name sttiger \
-  --resource-group rg-tiger \
-  --location australiaeast \
-  --sku Standard_LRS
-
-# Create function app
-az functionapp create \
-  --resource-group rg-tiger \
-  --consumption-plan-type EP1 \
-  --runtime node \
-  --runtime-version 18 \
-  --functions-version 4 \
-  --name func-tiger-trigger \
-  --storage-account sttiger
-```
-
 ### Function Code Structure
 
-```javascript
-// HttpTrigger or EventGridTrigger
-module.exports = async function (context, req) {
-  const { meetingId, organizerId, teamId } = req.body;
-  
-  // Filter: Only process specific teams
-  const allowedTeams = process.env.ALLOWED_TEAMS.split(',');
-  if (!allowedTeams.includes(teamId)) {
-    context.log('Skipping meeting from non-allowed team');
-    return;
-  }
-  
-  // Trigger Container App job
-  await triggerContainerJob(meetingId, organizerId);
-  
-  context.res = { status: 200, body: 'Processing started' };
-};
-```
-
 ### Configure Graph Webhook
-
-```bash
-# Subscribe to meeting events
-POST https://graph.microsoft.com/v1.0/subscriptions
-{
-  "changeType": "created",
-  "notificationUrl": "https://func-tiger-trigger.azurewebsites.net/api/webhook",
-  "resource": "communications/onlineMeetings",
-  "expirationDateTime": "2026-02-01T00:00:00Z",
-  "clientState": "secretClientValue"
-}
-```
 
 ---
 
@@ -196,50 +115,8 @@ POST https://graph.microsoft.com/v1.0/subscriptions
 
 ### Step 1: Build and Push Container Image
 
-```bash
-# Build image
-docker build -t tiger-processor:latest .
-
-# Tag for Azure Container Registry
-docker tag tiger-processor:latest <your-acr>.azurecr.io/tiger-processor:latest
-
-# Push to ACR
-az acr login --name <your-acr>
-docker push <your-acr>.azurecr.io/tiger-processor:latest
-```
 
 ### Step 2: Create Azure Container Apps Environment
-
-```bash
-# Create environment
-az containerapp env create \
-  --name env-tiger \
-  --resource-group rg-tiger \
-  --location australiaeast
-
-# Create the container app (as a job)
-az containerapp job create \
-  --name job-tiger-processor \
-  --resource-group rg-tiger \
-  --environment env-tiger \
-  --image <your-acr>.azurecr.io/tiger-processor:latest \
-  --registry-server <your-acr>.azurecr.io \
-  --registry-username <username> \
-  --registry-password <password> \
-  --trigger-type Manual \
-  --replica-timeout 1800 \
-  --cpu 2.0 \
-  --memory 4Gi \
-  --env-vars \
-    "CLAUDE_SUBSCRIPTION_TOKEN=secretref:claude-subscription-token" \
-    "CLAUDE_API_KEY=secretref:claude-api-key" \
-    "SURGE_LOGIN=secretref:surge-email" \
-    "SURGE_TOKEN=secretref:surge-token" \
-    "DEPLOY_METHOD=azure-blob" \
-    "AZURE_STORAGE_CONNECTION_STRING=secretref:storage-conn"
-```
-
-**Note**: The container will automatically prioritize subscription authentication if both are set. This provides flexibility to switch between authentication methods without code changes.
 
 ### Step 3: Configure Secrets with Azure Key Vault
 
@@ -552,12 +429,3 @@ az containerapp job start \
 5. ✅ **Audit Logs**: Enable Azure Monitor for all resources
 
 ---
-
-## Next Steps
-
-- [ ] Implement Graph API integration in processor.js
-- [ ] Create Azure Function webhook handler
-- [ ] Deploy Container App to Azure
-- [ ] Test end-to-end with test meetings
-- [ ] Set up monitoring and alerts
-- [ ] Document for team onboarding

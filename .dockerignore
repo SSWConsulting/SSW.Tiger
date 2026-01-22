@@ -31,8 +31,8 @@ Thumbs.db
 
 # Documentation
 README.md
-CLAUDE.md
 *.md
+!CLAUDE.md
 
 # Docker
 Dockerfile
