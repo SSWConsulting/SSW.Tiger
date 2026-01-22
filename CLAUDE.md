@@ -120,16 +120,23 @@ The dashboard MUST have these tabs (all using consolidated data):
 
 ```
 projects/{project-name}/
-├── transcripts/{date}.vtt
-├── analysis/
-│   ├── timeline.json        # Raw agent output
-│   ├── people.json          # Raw agent output
-│   ├── insights.json        # Raw agent output
-│   ├── analytics.json       # Raw agent output
-│   ├── longitudinal.json    # Raw agent output
-│   └── consolidated.json    # ← HARMONIZED - USE THIS FOR DASHBOARD
-└── dashboards/{date}/
-    └── index.html           # THE DELIVERABLE
+├── 2026-01-22/                       # Self-contained meeting folder
+│   ├── transcript.vtt                # Meeting transcript
+│   ├── analysis/                     # Meeting-specific analysis
+│   │   ├── timeline.json             # Raw agent output
+│   │   ├── people.json               # Raw agent output
+│   │   ├── insights.json             # Raw agent output
+│   │   ├── analytics.json            # Raw agent output
+│   │   ├── longitudinal.json         # Raw agent output
+│   │   └── consolidated.json         # ← HARMONIZED - USE THIS FOR DASHBOARD
+│   └── dashboard/                    # Meeting dashboard
+│       └── index.html                # THE DELIVERABLE
+└── 2026-01-22-sprint-review/         # Another meeting (same day, different ID)
+    ├── transcript.vtt
+    ├── analysis/
+    │   └── ...
+    └── dashboard/
+        └── index.html
 ```
 
 ## Dashboard Generation

@@ -21,11 +21,11 @@ services:
       # Output directory (defaults to ./output)
       - OUTPUT_DIR=${OUTPUT_DIR:-/app/output}
     volumes:
-      # Mount local projects directory to persist analysis
+      # Mount local projects directory - CANONICAL storage for all meetings
       - ./projects:/app/projects
       # Mount dropzone for input transcripts
       - ./dropzone:/app/dropzone
-      # Mount output directory for generated dashboards
+      # Mount output directory - OPTIONAL convenience copy of dashboards
       - ./output:/app/output
       # Mount templates for customization
       - ./templates:/app/templates:ro
@@ -35,7 +35,12 @@ services:
       - ./.claude:/app/.claude:ro
     # Command override examples:
     # Process a specific transcript:
-    # command: ["/app/dropzone/meeting.vtt", "yakshaver"]
+    # command: ["/app/dropzone/2026-01-22-standup.vtt", "yakshaver"]
+    # 
+    # Multiple meetings same day:
+    # command: ["/app/dropzone/2026-01-22-sprint-review.vtt", "yakshaver"]
+    #
+    # Note: Transcript filenames MUST start with YYYY-MM-DD format
     
     # Restart policy
     restart: "no"
@@ -58,7 +63,7 @@ services:
 #    # Option B: Subscription (preferred for high volume)
 #    export CLAUDE_SUBSCRIPTION_TOKEN=your-token-here
 #
-# 2. Optional: Set Surge credentials for deployment
+# 2. Set Surge credentials for deployment
 #    export SURGE_EMAIL=your-email@example.com
 #    export SURGE_TOKEN=your-surge-token
 #
@@ -66,7 +71,10 @@ services:
 #    docker-compose build
 #
 # 4. Run with a transcript:
-#    docker-compose run --rm meeting-processor /app/dropzone/meeting.vtt projectname
+#    docker-compose run --rm meeting-processor /app/dropzone/2026-01-22-standup.vtt projectname
 #
 # 5. View logs:
 #    docker-compose logs -f meeting-processor
+#
+# Note: Each meeting is isolated by its filename. Multiple meetings on the same date 
+#       are supported (e.g., 2026-01-22-standup.vtt, 2026-01-22-sprint-review.vtt)

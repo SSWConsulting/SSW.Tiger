@@ -25,9 +25,7 @@ ENV OUTPUT_DIR=/app/output
 HEALTHCHECK CMD which claude && node -v || exit 1
 
 # Run as non-root user for security
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001 && \
-    chown -R nodejs:nodejs /app
+RUN useradd -m nodejs && chown -R nodejs:nodejs /app
 
 USER nodejs
 

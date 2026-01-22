@@ -26,6 +26,9 @@ class MeetingProcessor {
     this.projectName = null;
     this.projectPath = null;
     this.transcriptPath = null;
+    this.meetingId = null;
+    this.meetingDate = null;
+    this.meetingPath = null;
   }
 
   log(level, message, data = null) {
@@ -133,6 +136,35 @@ class MeetingProcessor {
     }
   }
 
+  validateTranscriptFilename(transcriptPath) {
+    const filename = path.basename(transcriptPath, ".vtt");
+
+    // Validate filename starts with date pattern (YYYY-MM-DD)
+    const datePattern = /^(\d{4}-\d{2}-\d{2})/;
+    const match = filename.match(datePattern);
+
+    if (!match) {
+      throw new Error(
+        `Invalid transcript filename: ${path.basename(transcriptPath)}\n` +
+          "Transcript files must be named with date prefix: YYYY-MM-DD.vtt or YYYY-MM-DD-<identifier>.vtt\n" +
+          "Examples: 2026-01-22.vtt, 2026-01-22-sprint-review.vtt",
+      );
+    }
+
+    // Validate file extension
+    if (path.extname(transcriptPath) !== ".vtt") {
+      throw new Error(
+        `Invalid transcript file extension: ${path.basename(transcriptPath)}\n` +
+          "Only .vtt files are supported",
+      );
+    }
+
+    return {
+      meetingId: filename, // e.g., "2026-01-22" or "2026-01-22-sprint-review"
+      meetingDate: match[1], // e.g., "2026-01-22"
+    };
+  }
+
   async initialize(transcriptPath, projectName) {
     this.log("info", "Initializing processor", { transcriptPath, projectName });
 
@@ -143,21 +175,36 @@ class MeetingProcessor {
       throw new Error(`Transcript file not found: ${transcriptPath}`);
     }
 
+    // Validate and extract meeting info from filename
+    const { meetingId, meetingDate } =
+      this.validateTranscriptFilename(transcriptPath);
+
     this.transcriptPath = path.resolve(transcriptPath);
     this.projectName = projectName;
+    this.meetingId = meetingId;
+    this.meetingDate = meetingDate;
     this.projectPath = path.join(__dirname, "projects", projectName);
+    this.meetingPath = path.join(this.projectPath, meetingId);
 
-    this.log("info", "Initialization complete");
+    this.log("info", "Initialization complete", {
+      meetingId: this.meetingId,
+      meetingDate: this.meetingDate,
+      meetingPath: this.meetingPath,
+    });
   }
 
   async setupProjectStructure() {
-    this.log("info", "Setting up project structure");
+    this.log("info", "Setting up self-contained meeting structure", {
+      meetingId: this.meetingId,
+      meetingPath: this.meetingPath,
+    });
 
+    // Create self-contained meeting directory structure
     const dirs = [
       this.projectPath,
-      path.join(this.projectPath, "transcripts"),
-      path.join(this.projectPath, "analysis"),
-      path.join(this.projectPath, "dashboards", this.getDateString()),
+      this.meetingPath,
+      path.join(this.meetingPath, "analysis"),
+      path.join(this.meetingPath, "dashboard"),
     ];
 
     for (const dir of dirs) {
@@ -165,11 +212,46 @@ class MeetingProcessor {
       this.log("debug", `Created directory: ${dir}`);
     }
 
-    this.log("info", "Project structure ready");
+    // Copy transcript to meeting folder
+    const meetingTranscriptPath = path.join(this.meetingPath, "transcript.vtt");
+
+    try {
+      await fs.copyFile(this.transcriptPath, meetingTranscriptPath);
+      this.log("info", "Transcript copied to meeting folder", {
+        from: this.transcriptPath,
+        to: meetingTranscriptPath,
+      });
+    } catch (error) {
+      this.log("warn", "Failed to copy transcript to meeting folder", {
+        error: error.message,
+      });
+    }
+
+    // Clean up previous analysis for this specific meeting (if exists)
+    // This prevents AI confusion from stale data
+    const analysisDir = path.join(this.meetingPath, "analysis");
+    try {
+      const files = await fs.readdir(analysisDir);
+      for (const file of files) {
+        if (file.endsWith(".json")) {
+          const filePath = path.join(analysisDir, file);
+          await fs.unlink(filePath);
+          this.log("debug", `Cleaned previous analysis file: ${file}`);
+        }
+      }
+      this.log("info", "Previous analysis cleaned");
+    } catch (error) {
+      // Directory might not exist or be empty - that's fine
+      this.log("debug", "No previous analysis to clean");
+    }
+
+    this.log("info", "Self-contained meeting structure ready");
   }
 
   async invokeClaude() {
-    this.log("info", "Invoking Claude Code CLI");
+    this.log("info", "Invoking Claude Code CLI", {
+      meetingId: this.meetingId,
+    });
 
     // Ensure output directory exists
     await fs.mkdir(CONFIG.outputDir, { recursive: true });
@@ -177,11 +259,23 @@ class MeetingProcessor {
     // Get authentication configuration
     const authConfig = this.getClaudeAuthMethod();
 
+    // Meeting-specific output filename
+    const outputFilename = `${this.projectName}-${this.meetingId}.html`;
+    const outputPath = path.join(CONFIG.outputDir, outputFilename);
+
     const prompt = `Read the instructions in CLAUDE.md and process the meeting transcript.
 
-Transcript file: ${this.transcriptPath}
+Transcript file: projects/${this.projectName}/${this.meetingId}/transcript.vtt
 Project name: ${this.projectName}
-Output dashboard to: ${path.join(CONFIG.outputDir, "index.html")}
+Meeting ID: ${this.meetingId}
+Meeting Date: ${this.meetingDate}
+Output dashboard to: ${outputPath}
+
+IMPORTANT: Use self-contained meeting directory:
+- Meeting folder: projects/${this.projectName}/${this.meetingId}/
+- Transcript: projects/${this.projectName}/${this.meetingId}/transcript.vtt
+- Analysis: projects/${this.projectName}/${this.meetingId}/analysis/
+- Dashboard: projects/${this.projectName}/${this.meetingId}/dashboard/
 
 Follow the complete workflow defined in CLAUDE.md. At the end, output a single line in this format:
 DEPLOYED_URL=<url>`;
@@ -200,7 +294,7 @@ DEPLOYED_URL=<url>`;
         "--add-dir",
         CONFIG.outputDir,
         "--add-dir",
-        this.projectPath,
+        this.meetingPath,
       ];
 
       // Determine command and args based on platform
@@ -306,38 +400,50 @@ DEPLOYED_URL=<url>`;
   }
 
   async checkOutputExists() {
-    const outputPath = path.join(CONFIG.outputDir, "index.html");
+    // Primary (canonical): Check self-contained meeting dashboard folder
+    const primaryPath = path.join(this.meetingPath, "dashboard", "index.html");
+
     try {
-      await fs.access(outputPath);
+      await fs.access(primaryPath);
       this.log("info", "Dashboard generated successfully", {
-        path: outputPath,
+        path: primaryPath,
+        meetingId: this.meetingId,
       });
-      return outputPath;
+      return primaryPath;
     } catch (error) {
-      // Also check in project dashboard folder as fallback
-      const fallbackPath = path.join(
-        this.projectPath,
-        "dashboards",
-        this.getDateString(),
-        "index.html",
+      throw new Error(
+        `Dashboard not found at canonical location: ${primaryPath}`,
       );
-      try {
-        await fs.access(fallbackPath);
-        this.log("info", "Dashboard found in project folder", {
-          path: fallbackPath,
-        });
-        return fallbackPath;
-      } catch {
-        throw new Error(
-          `Dashboard not found at ${outputPath} or ${fallbackPath}`,
-        );
-      }
     }
   }
 
-  getDateString() {
-    const now = new Date();
-    return now.toISOString().split("T")[0];
+  async copyToOutputDirectory(sourcePath) {
+    // Optional: Copy dashboard to output directory for convenience
+    if (!CONFIG.outputDir) {
+      this.log("debug", "No output directory configured, skipping copy");
+      return null;
+    }
+
+    try {
+      await fs.mkdir(CONFIG.outputDir, { recursive: true });
+
+      const outputFilename = `${this.projectName}-${this.meetingId}.html`;
+      const outputPath = path.join(CONFIG.outputDir, outputFilename);
+
+      await fs.copyFile(sourcePath, outputPath);
+
+      this.log("info", "Dashboard copied to output directory", {
+        from: sourcePath,
+        to: outputPath,
+      });
+
+      return outputPath;
+    } catch (error) {
+      this.log("warn", "Failed to copy dashboard to output directory", {
+        error: error.message,
+      });
+      return null;
+    }
   }
 
   async process(transcriptPath, projectName) {
@@ -355,18 +461,27 @@ DEPLOYED_URL=<url>`;
       // Claude will handle: analysis, consolidation, dashboard generation, AND deployment
       const claudeResult = await this.invokeClaude();
 
-      // Check if output exists
-      const dashboardPath = await this.checkOutputExists();
+      // Check if output exists at canonical location (meeting folder)
+      const canonicalPath = await this.checkOutputExists();
+
+      // Optional: Copy to output directory for convenience
+      const outputCopyPath = await this.copyToOutputDirectory(canonicalPath);
 
       this.log("info", "Processing complete", {
         project: this.projectName,
-        dashboardPath,
+        meetingId: this.meetingId,
+        meetingDate: this.meetingDate,
+        canonicalPath,
+        outputCopyPath: outputCopyPath || "not copied",
         deployedUrl: claudeResult.deployedUrl || "not deployed",
       });
 
       return {
         success: true,
-        dashboardPath,
+        meetingId: this.meetingId,
+        meetingDate: this.meetingDate,
+        dashboardPath: canonicalPath,
+        outputCopyPath,
         deployedUrl: claudeResult.deployedUrl,
       };
     } catch (error) {
@@ -404,7 +519,10 @@ async function main() {
         timestamp: new Date().toISOString(),
         level: "INFO",
         message: "SUCCESS: Meeting processing completed",
+        meetingId: result.meetingId,
+        meetingDate: result.meetingDate,
         dashboardPath: result.dashboardPath,
+        outputCopyPath: result.outputCopyPath || "",
         deployedUrl: result.deployedUrl || "",
         exitCode: 0,
       }),

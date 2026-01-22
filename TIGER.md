@@ -43,42 +43,45 @@ Microsoft Teams Meeting Ends
 
 ### Container Output
 
-The container now returns both:
-1. **Local dashboard path** (for backup/archival)
-2. **Deployed URL** (for sharing)
+The container now returns:
+1. **Canonical dashboard path** (in self-contained meeting folder) - permanent
+2. **Output copy path** (optional convenience copy) - for quick access
+3. **Deployed URL** (for sharing)
 
 ```json
 {
   "timestamp": "2026-01-21T10:30:00.000Z",
   "level": "INFO",
   "message": "SUCCESS: Meeting processing completed",
-  "dashboardPath": "/app/projects/yakshaver/dashboards/2026-01-21/index.html",
-  "deployedUrl": "https://yakshaver-2026-01-21.surge.sh",
+  "meetingId": "2026-01-21-sprint-review",
+  "meetingDate": "2026-01-21",
+  "dashboardPath": "/app/projects/yakshaver/2026-01-21-sprint-review/dashboard/index.html",
+  "outputCopyPath": "/app/output/yakshaver-2026-01-21-sprint-review.html",
+  "deployedUrl": "https://yakshaver-2026-01-21-sprint-review.surge.sh",
   "exitCode": 0
 }
 ```
 
-### Deployment Options
+**Key Points:**
+- `dashboardPath` is the canonical location (permanent, self-contained)
+- `outputCopyPath` is optional (convenience for deployment/archival)
+- Meeting folder contains the complete record (transcript + analysis + dashboard)
 
-Set `DEPLOY_METHOD` environment variable:
+### Transcript Naming Convention
 
-**Option 1: No Deployment (Development)**
-```bash
-DEPLOY_METHOD=none
-```
+**CRITICAL**: Transcript files MUST be named with a date prefix:
+- Format: `YYYY-MM-DD.vtt` or `YYYY-MM-DD-<identifier>.vtt`
+- Valid examples:
+  - `2026-01-21.vtt` (single meeting that day)
+  - `2026-01-21-sprint-review.vtt` (multiple meetings same day)
+  - `2026-01-21-standup.vtt`
+- Invalid: `meeting.vtt`, `sprint-review.vtt`, `jan-21.vtt`
 
-**Option 2: Surge.sh (Simple, Fast)**
-```bash
-DEPLOY_METHOD=surge
-SURGE_EMAIL=your-email@example.com
-SURGE_TOKEN=your-surge-token
-```
-
-**Option 3: Azure Blob Storage (Production)**
-```bash
-DEPLOY_METHOD=azure-blob
-AZURE_STORAGE_CONNECTION_STRING=your-connection-string
-```
+The filename (without `.vtt`) becomes the unique meeting ID used for:
+- Isolating analysis and dashboards
+- Preventing AI confusion between meetings
+- Generating output filenames
+- Creating deployment URLs
 
 ---
 
@@ -464,12 +467,27 @@ node processor.js \
 
 Logs:
 ```json
-{"level":"INFO","message":"Fetching transcript from Graph API"}
+{"level":"INFO","message":"Setting up self-contained meeting structure"}
+{"level":"INFO","message":"Transcript copied to meeting folder"}
 {"level":"INFO","message":"Running agent: timeline-analyzer"}
 {"level":"INFO","message":"Running agent: people-analyzer"}
 {"level":"INFO","message":"Consolidation complete"}
 {"level":"INFO","message":"Dashboard deployed","deployedUrl":"https://..."}
 {"level":"INFO","message":"SUCCESS","exitCode":0}
+```
+
+Project structure created:
+```
+projects/yakshaver/
+└── 2026-01-21-sprint-review/
+    ├── transcript.vtt
+    ├── analysis/
+    │   ├── timeline.json
+    │   ├── people.json
+    │   ├── consolidated.json
+    │   └── ...
+    └── dashboard/
+        └── index.html
 ```
 
 ### 5. Dashboard Link Posted to Teams
