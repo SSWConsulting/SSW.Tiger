@@ -189,74 +189,6 @@ docker-compose build --no-cache
 docker-compose logs -f meeting-processor
 ```
 
-## Advanced Configuration
-
-### Custom Resource Limits
-
-Edit `docker-compose.yml` to adjust CPU/memory:
-
-```yaml
-deploy:
-  resources:
-    limits:
-      cpus: '4.0'
-      memory: 4G
-```
-
-### Using Different Agent Configurations
-
-Mount custom agent files:
-
-```bash
-docker run --rm \
-  -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
-  -v ./custom-agents:/app/.claude/agents:ro \
-  -v ./projects:/app/projects \
-  meeting-summariser:latest \
-  /app/dropzone/meeting.vtt \
-  projectname
-```
-
-## CI/CD Integration
-
-### GitHub Actions Example
-
-```yaml
-name: Process Transcript
-on:
-  workflow_dispatch:
-    inputs:
-      transcript_path:
-        description: 'Path to transcript file'
-        required: true
-      project_name:
-        description: 'Project name'
-        required: true
-
-jobs:
-  process:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      
-      - name: Build container
-        run: docker-compose build
-      
-      - name: Process transcript
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          docker-compose run --rm meeting-processor \
-            ${{ github.event.inputs.transcript_path }} \
-            ${{ github.event.inputs.project_name }}
-      
-      - name: Upload results
-        uses: actions/upload-artifact@v3
-        with:
-          name: dashboard
-          path: projects/${{ github.event.inputs.project_name }}/dashboards/
-```
-
 ## Automated Processing (Future)
 
 For automated processing triggered by file arrival:
@@ -277,10 +209,3 @@ inotifywait -m dropzone/ -e create -e moved_to |
   done
 ```
 
-## Support
-
-For issues or questions:
-1. Check container logs: `docker-compose logs`
-2. Verify API key is set correctly
-3. Ensure transcript file is valid VTT format
-4. Check exit code for error indication
