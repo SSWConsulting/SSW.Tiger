@@ -43,7 +43,7 @@ RUN mkdir -p /app/projects /app/output
 RUN useradd -m nodejs && chown -R nodejs:nodejs /app
 
 # Make scripts executable
-RUN chmod +x /app/entrypoint.sh /app/test-claude-auth.sh
+RUN chmod +x /app/entrypoint.sh
 
 # Switch to nodejs user
 USER nodejs

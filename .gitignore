@@ -1,6 +1,9 @@
 # Project data (transcripts, analysis, dashboards)
 projects/
 
+# Output data
+output/
+
 # Input transcripts
 dropzone/
 

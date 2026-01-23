@@ -394,7 +394,6 @@ DEPLOYED_URL=<url>`;
       });
 
       claude.on("close", async (code) => {
-        clearInterval(inactivityTimer);
         clearInterval(progressInterval);
 
         if (code === 0) {

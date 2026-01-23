@@ -14,7 +14,7 @@ if [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
     cat > ~/.claude.json <<EOF
 {
   "hasCompletedOnboarding": true,
-  "defaultModel": "claude-sonnet-4-20250514"
+  "defaultModel": "claude-opus-4-5-20251101"
 }
 EOF
 
