@@ -17,6 +17,7 @@ Automate meeting transcript processing from Microsoft Teams through to surge.sh 
 | Local Testing | ⏳ NEXT | **Test container locally before pushing to Azure** |
 | Azure Container Registry | ❌ TODO | Push image after local validation |
 | Container App Deployment | ❌ TODO | Deploy to Azure with proper secrets |
+| **Bicep IaC** | ❌ TODO | Infrastructure as Code for repeatable deployments |
 | Azure Function | ❌ TODO | Webhook receiver for Graph API |
 | Graph Subscription | ❌ TODO | Webhooks to trigger function |
 | Channel Notification | ❌ TODO | Post results back to Teams |
