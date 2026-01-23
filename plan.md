@@ -525,18 +525,378 @@ After Container App is working, build the automation:
 ## Files to Create
 
 | File | Purpose |
-
 |------|---------|
-
 | `Dockerfile` | Container definition with Claude CLI, Node.js, surge |
-
 | `azure-function/` | Webhook receiver, transcript downloader, channel notifier |
-
 | `container-app/server.py` | HTTP endpoint to receive processing requests |
-
 | `scripts/deploy.sh` | Deployment automation |
+| `infra/main.bicep` | Main orchestration module |
+| `infra/modules/acr.bicep` | Azure Container Registry |
+| `infra/modules/containerApp.bicep` | Container App + Environment |
+| `infra/modules/keyVault.bicep` | Key Vault for secrets |
+| `infra/modules/functionApp.bicep` | Azure Function App |
+| `infra/modules/storage.bicep` | Storage account for Function App |
+| `infra/main.bicepparam` | Parameter file for deployments |
 
-| `bicep/main.bicep` | Infrastructure as Code (optional but recommended) |
+---
+
+## 🏗️ Bicep Infrastructure as Code (IaC)
+
+### Why Bicep?
+
+- **Repeatable**: Deploy identical infrastructure every time
+- **Version controlled**: Track infrastructure changes in git
+- **Environment parity**: Dev, staging, prod use same templates
+- **Self-documenting**: Infrastructure is code you can read
+- **Azure-native**: First-class support, no state file to manage
+
+### Bicep File Structure
+
+```
+infra/
+├── main.bicep                    # Main orchestration - deploys all modules
+├── main.bicepparam               # Parameter values (dev/prod)
+└── modules/
+    ├── acr.bicep                 # Azure Container Registry
+    ├── containerApp.bicep        # Container App + Environment
+    ├── containerAppJob.bicep     # Container App Job (for processing)
+    ├── keyVault.bicep            # Key Vault + secrets references
+    ├── functionApp.bicep         # Azure Function App
+    └── storage.bicep             # Storage Account
+```
+
+### Resource Dependencies
+
+```mermaid
+graph TD
+    RG[Resource Group] --> KV[Key Vault]
+    RG --> ACR[Container Registry]
+    RG --> SA[Storage Account]
+    RG --> CAE[Container Apps Environment]
+
+    ACR --> CAJ[Container App Job]
+    KV --> CAJ
+    CAE --> CAJ
+
+    SA --> FA[Function App]
+    KV --> FA
+```
+
+### Deployment Commands
+
+#### Option A: One-Command Deploy (Recommended)
+
+```bash
+# Deploy all infrastructure
+az deployment sub create \
+  --location australiaeast \
+  --template-file infra/main.bicep \
+  --parameters infra/main.bicepparam \
+  --parameters environment=dev
+
+# Or for production
+az deployment sub create \
+  --location australiaeast \
+  --template-file infra/main.bicep \
+  --parameters infra/main.bicepparam \
+  --parameters environment=prod
+```
+
+#### Option B: What-If Preview (Before Deploying)
+
+```bash
+# Preview what will be created/changed
+az deployment sub what-if \
+  --location australiaeast \
+  --template-file infra/main.bicep \
+  --parameters infra/main.bicepparam \
+  --parameters environment=dev
+```
+
+#### Option C: Deploy with GitHub Actions
+
+```yaml
+# .github/workflows/deploy-infra.yml
+name: Deploy Infrastructure
+
+on:
+  push:
+    branches: [main]
+    paths: ['infra/**']
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'dev'
+        type: choice
+        options: [dev, prod]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy Bicep
+        uses: azure/arm-deploy@v2
+        with:
+          scope: subscription
+          region: australiaeast
+          template: infra/main.bicep
+          parameters: >
+            infra/main.bicepparam
+            environment=${{ inputs.environment || 'dev' }}
+```
+
+### Key Bicep Modules
+
+#### `main.bicep` - Orchestration
+
+```bicep
+targetScope = 'subscription'
+
+@description('Environment name')
+@allowed(['dev', 'prod'])
+param environment string = 'dev'
+
+@description('Location for all resources')
+param location string = 'australiaeast'
+
+@description('Project name used for resource naming')
+param projectName string = 'tiger'
+
+// Resource Group
+resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
+  name: 'rg-${projectName}-${environment}'
+  location: location
+}
+
+// Deploy modules
+module keyVault 'modules/keyVault.bicep' = {
+  name: 'keyVault'
+  scope: rg
+  params: {
+    name: 'kv-${projectName}-${environment}'
+    location: location
+  }
+}
+
+module acr 'modules/acr.bicep' = {
+  name: 'acr'
+  scope: rg
+  params: {
+    name: '${projectName}${environment}acr'
+    location: location
+  }
+}
+
+module containerAppEnv 'modules/containerApp.bicep' = {
+  name: 'containerAppEnv'
+  scope: rg
+  params: {
+    name: 'cae-${projectName}-${environment}'
+    location: location
+    keyVaultName: keyVault.outputs.name
+    acrName: acr.outputs.name
+  }
+}
+
+output acrLoginServer string = acr.outputs.loginServer
+output containerAppEnvId string = containerAppEnv.outputs.environmentId
+output keyVaultUri string = keyVault.outputs.uri
+```
+
+#### `modules/containerApp.bicep` - Container App Job
+
+```bicep
+@description('Container Apps Environment name')
+param name string
+
+@description('Location')
+param location string
+
+@description('Key Vault name for secret references')
+param keyVaultName string
+
+@description('ACR name for image pull')
+param acrName string
+
+// Container Apps Environment
+resource environment 'Microsoft.App/managedEnvironments@2024-03-01' = {
+  name: name
+  location: location
+  properties: {
+    zoneRedundant: false
+  }
+}
+
+// Container App Job (for transcript processing)
+resource processorJob 'Microsoft.App/jobs@2024-03-01' = {
+  name: 'job-${name}-processor'
+  location: location
+  identity: {
+    type: 'SystemAssigned'
+  }
+  properties: {
+    environmentId: environment.id
+    configuration: {
+      triggerType: 'Manual'
+      replicaTimeout: 1800  // 30 minutes max
+      replicaRetryLimit: 1
+      secrets: [
+        {
+          name: 'anthropic-api-key'
+          keyVaultUrl: 'https://${keyVaultName}.vault.azure.net/secrets/anthropic-api-key'
+          identity: 'system'
+        }
+        {
+          name: 'surge-email'
+          keyVaultUrl: 'https://${keyVaultName}.vault.azure.net/secrets/surge-email'
+          identity: 'system'
+        }
+        {
+          name: 'surge-token'
+          keyVaultUrl: 'https://${keyVaultName}.vault.azure.net/secrets/surge-token'
+          identity: 'system'
+        }
+      ]
+      registries: [
+        {
+          server: '${acrName}.azurecr.io'
+          identity: 'system'
+        }
+      ]
+    }
+    template: {
+      containers: [
+        {
+          name: 'tiger-processor'
+          image: '${acrName}.azurecr.io/tiger-processor:latest'
+          resources: {
+            cpu: json('2.0')
+            memory: '4Gi'
+          }
+          env: [
+            { name: 'ANTHROPIC_API_KEY', secretRef: 'anthropic-api-key' }
+            { name: 'SURGE_EMAIL', secretRef: 'surge-email' }
+            { name: 'SURGE_TOKEN', secretRef: 'surge-token' }
+            { name: 'NODE_ENV', value: 'production' }
+          ]
+        }
+      ]
+    }
+  }
+}
+
+output environmentId string = environment.id
+output jobName string = processorJob.name
+```
+
+#### `modules/keyVault.bicep` - Secrets Management
+
+```bicep
+@description('Key Vault name')
+param name string
+
+@description('Location')
+param location string
+
+resource keyVault 'Microsoft.KeyVault/vaults@2024-04-01-preview' = {
+  name: name
+  location: location
+  properties: {
+    sku: {
+      family: 'A'
+      name: 'standard'
+    }
+    tenantId: subscription().tenantId
+    enableRbacAuthorization: true  // Use RBAC instead of access policies
+    enableSoftDelete: true
+    softDeleteRetentionInDays: 7
+  }
+}
+
+output name string = keyVault.name
+output uri string = keyVault.properties.vaultUri
+output id string = keyVault.id
+```
+
+### Post-Deployment Steps
+
+After Bicep deployment, you still need to:
+
+1. **Push container image to ACR**
+   ```bash
+   ACR_NAME=$(az deployment sub show --name main --query properties.outputs.acrLoginServer.value -o tsv)
+   az acr build --registry $ACR_NAME --image tiger-processor:latest .
+   ```
+
+2. **Populate Key Vault secrets** (one-time manual step)
+   ```bash
+   KV_NAME="kv-tiger-dev"
+   az keyvault secret set --vault-name $KV_NAME --name anthropic-api-key --value "sk-ant-..."
+   az keyvault secret set --vault-name $KV_NAME --name surge-email --value "your@email.com"
+   az keyvault secret set --vault-name $KV_NAME --name surge-token --value "your-token"
+   ```
+
+3. **Grant Key Vault access to Container App Job**
+   ```bash
+   # Get the managed identity principal ID
+   PRINCIPAL_ID=$(az containerapp job show \
+     --name job-cae-tiger-dev-processor \
+     --resource-group rg-tiger-dev \
+     --query identity.principalId -o tsv)
+
+   # Grant Key Vault Secrets User role
+   az role assignment create \
+     --role "Key Vault Secrets User" \
+     --assignee $PRINCIPAL_ID \
+     --scope "/subscriptions/{sub-id}/resourceGroups/rg-tiger-dev/providers/Microsoft.KeyVault/vaults/kv-tiger-dev"
+   ```
+
+### CI/CD Pipeline Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    GitHub Repository                             │
+├─────────────────────────────────────────────────────────────────┤
+│  Push to main     │  Push to infra/**  │  Manual dispatch       │
+│       ↓           │         ↓           │         ↓              │
+│  Build & Push     │  Deploy Bicep      │  Full Pipeline         │
+│  Container        │  Infrastructure    │  (both)                │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                    GitHub Actions                                │
+├─────────────────────────────────────────────────────────────────┤
+│  1. az login (service principal)                                │
+│  2. az deployment sub what-if (preview)                         │
+│  3. az deployment sub create (deploy)                           │
+│  4. az acr build (push container)                               │
+│  5. az containerapp job start (optional: trigger test)          │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Environment Strategy
+
+| Environment | Resource Group | Key Vault | ACR | Purpose |
+|-------------|---------------|-----------|-----|---------|
+| `dev` | `rg-tiger-dev` | `kv-tiger-dev` | `tigerdevacr` | Development & testing |
+| `prod` | `rg-tiger-prod` | `kv-tiger-prod` | `tigerprodacr` | Production workloads |
+
+### Cost Optimization with Bicep
+
+The Bicep templates include cost-saving configurations:
+
+- **Container App Job** (not always-on Container App): Only runs when triggered
+- **Scale to zero**: No idle costs
+- **Basic ACR SKU**: Sufficient for this workload
+- **Standard Key Vault**: No premium features needed
 
 ---
 
@@ -564,7 +924,41 @@ The recommended order to build and test each component:
   - Verify dashboard appears in projects/test-project/
   - Verify surge.sh deployment link in logs
 
-### ⏳ PHASE 2: AZURE DEPLOYMENT (After local tests pass)
+### ⏳ PHASE 2: BICEP INFRASTRUCTURE (After local tests pass)
+
+**Option A: Deploy with Bicep (Recommended)**
+
+- [ ] **Create Bicep modules**
+  - `infra/main.bicep` - Orchestration
+  - `infra/modules/acr.bicep` - Container Registry
+  - `infra/modules/keyVault.bicep` - Key Vault
+  - `infra/modules/containerApp.bicep` - Container App Job
+
+- [ ] **Preview deployment**
+  - Run: `az deployment sub what-if --template-file infra/main.bicep --parameters environment=dev`
+  - Review resources that will be created
+
+- [ ] **Deploy infrastructure**
+  - Run: `az deployment sub create --template-file infra/main.bicep --parameters environment=dev`
+  - Verify all resources created in Azure Portal
+
+- [ ] **Populate Key Vault secrets** (one-time)
+  - `az keyvault secret set --vault-name kv-tiger-dev --name anthropic-api-key --value "..."`
+  - `az keyvault secret set --vault-name kv-tiger-dev --name surge-email --value "..."`
+  - `az keyvault secret set --vault-name kv-tiger-dev --name surge-token --value "..."`
+
+- [ ] **Push container to ACR**
+  - Build and push image: `az acr build --registry tigerdevacr --image tiger-processor:latest .`
+
+- [ ] **Grant RBAC permissions**
+  - Grant Container App Job's managed identity access to Key Vault
+
+- [ ] **Test Container App Job**
+  - Run: `az containerapp job start --name job-cae-tiger-dev-processor --resource-group rg-tiger-dev`
+  - Check logs for successful execution
+
+**Option B: Manual CLI Deployment (Alternative)**
+
 - [ ] **Set up Azure Container Registry**
   - Create ACR in your resource group
 
@@ -592,6 +986,267 @@ The recommended order to build and test each component:
 
 - [ ] **Channel Notification** - Complete the loop
   - POST dashboard URL back to Teams
+
+---
+
+## 🚀 GitHub Actions CI/CD Pipeline
+
+### Workflow Files to Create
+
+```
+.github/
+└── workflows/
+    ├── deploy-infra.yml          # Deploy Bicep infrastructure
+    ├── build-container.yml       # Build & push container to ACR
+    └── full-pipeline.yml         # Combined: infra + container + test
+```
+
+### `deploy-infra.yml` - Infrastructure Deployment
+
+```yaml
+name: Deploy Infrastructure
+
+on:
+  push:
+    branches: [main]
+    paths: ['infra/**']
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options: [dev, prod]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'dev' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: What-If Preview
+        uses: azure/arm-deploy@v2
+        with:
+          scope: subscription
+          region: australiaeast
+          template: infra/main.bicep
+          parameters: environment=${{ inputs.environment || 'dev' }}
+          additionalArguments: --what-if
+
+      - name: Deploy Bicep
+        uses: azure/arm-deploy@v2
+        with:
+          scope: subscription
+          region: australiaeast
+          template: infra/main.bicep
+          parameters: environment=${{ inputs.environment || 'dev' }}
+          deploymentName: tiger-${{ github.run_number }}
+```
+
+### `build-container.yml` - Container Build & Push
+
+```yaml
+name: Build Container
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+      - 'processor.js'
+      - 'entrypoint.sh'
+      - '.claude/**'
+      - 'templates/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target ACR environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options: [dev, prod]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build and Push to ACR
+        run: |
+          ENV="${{ inputs.environment || 'dev' }}"
+          ACR_NAME="tiger${ENV}acr"
+
+          az acr build \
+            --registry $ACR_NAME \
+            --image tiger-processor:${{ github.sha }} \
+            --image tiger-processor:latest \
+            .
+
+      - name: Output Image Tag
+        run: |
+          echo "::notice::Image pushed: tiger-processor:${{ github.sha }}"
+```
+
+### `full-pipeline.yml` - Complete Deployment
+
+```yaml
+name: Full Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options: [dev, prod]
+      deploy_infra:
+        description: 'Deploy infrastructure'
+        type: boolean
+        default: true
+      build_container:
+        description: 'Build container'
+        type: boolean
+        default: true
+      run_test:
+        description: 'Run test job'
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  infrastructure:
+    if: ${{ inputs.deploy_infra }}
+    runs-on: ubuntu-latest
+    outputs:
+      acr_name: ${{ steps.deploy.outputs.acrLoginServer }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy Bicep
+        id: deploy
+        uses: azure/arm-deploy@v2
+        with:
+          scope: subscription
+          region: australiaeast
+          template: infra/main.bicep
+          parameters: environment=${{ inputs.environment }}
+
+  container:
+    if: ${{ inputs.build_container }}
+    needs: [infrastructure]
+    if: ${{ always() && inputs.build_container }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build and Push
+        run: |
+          ENV="${{ inputs.environment }}"
+          ACR_NAME="tiger${ENV}acr"
+          az acr build --registry $ACR_NAME --image tiger-processor:latest .
+
+  test:
+    if: ${{ inputs.run_test }}
+    needs: [container]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Trigger Test Job
+        run: |
+          ENV="${{ inputs.environment }}"
+          az containerapp job start \
+            --name job-cae-tiger-${ENV}-processor \
+            --resource-group rg-tiger-${ENV}
+```
+
+### Setting Up GitHub Actions
+
+1. **Create Azure Service Principal for GitHub**
+   ```bash
+   # Create service principal with Contributor access
+   az ad sp create-for-rbac \
+     --name "github-tiger-deployer" \
+     --role Contributor \
+     --scopes /subscriptions/{subscription-id} \
+     --sdk-auth
+
+   # For OIDC (recommended), configure federated credentials instead
+   ```
+
+2. **Add GitHub Secrets**
+   | Secret | Description |
+   |--------|-------------|
+   | `AZURE_CLIENT_ID` | Service principal app ID |
+   | `AZURE_TENANT_ID` | Azure AD tenant ID |
+   | `AZURE_SUBSCRIPTION_ID` | Azure subscription ID |
+
+3. **Enable OIDC Authentication** (recommended)
+   ```bash
+   # Create federated credential for GitHub Actions
+   az ad app federated-credential create \
+     --id {app-object-id} \
+     --parameters '{
+       "name": "github-main",
+       "issuer": "https://token.actions.githubusercontent.com",
+       "subject": "repo:{owner}/{repo}:ref:refs/heads/main",
+       "audiences": ["api://AzureADTokenExchange"]
+     }'
+   ```
 
 ---
 
