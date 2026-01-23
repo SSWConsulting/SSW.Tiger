@@ -171,6 +171,19 @@ Use data from `consolidated.json -> speakerTimeline -> participants[]` to genera
 
 **Sort participants by total speaking time (descending)**
 
+## Deployment
+
+After generating the dashboard, deploy it to surge.sh:
+
+1. Navigate to the dashboard directory
+2. Run: `surge . {project}-{meeting-id}.surge.sh`
+3. **CRITICAL**: After successful deployment, output EXACTLY this line (no markdown, no code blocks, no extra text):
+   ```
+   DEPLOYED_URL=https://{project}-{meeting-id}.surge.sh
+   ```
+
+The `DEPLOYED_URL=` line is parsed by the processor to extract the URL. Any extra text after the URL will break parsing.
+
 ## DO NOT
 
 - Create .md files
@@ -181,3 +194,4 @@ Use data from `consolidated.json -> speakerTimeline -> participants[]` to genera
 - Generate a simple single-tab page
 - Skip the deployment
 - Rush through the analysis - THIS IS IMPORTANT
+- Add extra text after DEPLOYED_URL (processor parses this line)

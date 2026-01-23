@@ -262,22 +262,15 @@ class MeetingProcessor {
     const outputFilename = `${this.projectName}-${this.meetingId}.html`;
     const outputPath = path.join(CONFIG.outputDir, outputFilename);
 
-    const prompt = `Read the instructions in CLAUDE.md and process the meeting transcript.
+    const prompt = `Read CLAUDE.md and process the meeting transcript following the complete workflow.
 
-Transcript file: projects/${this.projectName}/${this.meetingId}/transcript.vtt
-Project name: ${this.projectName}
+Project: ${this.projectName}
 Meeting ID: ${this.meetingId}
 Meeting Date: ${this.meetingDate}
-Output dashboard to: ${outputPath}
+Meeting folder: projects/${this.projectName}/${this.meetingId}/
+Transcript: projects/${this.projectName}/${this.meetingId}/transcript.vtt
 
-IMPORTANT: Use self-contained meeting directory:
-- Meeting folder: projects/${this.projectName}/${this.meetingId}/
-- Transcript: projects/${this.projectName}/${this.meetingId}/transcript.vtt
-- Analysis: projects/${this.projectName}/${this.meetingId}/analysis/
-- Dashboard: projects/${this.projectName}/${this.meetingId}/dashboard/
-
-Follow the complete workflow defined in CLAUDE.md. At the end, output a single line in this format:
-DEPLOYED_URL=<url>`;
+Follow all steps in CLAUDE.md including deployment. Output DEPLOYED_URL as specified.`;
 
     return new Promise((resolve, reject) => {
       // Spawn Claude Code CLI in print mode (non-interactive)
@@ -348,39 +341,139 @@ DEPLOYED_URL=<url>`;
       let currentActivity = "initializing";
       let jsonBuffer = ""; // Buffer for incomplete JSON lines
 
-      // Inactivity timeout: fail if no output received for 5 minutes
-      // With stream-json, we get frequent updates, so a longer timeout is safer
-      // const INACTIVITY_TIMEOUT = 300000; // 5 minutes
-      // let inactivityTimer = setInterval(() => {
-      //   const timeSinceLastOutput = Date.now() - lastOutputTime;
-      //   if (timeSinceLastOutput > INACTIVITY_TIMEOUT) {
-      //     clearInterval(inactivityTimer);
-      //     clearInterval(progressInterval);
-      //     const error = `Claude CLI timeout: No output received for ${Math.floor(timeSinceLastOutput / 60000)} minutes. Last activity: ${currentActivity}`;
-      //     this.log("error", error);
-      //     claude.kill();
-      //     reject(new Error(error));
-      //   }
-      // }, 30000);
-
-      // Progress indicator: shows current activity and elapsed time
+      // Progress indicator: log current activity every minute
       let elapsedMinutes = 0;
       const progressInterval = setInterval(() => {
         elapsedMinutes++;
         const minutesSinceLastOutput = Math.floor(
           (Date.now() - lastOutputTime) / 60000,
         );
-        this.log(
-          "info",
-          `Claude processing: ${currentActivity} (${elapsedMinutes}m elapsed, last output ${minutesSinceLastOutput}m ago)`,
-        );
       }, 60000); // Every 1 minute
+
+      // Inactivity timeout: fail if no output received for 15 minutes
+      const INACTIVITY_TIMEOUT = 900000; // 15 minutes
+      const inactivityTimer = setInterval(() => {
+        const timeSinceLastOutput = Date.now() - lastOutputTime;
+        if (timeSinceLastOutput > INACTIVITY_TIMEOUT) {
+          clearInterval(inactivityTimer);
+          clearInterval(progressInterval);
+          const error = `Claude CLI timeout: No output received for ${Math.floor(timeSinceLastOutput / 60000)} minutes. Last activity: ${currentActivity}`;
+          this.log("error", error);
+          claude.kill();
+          reject(new Error(error));
+        }
+      }, 30000); // Check every 30 seconds
 
       claude.stdout.on("data", (data) => {
         lastOutputTime = Date.now(); // Reset inactivity timer
         if (!firstOutputReceived) {
           firstOutputReceived = true;
           this.log("info", "Receiving streaming output from Claude CLI...");
+        }
+
+        const output = data.toString();
+        stdout += output;
+
+        // Parse streaming JSON output for major events
+        // Claude Code CLI outputs newline-delimited JSON objects
+        jsonBuffer += output;
+        const lines = jsonBuffer.split("\n");
+        jsonBuffer = lines.pop() || ""; // Keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+
+          try {
+            const event = JSON.parse(line);
+
+            // Extract first meaningful text from event for logging
+            const extractPreview = (obj) => {
+              if (!obj) return "";
+              const truncate = (s, len = 120) =>
+                s && s.length > len ? s.substring(0, len) + "..." : s || "";
+
+              // Handle system events with subtype
+              if (obj.type === "system" && obj.subtype) {
+                if (obj.subtype === "init") {
+                  const sessionId =
+                    obj.session_id?.substring(0, 8) || "unknown";
+                  return `Session initialized (${sessionId})`;
+                }
+                return obj.subtype;
+              }
+
+              // Handle nested message object (Claude CLI stream-json format)
+              const messageObj = obj.message || obj;
+              const content = messageObj.content;
+
+              if (content !== undefined) {
+                // Content is a string directly
+                if (typeof content === "string") {
+                  return truncate(content.split("\n")[0].trim());
+                }
+                // Content is an array of blocks
+                if (Array.isArray(content) && content.length > 0) {
+                  const firstBlock = content[0];
+                  if (firstBlock) {
+                    // Text block
+                    if (firstBlock.type === "text" && firstBlock.text) {
+                      return truncate(firstBlock.text.split("\n")[0].trim());
+                    }
+                    // Tool use block
+                    if (firstBlock.type === "tool_use" && firstBlock.name) {
+                      return `Calling tool: ${firstBlock.name}`;
+                    }
+                    // Tool result block
+                    if (firstBlock.type === "tool_result") {
+                      const resultText =
+                        typeof firstBlock.content === "string"
+                          ? firstBlock.content.split("\n")[0].trim()
+                          : "completed";
+                      return truncate(`Tool result: ${resultText}`);
+                    }
+                    // Fallback: stringify first block
+                    return truncate(JSON.stringify(firstBlock));
+                  }
+                }
+                // Content is something else - stringify it directly
+                return truncate(JSON.stringify(content));
+              }
+
+              // Handle direct text fields
+              if (typeof obj.text === "string" && obj.text.trim()) {
+                return truncate(obj.text.split("\n")[0].trim());
+              }
+              if (typeof obj.message === "string" && obj.message.trim()) {
+                return truncate(obj.message.split("\n")[0].trim());
+              }
+
+              // Final fallback: stringify relevant fields
+              const relevantKeys = [
+                "content",
+                "text",
+                "message",
+                "data",
+                "result",
+              ];
+              for (const key of relevantKeys) {
+                if (obj[key] !== undefined) {
+                  const val = JSON.stringify(obj[key]);
+                  return truncate(val);
+                }
+              }
+
+              return truncate(JSON.stringify(obj));
+            };
+
+            // Log events
+            const preview = extractPreview(event);
+            this.log("info", preview);
+          } catch (parseError) {
+            // Ignore parse errors for non-JSON lines (e.g., plain text output)
+            if (line.includes("DEPLOYED_URL=")) {
+              this.log("info", "Deployment URL detected", { line });
+            }
+          }
         }
       });
 
@@ -389,17 +482,19 @@ DEPLOYED_URL=<url>`;
         if (!firstOutputReceived) {
           firstOutputReceived = true;
         }
-        stderr += data.toString();
-        process.stderr.write(data);
+        const stderrText = data.toString();
+        stderr += stderrText;
+        // Log stderr for visibility
+        this.log("warn", `Claude stderr: ${stderrText.trim()}`);
       });
 
       claude.on("close", async (code) => {
+        clearInterval(inactivityTimer);
         clearInterval(progressInterval);
-
         if (code === 0) {
           this.log("info", "Claude Code CLI completed successfully");
-          // Extract deployed URL from stdout
-          const match = stdout.match(/DEPLOYED_URL=(.+)/);
+          // Extract deployed URL from stdout (URL only, stop at whitespace/newline)
+          const match = stdout.match(/DEPLOYED_URL=(https?:\/\/[^\s"'\\]+)/);
           const deployedUrl = match ? match[1].trim() : null;
           resolve({ stdout, stderr, deployedUrl });
         } else {
