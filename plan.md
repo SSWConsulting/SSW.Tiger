@@ -35,9 +35,9 @@ CLAUDE_CODE_OAUTH_TOKEN=  # Leave empty if using API key
 ```
 
 **Get Surge credentials:**
-- Login to https://surge.sh/
-- Go to Account settings → Tokens
-- Generate a new token and copy email + token
+- Install surge - `npm instal --global surge`
+- surge login
+- surge token 
 
 ---
 
