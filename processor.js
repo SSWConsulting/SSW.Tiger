@@ -350,18 +350,18 @@ DEPLOYED_URL=<url>`;
 
       // Inactivity timeout: fail if no output received for 5 minutes
       // With stream-json, we get frequent updates, so a longer timeout is safer
-      const INACTIVITY_TIMEOUT = 300000; // 5 minutes
-      let inactivityTimer = setInterval(() => {
-        const timeSinceLastOutput = Date.now() - lastOutputTime;
-        if (timeSinceLastOutput > INACTIVITY_TIMEOUT) {
-          clearInterval(inactivityTimer);
-          clearInterval(progressInterval);
-          const error = `Claude CLI timeout: No output received for ${Math.floor(timeSinceLastOutput / 60000)} minutes. Last activity: ${currentActivity}`;
-          this.log("error", error);
-          claude.kill();
-          reject(new Error(error));
-        }
-      }, 30000); // Check every 30 seconds
+      // const INACTIVITY_TIMEOUT = 300000; // 5 minutes
+      // let inactivityTimer = setInterval(() => {
+      //   const timeSinceLastOutput = Date.now() - lastOutputTime;
+      //   if (timeSinceLastOutput > INACTIVITY_TIMEOUT) {
+      //     clearInterval(inactivityTimer);
+      //     clearInterval(progressInterval);
+      //     const error = `Claude CLI timeout: No output received for ${Math.floor(timeSinceLastOutput / 60000)} minutes. Last activity: ${currentActivity}`;
+      //     this.log("error", error);
+      //     claude.kill();
+      //     reject(new Error(error));
+      //   }
+      // }, 30000);
 
       // Progress indicator: shows current activity and elapsed time
       let elapsedMinutes = 0;
@@ -382,47 +382,6 @@ DEPLOYED_URL=<url>`;
           firstOutputReceived = true;
           this.log("info", "Receiving streaming output from Claude CLI...");
         }
-
-        const chunk = data.toString();
-        stdout += chunk;
-
-        // Parse stream-json output for progress tracking
-        jsonBuffer += chunk;
-        const lines = jsonBuffer.split("\n");
-        jsonBuffer = lines.pop() || ""; // Keep incomplete line in buffer
-
-        for (const line of lines) {
-          if (line.trim()) {
-            try {
-              const event = JSON.parse(line);
-
-              // Extract progress information from different event types
-              if (event.type === "tool_use") {
-                currentActivity = `using tool: ${event.name || "unknown"}`;
-                this.log("debug", `Tool invoked: ${event.name}`);
-              } else if (event.type === "content_block_start") {
-                currentActivity = "generating content";
-              } else if (event.type === "content_block_delta") {
-                // Content streaming - keep current activity
-              } else if (event.type === "message_start") {
-                currentActivity = "starting analysis";
-              } else if (event.type === "message_delta") {
-                if (event.delta?.stop_reason) {
-                  currentActivity = `completing (${event.delta.stop_reason})`;
-                }
-              } else if (event.error) {
-                currentActivity = `error: ${event.error}`;
-                this.log("error", "Claude CLI error event", {
-                  error: event.error,
-                });
-              }
-            } catch (e) {
-              // Ignore JSON parse errors for non-JSON output lines
-            }
-          }
-        }
-
-        process.stdout.write(chunk);
       });
 
       claude.stderr.on("data", (data) => {

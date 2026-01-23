@@ -35,7 +35,6 @@ COPY processor.js ./
 COPY CLAUDE.md ./
 COPY templates/ ./templates/
 COPY entrypoint.sh ./
-COPY test-claude-auth.sh ./
 
 # Create necessary directories
 RUN mkdir -p /app/projects /app/output
