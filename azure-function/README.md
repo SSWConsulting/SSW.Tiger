@@ -27,8 +27,7 @@ cp local.settings.json.example local.settings.json
 ### 3. Start Azurite (local storage emulator)
 
 ```bash
-# Option 1: Use VS Code Azurite extension (enable "Skip Api Version Check" in settings)
-# Option 2: Run Azurite CLI with --skipApiVersionCheck
+
 npx azurite --silent --location . --skipApiVersionCheck
 
 # Or install globally

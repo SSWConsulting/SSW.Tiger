@@ -118,12 +118,14 @@ async function processNotification(notification, context) {
   const subject = meeting.subject || "";
   if (!subject.toLowerCase().includes("sprint")) {
     context.log(`Skipping meeting without 'sprint' in subject: "${subject}"`);
-    return { skipped: true, reason: `Subject does not contain 'sprint': "${subject}"` };
+    return {
+      skipped: true,
+      reason: `Subject does not contain 'sprint': "${subject}"`,
+    };
   }
 
   // Extract meeting date from startDateTime (ISO 8601 format from Graph API)
   // Graph API onlineMeeting resource: https://learn.microsoft.com/en-us/graph/api/onlinemeeting-get
-  // startDateTime format: "2026-01-26T10:00:00Z"
   const meetingDate = meeting.startDateTime
     ? meeting.startDateTime.split("T")[0]
     : new Date().toISOString().split("T")[0];
@@ -203,9 +205,6 @@ function getMockVttContent(notification) {
 `;
 }
 
-/**
- * Get Graph API access token using client credentials
- */
 async function getGraphToken(context) {
   const cca = new ConfidentialClientApplication({
     auth: {
@@ -226,9 +225,6 @@ async function getGraphToken(context) {
   return result.accessToken;
 }
 
-/**
- * Fetch meeting details from Graph API
- */
 async function fetchMeeting(token, organizerId, meetingId, context) {
   const url = `https://graph.microsoft.com/v1.0/users/${organizerId}/onlineMeetings/${meetingId}`;
 

@@ -109,8 +109,8 @@ When ready to migrate to Option B:
 | docker-compose.yml | ✅ DONE | Local testing ready |
 | Local Testing | ✅ DONE | Test container locally first |
 | Bicep Infrastructure | ⏳ NEXT | Container App + Function + Key Vault |
-| GitHub Actions CI/CD | ❌ TODO | Build image → Push to ghcr.io |
-| Azure Function | ❌ TODO | Webhook receiver |
+| GitHub Actions CI/CD | ✅ DONE | Build image → Push to ghcr.io |
+| Azure Function | ⏳ NEXT | Webhook receiver |
 | Graph Subscription | ❌ TODO | Trigger on transcript created |
 
 ---
