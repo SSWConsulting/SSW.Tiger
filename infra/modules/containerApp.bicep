@@ -1,5 +1,10 @@
 // Container Apps Environment + Job
 // Runs the Claude meeting processor from ghcr.io
+//
+// Architecture Decision (POC Phase - Option A):
+// - Job reads VTT from Blob Storage (uploaded by Function)
+// - Enables debugging: can re-run Job with same Blob file
+// - See plan.md for full rationale
 
 param project string
 param environment string
@@ -10,6 +15,10 @@ param containerImage string
 param ghcrUsername string
 param managedIdentityId string
 param managedIdentityClientId string
+
+// Storage account for reading transcripts (Option A - POC)
+param storageAccountName string
+param transcriptContainerName string = 'transcripts'
 
 // Parameters for container resources
 param cpu string = '2.0'
@@ -37,7 +46,7 @@ resource containerEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
 
 // Container App Job (the actual processor)
 // Triggered manually by Azure Function when transcript is ready
-resource processorJob 'Microsoft.App/jobs@2024-03-01' = {
+resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
   name: jobName
   location: location
   tags: costCategoryTag
@@ -58,8 +67,8 @@ resource processorJob 'Microsoft.App/jobs@2024-03-01' = {
       // Secrets from Key Vault (using managed identity)
       secrets: [
         {
-          name: 'anthropic-api-key'
-          keyVaultUrl: 'https://${keyVaultName}${az.environment().suffixes.keyvaultDns}/secrets/anthropic-api-key'
+          name: 'anthropic-oauth-token'
+          keyVaultUrl: 'https://${keyVaultName}${az.environment().suffixes.keyvaultDns}/secrets/anthropic-oauth-token'
           identity: managedIdentityId
         }
         {
@@ -102,14 +111,17 @@ resource processorJob 'Microsoft.App/jobs@2024-03-01' = {
             // Azure Managed Identity
             { name: 'AZURE_CLIENT_ID', value: managedIdentityClientId }
             // Claude API authentication
-            { name: 'ANTHROPIC_API_KEY', secretRef: 'anthropic-api-key' }
+            { name: 'CLAUDE_CODE_OAUTH_TOKEN', secretRef: 'anthropic-oauth-token' }
             // Surge.sh deployment credentials
             { name: 'SURGE_EMAIL', secretRef: 'surge-email' }
             { name: 'SURGE_TOKEN', secretRef: 'surge-token' }
             // Environment
             { name: 'NODE_ENV', value: environment == 'prod' ? 'production' : 'development' }
+            // Blob Storage for transcripts (Option A - POC)
+            { name: 'STORAGE_ACCOUNT_NAME', value: storageAccountName }
+            { name: 'TRANSCRIPT_CONTAINER_NAME', value: transcriptContainerName }
             // These will be overridden when job is triggered:
-            // MEETING_ID, TRANSCRIPT_ID (passed by Function App)
+            // BLOB_PATH, PROJECT_NAME, MEETING_DATE (passed by Function App)
           ]
         }
       ]

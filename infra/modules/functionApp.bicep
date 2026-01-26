@@ -1,6 +1,11 @@
 // Function App - Webhook receiver for Microsoft Graph
 // Receives notifications when Teams transcripts are created
-// Triggers Container App Job to process them
+// Downloads VTT from Graph API, stores in Blob, triggers Container App Job
+//
+// Architecture Decision (POC Phase - Option A):
+// - Function downloads VTT and stores in Blob Storage
+// - Enables debugging: VTT files persist even if Job fails
+// - See plan.md for full rationale
 
 param project string
 param environment string
@@ -12,6 +17,7 @@ param containerAppJobName string
 param containerAppJobResourceGroup string
 param managedIdentityId string
 param managedIdentityClientId string
+param transcriptContainerName string = 'transcripts'
 
 var functionAppName = toLower('func-${project}-${environment}')
 var hostingPlanName = toLower('plan-${project}-${environment}')
@@ -98,6 +104,9 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'CONTAINER_APP_JOB_RESOURCE_GROUP', value: containerAppJobResourceGroup }
         // Subscription ID (for Container App API calls)
         { name: 'SUBSCRIPTION_ID', value: subscription().subscriptionId }
+        // Blob Storage for transcripts (Option A - POC)
+        { name: 'STORAGE_ACCOUNT_NAME', value: storageAccountName }
+        { name: 'TRANSCRIPT_CONTAINER_NAME', value: transcriptContainerName }
       ]
     }
   }
