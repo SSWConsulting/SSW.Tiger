@@ -9,21 +9,31 @@ Automate meeting transcript processing from Microsoft Teams through to surge.sh 
 ```
 Microsoft Teams Meeting Ends
        ↓
-Graph API Webhook → Azure Function
+Graph API Webhook → Azure Function (TranscriptWebhook)
        ↓
-Function downloads VTT from Graph API
+Function validates webhook & filters for "sprint" meetings only
        ↓
-Function uploads VTT to Blob Storage (with date-based naming)
+Function downloads VTT from Graph API (via MSAL client credentials)
        ↓
-Function triggers Container App Job (passes: BLOB_PATH, PROJECT_NAME, MEETING_DATE)
+Function uploads VTT to Blob Storage: {project}/{date}-{slug}.vtt
        ↓
-Job downloads VTT from Blob Storage
+Function triggers Container App Job (fire-and-forget via beginStart)
+  - Container image: ghcr.io/{org}/tiger-processor:{tag}
+  - Environment variables:
+    • BLOB_PATH = {project}/{date}-{slug}.vtt
+    • PROJECT_NAME = {project}
+    • MEETING_DATE = {date}
+    • FILENAME = {date}-{slug}.vtt
+  - Job config provides: STORAGE_ACCOUNT_NAME, TRANSCRIPT_CONTAINER_NAME
        ↓
-Job runs: node processor.js /tmp/{date}.vtt {project-name}
+Function returns HTTP 202 immediately (webhook completes in seconds)
        ↓
-Claude processes transcript → Deploys dashboard to surge.sh
-       ↓
-Posts link back to Teams (via Graph API)
+Container App Job runs asynchronously (30-60 minutes):
+  1. Pulls Docker image from ghcr.io
+  2. Downloads VTT from Blob Storage using env vars
+  3. Runs Claude processor on VTT
+  4. Deploys dashboard to surge.sh
+  5. Posts link back to Teams (via Graph API)
 ```
 
 ---
