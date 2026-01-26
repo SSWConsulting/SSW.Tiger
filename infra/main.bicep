@@ -119,6 +119,7 @@ module functionApp 'modules/functionApp.bicep' = {
     keyVaultName: kv.outputs.name
     containerAppJobName: containerApp.outputs.jobName
     containerAppJobResourceGroup: resourceGroup().name
+    containerAppJobImage: containerImage
     managedIdentityId: id.outputs.id
     managedIdentityClientId: id.outputs.clientId
     // Transcript container for Option A

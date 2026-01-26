@@ -15,6 +15,7 @@ param storageAccountName string
 param keyVaultName string
 param containerAppJobName string
 param containerAppJobResourceGroup string
+param containerAppJobImage string
 param managedIdentityId string
 param managedIdentityClientId string
 param transcriptContainerName string = 'transcripts'
@@ -102,6 +103,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         // Container App Job reference
         { name: 'CONTAINER_APP_JOB_NAME', value: containerAppJobName }
         { name: 'CONTAINER_APP_JOB_RESOURCE_GROUP', value: containerAppJobResourceGroup }
+        { name: 'CONTAINER_APP_JOB_IMAGE', value: containerAppJobImage }
         // Subscription ID (for Container App API calls)
         { name: 'SUBSCRIPTION_ID', value: subscription().subscriptionId }
         // Blob Storage for transcripts (Option A - POC)

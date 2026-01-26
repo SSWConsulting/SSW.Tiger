@@ -106,6 +106,7 @@ curl -X POST http://localhost:7071/api/TranscriptWebhook \
 | `SUBSCRIPTION_ID` | Prod | Azure subscription ID |
 | `CONTAINER_APP_JOB_RESOURCE_GROUP` | Prod | Resource group for Container App Job |
 | `CONTAINER_APP_JOB_NAME` | Prod | Name of Container App Job to trigger |
+| `CONTAINER_APP_JOB_IMAGE` | Prod | Docker image for the processor (e.g., `ghcr.io/ssw/tiger-processor:latest`) |
 | `WEBHOOK_CLIENT_STATE` | Prod | Secret for validating Graph webhook notifications |
 
 ## Meeting Filter
@@ -155,7 +156,9 @@ The function extracts project name from the meeting subject:
    - Extract project name from subject (supports `[]`, `-`, `:` formats)
    - Download VTT transcript content
    - Upload to Blob Storage (`{project}/{date}-{slug}.vtt`)
-   - Trigger Container App Job with environment variables
+   - Trigger Container App Job (fire-and-forget, job runs asynchronously)
+
+**Note**: The Container App Job runs asynchronously after the webhook returns. Processing a transcript may take 30+ minutes. Monitor job execution via Azure Portal or CLI (see DEPLOYMENT.md for commands).
 
 ## Deployment
 

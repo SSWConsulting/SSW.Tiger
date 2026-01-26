@@ -297,14 +297,22 @@ async function triggerContainerAppJob(
   const subscriptionId = process.env.SUBSCRIPTION_ID;
   const resourceGroup = process.env.CONTAINER_APP_JOB_RESOURCE_GROUP;
   const jobName = process.env.CONTAINER_APP_JOB_NAME;
+  const containerImage = process.env.CONTAINER_APP_JOB_IMAGE;
+
+  if (!containerImage) {
+    throw new Error("CONTAINER_APP_JOB_IMAGE environment variable is required");
+  }
 
   const client = new ContainerAppsAPIClient(credential, subscriptionId);
 
-  await client.jobs.beginStartAndWait(resourceGroup, jobName, {
+  // Use beginStart (fire-and-forget) instead of beginStartAndWait
+  // The webhook must respond quickly; the job runs asynchronously (30+ mins)
+  const poller = await client.jobs.beginStart(resourceGroup, jobName, {
     template: {
       containers: [
         {
           name: "tiger-processor",
+          image: containerImage,
           env: [
             { name: "BLOB_PATH", value: blobPath },
             { name: "PROJECT_NAME", value: projectName },
@@ -315,6 +323,10 @@ async function triggerContainerAppJob(
       ],
     },
   });
+
+  // Log the job execution name for tracking (don't await completion)
+  context.log(`Container App Job started with image: ${containerImage}`);
+  context.log(`Operation state: ${poller.getOperationState().status}`);
 }
 
 function extractProjectName(subject) {

@@ -11,6 +11,7 @@
     "SUBSCRIPTION_ID": "your-subscription-id",
     "CONTAINER_APP_JOB_RESOURCE_GROUP": "your-resource-group",
     "CONTAINER_APP_JOB_NAME": "your-container-app-job-name",
+    "CONTAINER_APP_JOB_IMAGE": "ghcr.io/your-org/tiger-processor:latest",
 
     "GRAPH_CLIENT_ID": "your-app-registration-client-id",
     "GRAPH_CLIENT_SECRET": "your-app-registration-client-secret",

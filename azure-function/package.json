@@ -9,11 +9,11 @@
     "test": "node test/test-webhook.js"
   },
   "dependencies": {
-    "@azure/functions": "^4.0.0",
-    "@azure/identity": "^4.0.0",
-    "@azure/storage-blob": "^12.17.0",
     "@azure/arm-appcontainers": "^2.0.0",
-    "@azure/msal-node": "^2.6.0"
+    "@azure/functions": "^4.0.0",
+    "@azure/identity": "^4.13.0",
+    "@azure/msal-node": "^2.6.0",
+    "@azure/storage-blob": "^12.17.0"
   },
   "devDependencies": {
     "azure-functions-core-tools": "^4.x",
