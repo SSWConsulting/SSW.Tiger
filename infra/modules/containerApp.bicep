@@ -23,7 +23,7 @@ param transcriptContainerName string = 'transcripts'
 // Parameters for container resources
 param cpu string = '2.0'
 param memory string = '4Gi'
-param replicaTimeout int = 1800  // 30 minutes max
+param replicaTimeout int = 3600  // 60 minutes max
 
 var envName = toLower('cae-${project}-${environment}')
 var jobName = toLower('job-${project}-${environment}')
