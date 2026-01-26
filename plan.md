@@ -32,9 +32,9 @@ Posts link back to Teams (via Graph API)
 | Dockerfile | ✅ DONE | Claude CLI, Node.js, surge configured |
 | processor.js | ✅ DONE | Wrapper for Claude CLI |
 | docker-compose.yml | ✅ DONE | Local testing ready |
-| Local Testing | ⏳ NEXT | Test container locally first |
+| Local Testing | ✅ DONE | Test container locally first |
 | Bicep Infrastructure | ❌ TODO | Container App + Function + Key Vault |
-| GitHub Actions CI/CD | ❌ TODO | Build image → Push to ghcr.io |
+| GitHub Actions CI/CD | ⏳ NEXT | Build image → Push to ghcr.io |
 | Azure Function | ❌ TODO | Webhook receiver |
 | Graph Subscription | ❌ TODO | Trigger on transcript created |
 
