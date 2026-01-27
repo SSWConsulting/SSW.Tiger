@@ -9,16 +9,91 @@ Automate meeting transcript processing from Microsoft Teams through to surge.sh 
 ```
 Microsoft Teams Meeting Ends
        ↓
-Graph API Webhook → Azure Function (trigger)
+Graph API Webhook → Azure Function
        ↓
-Function triggers → Container App Job
+Function downloads VTT from Graph API
        ↓
-Job pulls image from ghcr.io
+Function uploads VTT to Blob Storage (with date-based naming)
+       ↓
+Function triggers Container App Job (passes: BLOB_PATH, PROJECT_NAME, MEETING_DATE)
+       ↓
+Job downloads VTT from Blob Storage
+       ↓
+Job runs: node processor.js /tmp/{date}.vtt {project-name}
        ↓
 Claude processes transcript → Deploys dashboard to surge.sh
        ↓
 Posts link back to Teams (via Graph API)
 ```
+
+---
+
+## 🏗️ Decision: Option A vs Option B
+
+### Current Choice: Option A (Function downloads VTT → Blob → Job)
+
+This is a deliberate POC-phase decision. Evaluated two approaches:
+
+### Option A: Function Downloads VTT (Current - POC Phase)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Webhook → Function → Graph API → Blob Storage → Job → Process │
+│                                        ↓                        │
+│                              VTT persists here                  │
+│                              (7 days auto-delete)               │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Advantages for POC:**
+- **Debuggability**: VTT files persist in Blob even if Job fails
+- **Scene Preservation**: Can download VTT, reproduce issues locally
+- **Quick Iteration**: `node processor.js ./downloaded.vtt test-project`
+- **Auth Simplicity**: Function already has Graph credentials
+- **Observability**: Can inspect VTT content before Job runs
+
+### Option B: Job Downloads VTT (Future - Production)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Webhook → Function → Job → Graph API → /tmp → Process         │
+│                                           ↓                     │
+│                                   VTT lost on container exit    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Advantages for Production:**
+- **Simpler Architecture**: No Blob intermediate layer
+- **Single Responsibility**: Function is pure trigger
+- **Cohesion**: All processing logic in one place
+- **Less Infrastructure**: No Blob lifecycle management
+
+### Why Option A for POC?
+
+| POC Priority | Option A | Option B |
+|--------------|----------|----------|
+| **Debug failed Jobs** | ✅ VTT in Blob, downloadable | ❌ VTT lost with container |
+| **Reproduce issues** | ✅ Download VTT, run locally | ❌ Need to mock Graph API |
+| **Validate VTT format** | ✅ Check Blob before Job | ❌ Only visible in Job logs |
+| **Auth complexity** | ✅ Function already has creds | ⚠️ Need MSAL in container |
+
+**Key Insight**: In POC, the most expensive thing is **uncertainty**, not infrastructure.
+Blob Storage provides **observability** that helps validate the entire pipeline faster.
+
+### Migration Path: POC → Production
+
+When ready to migrate to Option B:
+
+1. **Add Graph credentials to Container App Job** (containerApp.bicep)
+2. **Create download-transcript.js** (~100 lines, uses MSAL)
+3. **Simplify Function** to pure trigger (remove Graph download logic)
+4. **Remove Blob container** (optional - may keep for archival)
+5. **Update entrypoint** in Dockerfile
+
+**Trigger for Migration:**
+- POC validates the concept successfully
+- System is stable and well-understood
+- Want to reduce infrastructure complexity
 
 ---
 
@@ -32,8 +107,8 @@ Posts link back to Teams (via Graph API)
 | Dockerfile | ✅ DONE | Claude CLI, Node.js, surge configured |
 | processor.js | ✅ DONE | Wrapper for Claude CLI |
 | docker-compose.yml | ✅ DONE | Local testing ready |
-| Local Testing | ⏳ NEXT | Test container locally first |
-| Bicep Infrastructure | ❌ TODO | Container App + Function + Key Vault |
+| Local Testing | ✅ DONE | Test container locally first |
+| Bicep Infrastructure | ⏳ NEXT | Container App + Function + Key Vault |
 | GitHub Actions CI/CD | ❌ TODO | Build image → Push to ghcr.io |
 | Azure Function | ❌ TODO | Webhook receiver |
 | Graph Subscription | ❌ TODO | Trigger on transcript created |
@@ -50,23 +125,32 @@ Resource Group (rg-tiger-dev)
 ├── App Registration (already done)
 │   └── Graph API permissions for Teams access
 │
+├── Managed Identity (User-Assigned)
+│   └── Used by Function App and Container App Job
+│   └── Has RBAC access to Key Vault and Storage
+│
 ├── Container Apps Environment
 │   └── Container App Job
 │       └── Pulls image from ghcr.io (NOT Azure)
+│       └── Reads VTT from Blob Storage
 │       └── Runs Claude processor
 │
 ├── Function App
 │   └── Receives Graph webhook
+│   └── Downloads VTT from Graph API
+│   └── Uploads VTT to Blob Storage
 │   └── Triggers Container App Job
 │
 ├── Storage Account
 │   └── Required by Function App
+│   └── transcripts/ container (VTT files, 7-day retention)
 │
 └── Key Vault
-    └── Stores: ANTHROPIC_API_KEY, SURGE_TOKEN, GHCR_TOKEN, Graph secrets
+    └── Stores: CLAUDE_CODE_OAUTH_TOKEN, SURGE_TOKEN, GHCR_TOKEN, Graph secrets
 ```
 
 **No Azure Container Registry needed** - images live in GitHub Container Registry (ghcr.io).
+**Blob Storage** - Used for transcript files (Option A architecture, auto-deleted after 7 days).
 
 ---
 
@@ -117,12 +201,15 @@ Deploy Azure resources using Infrastructure as Code.
 ```
 infra/
 ├── main.bicep                    # Orchestration
-├── main.bicepparam               # Parameters (dev/prod)
+├── staging.bicepparam            # Parameters (staging)
 └── modules/
     ├── containerApp.bicep        # Container Apps Environment + Job
-    ├── functionApp.bicep         # Function App + triggers
-    ├── storage.bicep             # Storage Account
-    └── keyVault.bicep            # Key Vault + secret references
+    ├── functionApp.bicep         # Function App + webhook + Graph download
+    ├── storage.bicep             # Storage Account + transcripts container
+    ├── keyVault.bicep            # Key Vault + secret references
+    ├── keyVaultRoleAssignment.bicep    # RBAC for Key Vault access
+    ├── storageRoleAssignment.bicep     # RBAC for Blob access
+    └── managedIdentity.bicep     # User-assigned managed identity
 ```
 
 ### Resource Dependencies
@@ -130,14 +217,26 @@ infra/
 ```
 Resource Group
      │
-     ├── Key Vault (created first, stores all secrets)
+     ├── Managed Identity (created first, used by all services)
      │
-     ├── Storage Account (required by Function App)
+     ├── Key Vault (stores all secrets)
+     │        └── RBAC: Managed Identity → Key Vault Secrets User
+     │
+     ├── Storage Account (Function App + transcript storage)
+     │        └── transcripts/ container (7-day lifecycle)
+     │        └── RBAC: Managed Identity → Storage Blob Data Reader
      │
      ├── Container Apps Environment
-     │        └── Container App Job (references Key Vault secrets)
+     │        └── Container App Job
+     │                └── Uses Managed Identity
+     │                └── References Key Vault secrets
+     │                └── Reads VTT from Blob Storage
      │
-     └── Function App (references Key Vault, triggers Container App Job)
+     └── Function App
+              └── Uses Managed Identity
+              └── References Key Vault for Graph credentials
+              └── Writes VTT to Blob Storage
+              └── Triggers Container App Job
 ```
 
 ### `main.bicep` - Orchestration
@@ -335,11 +434,11 @@ az deployment sub create \
 ### Post-Deployment: Populate Key Vault Secrets
 
 ```bash
-KV_NAME="kv-tiger-dev"
+KV_NAME="kv-tiger-staging"
 
-# Claude API key
+# Claude Code OAuth token (get from: claude config get oauthToken)
 az keyvault secret set --vault-name $KV_NAME \
-  --name anthropic-api-key --value "sk-ant-api03-..."
+  --name anthropic-oauth-token --value "your-oauth-token"
 
 # Surge deployment credentials
 az keyvault secret set --vault-name $KV_NAME \
@@ -526,12 +625,13 @@ azure-function/
     └── index.js
 ```
 
-### `TranscriptWebhook/index.js`
+### `TranscriptWebhook/index.js` (Option A - POC)
 
 ```javascript
 const { DefaultAzureCredential } = require('@azure/identity');
-const { SecretClient } = require('@azure/keyvault-secrets');
+const { BlobServiceClient } = require('@azure/storage-blob');
 const { ContainerAppsAPIClient } = require('@azure/arm-appcontainers');
+const { ConfidentialClientApplication } = require('@azure/msal-node');
 
 module.exports = async function (context, req) {
   // Handle Graph webhook validation
@@ -540,34 +640,107 @@ module.exports = async function (context, req) {
     return;
   }
 
-  // Process notification
-  const notifications = req.body.value || [];
+  const credential = new DefaultAzureCredential();
 
-  for (const notification of notifications) {
-    if (notification.resourceData?.['@odata.type'] === '#microsoft.graph.callTranscript') {
-      // Trigger Container App Job
-      const credential = new DefaultAzureCredential();
-      const client = new ContainerAppsAPIClient(credential, process.env.SUBSCRIPTION_ID);
-
-      await client.jobs.start(
-        'rg-tiger-dev',
-        'cae-tiger-dev-processor',
-        {
-          template: {
-            containers: [{
-              env: [
-                { name: 'MEETING_ID', value: notification.resourceData.meetingId },
-                { name: 'TRANSCRIPT_ID', value: notification.resourceData.id }
-              ]
-            }]
-          }
-        }
-      );
+  for (const notification of req.body.value || []) {
+    if (notification.resourceData?.['@odata.type'] !== '#microsoft.graph.callTranscript') {
+      continue;
     }
+
+    const meetingId = notification.resourceData.meetingId;
+    const transcriptId = notification.resourceData.id;
+
+    // 1. Get Graph API token
+    const graphToken = await getGraphToken();
+
+    // 2. Get meeting details (need organizer userId)
+    const meeting = await fetchMeeting(graphToken, meetingId);
+    const meetingDate = meeting.startDateTime.split('T')[0];
+    const projectName = extractProjectName(meeting.subject);
+    const filename = generateFilename(meeting);
+
+    // 3. Download transcript from Graph API
+    const vttContent = await downloadTranscript(graphToken, meetingId, transcriptId);
+
+    // 4. Upload to Blob Storage
+    const blobPath = `${projectName}/${filename}`;
+    const blobService = BlobServiceClient.fromConnectionString(process.env.AzureWebJobsStorage);
+    const container = blobService.getContainerClient(process.env.TRANSCRIPT_CONTAINER_NAME);
+    await container.getBlockBlobClient(blobPath).upload(vttContent, vttContent.length);
+
+    context.log(`Uploaded VTT to Blob: ${blobPath}`);
+
+    // 5. Trigger Container App Job
+    const containerClient = new ContainerAppsAPIClient(credential, process.env.SUBSCRIPTION_ID);
+    await containerClient.jobs.start(
+      process.env.CONTAINER_APP_JOB_RESOURCE_GROUP,
+      process.env.CONTAINER_APP_JOB_NAME,
+      {
+        template: {
+          containers: [{
+            name: 'tiger-processor',
+            env: [
+              { name: 'BLOB_PATH', value: blobPath },
+              { name: 'PROJECT_NAME', value: projectName },
+              { name: 'MEETING_DATE', value: meetingDate },
+              { name: 'FILENAME', value: filename }
+            ]
+          }]
+        }
+      }
+    );
+
+    context.log(`Triggered job for: ${projectName}/${filename}`);
   }
 
   context.res = { status: 202 };
 };
+
+function extractProjectName(subject) {
+  // "[YakShaver] Sprint Review" → "yakshaver"
+  const match = subject?.match(/^\[([^\]]+)\]/);
+  return match ? match[1].toLowerCase().replace(/\s+/g, '-') : 'default';
+}
+
+function generateFilename(meeting) {
+  const date = meeting.startDateTime.split('T')[0];
+  const slug = meeting.subject
+    ?.replace(/^\[[^\]]+\]\s*/, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '') || '';
+  return slug ? `${date}-${slug}.vtt` : `${date}.vtt`;
+}
+
+async function getGraphToken() {
+  const cca = new ConfidentialClientApplication({
+    auth: {
+      clientId: process.env.GRAPH_CLIENT_ID,
+      clientSecret: process.env.GRAPH_CLIENT_SECRET,
+      authority: `https://login.microsoftonline.com/${process.env.GRAPH_TENANT_ID}`,
+    },
+  });
+  const result = await cca.acquireTokenByClientCredential({
+    scopes: ['https://graph.microsoft.com/.default'],
+  });
+  return result.accessToken;
+}
+
+async function fetchMeeting(token, meetingId) {
+  // Note: May need to use /users/{organizerId}/onlineMeetings/{meetingId}
+  const res = await fetch(`https://graph.microsoft.com/v1.0/me/onlineMeetings/${meetingId}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return res.json();
+}
+
+async function downloadTranscript(token, meetingId, transcriptId) {
+  const res = await fetch(
+    `https://graph.microsoft.com/v1.0/me/onlineMeetings/${meetingId}/transcripts/${transcriptId}/content?$format=text/vtt`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  return res.text();
+}
 ```
 
 ### Create Graph Subscription
@@ -633,13 +806,15 @@ az rest --method POST \
 
 | Secret Name | Source | Purpose |
 |-------------|--------|---------|
-| `anthropic-api-key` | Anthropic Console | Claude API access |
+| `anthropic-oauth-token` | Claude Code CLI (`claude config get oauthToken`) | Claude Code OAuth access |
 | `surge-email` | surge.sh account | Dashboard deployment |
 | `surge-token` | `surge token` command | Dashboard deployment |
 | `ghcr-token` | GitHub PAT (packages:read) | Pull container images |
 | `graph-client-id` | App Registration | Graph API auth |
 | `graph-client-secret` | App Registration | Graph API auth |
 | `graph-tenant-id` | App Registration | Graph API auth |
+
+**Note:** Using `anthropic-oauth-token` (Claude Code OAuth) instead of `anthropic-api-key` for cost efficiency with subscription pricing.
 
 ### GitHub Repository Secrets
 
