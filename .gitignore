@@ -48,3 +48,17 @@ tmpclaude-*
 
 # Local Claude settings (user-specific permissions)
 .claude/settings.local.json
+
+# Azure Functions
+azure-function/local.settings.json
+azure-function/node_modules/
+azure-function/.python_packages/
+
+# Azurite (local Azure Storage emulator) - can be in root or azure-function/
+__azurite_db*.json
+__blobstorage__/
+__queuestorage__/
+AzuriteConfig
+
+# Bicep outputs
+infra/main.json

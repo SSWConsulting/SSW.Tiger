@@ -1,0 +1,22 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "TRANSCRIPT_CONTAINER_NAME": "transcripts",
+
+    "TEST_MODE": "true",
+    "TEST_VTT_PATH": "../dropzone/sample.vtt",
+
+    "SUBSCRIPTION_ID": "your-subscription-id",
+    "CONTAINER_APP_JOB_RESOURCE_GROUP": "your-resource-group",
+    "CONTAINER_APP_JOB_NAME": "your-container-app-job-name",
+    "CONTAINER_APP_JOB_IMAGE": "ghcr.io/your-org/tiger-processor:latest",
+
+    "GRAPH_CLIENT_ID": "your-app-registration-client-id",
+    "GRAPH_CLIENT_SECRET": "your-app-registration-client-secret",
+    "GRAPH_TENANT_ID": "your-tenant-id",
+
+    "WEBHOOK_CLIENT_STATE": "your-secret-state-for-validation"
+  }
+}
