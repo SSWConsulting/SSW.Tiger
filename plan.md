@@ -108,8 +108,8 @@ When ready to migrate to Option B:
 | processor.js | ✅ DONE | Wrapper for Claude CLI |
 | docker-compose.yml | ✅ DONE | Local testing ready |
 | Local Testing | ✅ DONE | Test container locally first |
-| Bicep Infrastructure | ⏳ NEXT | Container App + Function + Key Vault |
-| GitHub Actions CI/CD | ❌ TODO | Build image → Push to ghcr.io |
+| Bicep Infrastructure | ❌ TODO | Container App + Function + Key Vault |
+| GitHub Actions CI/CD | ⏳ NEXT | Build image → Push to ghcr.io |
 | Azure Function | ❌ TODO | Webhook receiver |
 | Graph Subscription | ❌ TODO | Trigger on transcript created |
 
