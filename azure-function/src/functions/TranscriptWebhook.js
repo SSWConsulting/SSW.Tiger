@@ -1,12 +1,9 @@
 const { app } = require("@azure/functions");
 const { DefaultAzureCredential } = require("@azure/identity");
-const { BlobServiceClient } = require("@azure/storage-blob");
 const { ContainerAppsAPIClient } = require("@azure/arm-appcontainers");
 const { ConfidentialClientApplication } = require("@azure/msal-node");
-const fs = require("fs");
-const path = require("path");
 
-// Test mode: skip Graph API and Container Job, use local VTT file
+// Test mode: skip Graph API and Container Job
 const TEST_MODE = process.env.TEST_MODE === "true";
 
 app.http("TranscriptWebhook", {
@@ -80,37 +77,49 @@ async function processNotification(notification, context) {
     return { skipped: true, reason: `Not a transcript: ${odataType}` };
   }
 
-  const meetingId = notification.resourceData.meetingId;
+  // Extract IDs from notification
+  // Resource path format: /users/{userId}/onlineMeetings/{meetingId}/transcripts/{transcriptId}
+  const resourceParts = notification.resource?.split("/") || [];
+  const userIdIndex = resourceParts.indexOf("users") + 1;
+  const meetingIdIndex = resourceParts.indexOf("onlineMeetings") + 1;
+
+  const userId =
+    resourceParts[userIdIndex] || notification.resourceData.meetingOrganizerId;
+  const meetingId =
+    resourceParts[meetingIdIndex] || notification.resourceData.meetingId;
   const transcriptId = notification.resourceData.id;
-  const organizerId = notification.resourceData.meetingOrganizerId;
+
+  if (!userId || !meetingId || !transcriptId) {
+    context.error("Missing required IDs from notification", {
+      userId,
+      meetingId,
+      transcriptId,
+      resource: notification.resource,
+    });
+    return {
+      skipped: true,
+      reason: `Missing IDs: userId=${userId}, meetingId=${meetingId}, transcriptId=${transcriptId}`,
+    };
+  }
 
   context.log(
-    `Processing transcript: meetingId=${meetingId}, transcriptId=${transcriptId}`,
+    `Processing transcript: userId=${userId}, meetingId=${meetingId}, transcriptId=${transcriptId}`,
   );
 
-  let meeting, vttContent;
+  let meeting;
 
   if (TEST_MODE) {
     // TEST MODE: Use mock data
     meeting = getMockMeeting(notification);
-    vttContent = getMockVttContent(notification);
-    context.log("[TEST MODE] Using mock meeting and VTT data");
+    context.log("[TEST MODE] Using mock meeting data");
   } else {
-    // PRODUCTION: Call Graph API
+    // PRODUCTION: Call Graph API to get meeting details
     const graphToken = await getGraphToken(context);
-    meeting = await fetchMeeting(graphToken, organizerId, meetingId, context);
-    if (!meeting) {
-      throw new Error("Failed to fetch meeting details");
-    }
-    vttContent = await downloadTranscript(
-      graphToken,
-      organizerId,
-      meetingId,
-      transcriptId,
-      context,
-    );
-    if (!vttContent) {
-      throw new Error("Failed to download transcript");
+    meeting = await fetchMeeting(graphToken, userId, meetingId, context);
+    if (!meeting || meeting.error) {
+      throw new Error(
+        `Failed to fetch meeting details: ${meeting?.error?.message || "Unknown error"}`,
+      );
     }
   }
 
@@ -124,8 +133,7 @@ async function processNotification(notification, context) {
     };
   }
 
-  // Extract meeting date from startDateTime (ISO 8601 format from Graph API)
-  // Graph API onlineMeeting resource: https://learn.microsoft.com/en-us/graph/api/onlinemeeting-get
+  // Extract meeting info
   const meetingDate = meeting.startDateTime
     ? meeting.startDateTime.split("T")[0]
     : new Date().toISOString().split("T")[0];
@@ -135,35 +143,34 @@ async function processNotification(notification, context) {
   context.log(
     `Meeting: project=${projectName}, date=${meetingDate}, filename=${filename}`,
   );
-  context.log(`VTT content: ${vttContent.length} bytes`);
-
-  // Upload to Blob Storage (works with Azurite locally)
-  const blobPath = `${projectName}/${filename}`;
-  await uploadToBlob(vttContent, blobPath, context);
-  context.log(`Uploaded VTT to Blob: ${blobPath}`);
 
   // Trigger Container App Job (skip in test mode)
   if (!TEST_MODE) {
     await triggerContainerAppJob(
-      blobPath,
-      projectName,
-      meetingDate,
-      filename,
+      {
+        userId,
+        meetingId,
+        transcriptId,
+        projectName,
+        meetingDate,
+        filename,
+      },
       context,
     );
     context.log(`Triggered job for: ${projectName}/${filename}`);
   } else {
     context.log(
-      `[TEST MODE] Would trigger job with: BLOB_PATH=${blobPath}, PROJECT_NAME=${projectName}, MEETING_DATE=${meetingDate}`,
+      `[TEST MODE] Would trigger job with: GRAPH_USER_ID=${userId}, GRAPH_MEETING_ID=${meetingId}, GRAPH_TRANSCRIPT_ID=${transcriptId}, PROJECT_NAME=${projectName}`,
     );
   }
 
   return {
+    userId,
+    meetingId,
+    transcriptId,
     projectName,
     meetingDate,
     filename,
-    blobPath,
-    vttBytes: vttContent.length,
     jobTriggered: !TEST_MODE,
   };
 }
@@ -172,9 +179,8 @@ async function processNotification(notification, context) {
  * Get mock meeting data for testing
  */
 function getMockMeeting(notification) {
-  // Use test data from notification or defaults
   const testSubject =
-    notification.testData?.subject || "[TestProject] Daily Standup";
+    notification.testData?.subject || "[TestProject] Sprint Review";
   const testDate = notification.testData?.date || new Date().toISOString();
 
   return {
@@ -183,26 +189,6 @@ function getMockMeeting(notification) {
     startDateTime: testDate,
     endDateTime: testDate,
   };
-}
-
-function getMockVttContent(notification) {
-  // Check if a local test file is specified
-  const testVttPath =
-    notification.testData?.vttPath || process.env.TEST_VTT_PATH;
-
-  if (testVttPath && fs.existsSync(testVttPath)) {
-    return fs.readFileSync(testVttPath, "utf-8");
-  }
-
-  // Return minimal mock VTT
-  return `WEBVTT
-
-00:00:00.000 --> 00:00:05.000
-<v Test Speaker>This is a test transcript for local development.
-
-00:00:05.000 --> 00:00:10.000
-<v Test Speaker>The Graph API integration is mocked in TEST_MODE.
-`;
 }
 
 async function getGraphToken(context) {
@@ -225,8 +211,11 @@ async function getGraphToken(context) {
   return result.accessToken;
 }
 
-async function fetchMeeting(token, organizerId, meetingId, context) {
-  const url = `https://graph.microsoft.com/v1.0/users/${organizerId}/onlineMeetings/${meetingId}`;
+async function fetchMeeting(token, userId, meetingId, context) {
+  // Application permissions require /users/{userId} path (cannot use /me)
+  const url = `https://graph.microsoft.com/v1.0/users/${userId}/onlineMeetings/${meetingId}`;
+
+  context.log(`Fetching meeting: ${url}`);
 
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
@@ -238,61 +227,22 @@ async function fetchMeeting(token, organizerId, meetingId, context) {
     );
     const errorText = await response.text();
     context.error(`Error details: ${errorText}`);
-    return null;
+    return { error: { message: errorText, status: response.status } };
   }
 
   return response.json();
 }
 
-async function downloadTranscript(
-  token,
-  organizerId,
-  meetingId,
-  transcriptId,
-  context,
-) {
-  const url = `https://graph.microsoft.com/v1.0/users/${organizerId}/onlineMeetings/${meetingId}/transcripts/${transcriptId}/content?$format=text/vtt`;
+async function triggerContainerAppJob(params, context) {
+  const {
+    userId,
+    meetingId,
+    transcriptId,
+    projectName,
+    meetingDate,
+    filename,
+  } = params;
 
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!response.ok) {
-    context.error(
-      `Failed to download transcript: ${response.status} ${response.statusText}`,
-    );
-    const errorText = await response.text();
-    context.error(`Error details: ${errorText}`);
-    return null;
-  }
-
-  return response.text();
-}
-
-async function uploadToBlob(content, blobPath, context) {
-  const connectionString = process.env.AzureWebJobsStorage;
-  const containerName = process.env.TRANSCRIPT_CONTAINER_NAME || "transcripts";
-
-  const blobServiceClient =
-    BlobServiceClient.fromConnectionString(connectionString);
-  const containerClient = blobServiceClient.getContainerClient(containerName);
-
-  // Ensure container exists
-  await containerClient.createIfNotExists();
-
-  const blockBlobClient = containerClient.getBlockBlobClient(blobPath);
-  await blockBlobClient.upload(content, Buffer.byteLength(content), {
-    blobHTTPHeaders: { blobContentType: "text/vtt" },
-  });
-}
-
-async function triggerContainerAppJob(
-  blobPath,
-  projectName,
-  meetingDate,
-  filename,
-  context,
-) {
   const credential = new DefaultAzureCredential();
   const subscriptionId = process.env.SUBSCRIPTION_ID;
   const resourceGroup = process.env.CONTAINER_APP_JOB_RESOURCE_GROUP;
@@ -305,8 +255,6 @@ async function triggerContainerAppJob(
 
   const client = new ContainerAppsAPIClient(credential, subscriptionId);
 
-  // Use beginStart (fire-and-forget) instead of beginStartAndWait
-  // The webhook must respond quickly; the job runs asynchronously (30+ mins)
   const poller = await client.jobs.beginStart(resourceGroup, jobName, {
     template: {
       containers: [
@@ -314,7 +262,9 @@ async function triggerContainerAppJob(
           name: "tiger-processor",
           image: containerImage,
           env: [
-            { name: "BLOB_PATH", value: blobPath },
+            { name: "GRAPH_USER_ID", value: userId },
+            { name: "GRAPH_MEETING_ID", value: meetingId },
+            { name: "GRAPH_TRANSCRIPT_ID", value: transcriptId },
             { name: "PROJECT_NAME", value: projectName },
             { name: "MEETING_DATE", value: meetingDate },
             { name: "FILENAME", value: filename },
@@ -324,7 +274,6 @@ async function triggerContainerAppJob(
     },
   });
 
-  // Log the job execution name for tracking (don't await completion)
   context.log(`Container App Job started with image: ${containerImage}`);
   context.log(`Operation state: ${poller.getOperationState().status}`);
 }
@@ -342,7 +291,6 @@ function extractProjectName(subject) {
   const dashMatch = subject.match(/^([^-]+)\s*-\s*.+/);
   if (dashMatch) {
     const projectPart = dashMatch[1].trim();
-    // Only treat as project name if it's reasonably short (not a full sentence)
     if (projectPart.length <= 30 && !projectPart.includes(" and ")) {
       return projectPart.toLowerCase().replace(/\s+/g, "-");
     }
@@ -352,7 +300,6 @@ function extractProjectName(subject) {
   const colonMatch = subject.match(/^([^:]+)\s*:\s*.+/);
   if (colonMatch) {
     const projectPart = colonMatch[1].trim();
-    // Only treat as project name if it's reasonably short (not a full sentence)
     if (projectPart.length <= 30 && !projectPart.includes(" and ")) {
       return projectPart.toLowerCase().replace(/\s+/g, "-");
     }
@@ -369,10 +316,8 @@ function generateFilename(meeting) {
   let title = meeting.subject || "";
 
   // Remove project prefix in various formats
-  // Format 1: [Project] Title
   title = title.replace(/^\[[^\]]+\]\s*/, "");
 
-  // Format 2: Project - Title (dash separator)
   const dashMatch = meeting.subject?.match(/^([^-]+)\s*-\s*(.+)/);
   if (dashMatch) {
     const projectPart = dashMatch[1].trim();
@@ -381,7 +326,6 @@ function generateFilename(meeting) {
     }
   }
 
-  // Format 3: Project: Title (colon separator)
   const colonMatch = meeting.subject?.match(/^([^:]+)\s*:\s*(.+)/);
   if (colonMatch) {
     const projectPart = colonMatch[1].trim();
@@ -390,15 +334,13 @@ function generateFilename(meeting) {
     }
   }
 
-  // Slugify
   const slug =
     title
       .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-") // Replace non-alphanumeric with dash
-      .replace(/^-|-$/g, "") || // Trim leading/trailing dashes
-    "";
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "meeting";
 
-  return slug ? `${date}-${slug}.vtt` : `${date}.vtt`;
+  return `${date}-${slug}.vtt`;
 }
 
 // Export for unit testing
@@ -406,5 +348,4 @@ module.exports = {
   extractProjectName,
   generateFilename,
   getMockMeeting,
-  getMockVttContent,
 };

@@ -4,7 +4,7 @@ Automate meeting transcript processing from Microsoft Teams through to surge.sh 
 
 ---
 
-## Architecture Overview (Option B)
+## Architecture Overview (Option B) (Option B)
 
 ```
 Microsoft Teams Meeting Ends
@@ -77,6 +77,7 @@ When issues occur:
 | Component | Status | Notes |
 |-----------|--------|-------|
 | App Registration | ✅ DONE | Graph permissions configured |
+| Application Access Policy | ⏳ BLOCKED | Waiting for Teams Admin to create policy |
 | Resource Group | ✅ DONE | Dev environment provisioned |
 | API Key | ✅ DONE | ANTHROPIC_API_KEY available |
 | Dockerfile | ✅ DONE | Claude CLI, Node.js, surge configured |
@@ -99,6 +100,7 @@ Resource Group (rg-tiger-dev)
 │
 ├── App Registration (already done)
 │   └── Graph API permissions for Teams access
+│   └── Requires Application Access Policy (Teams Admin)
 │
 ├── Managed Identity (User-Assigned)
 │   └── Used by Function App and Container App Job
@@ -364,12 +366,6 @@ resource processorJob 'Microsoft.App/jobs@2024-03-01' = {
             { name: 'SURGE_EMAIL', secretRef: 'surge-email' }
             { name: 'SURGE_TOKEN', secretRef: 'surge-token' }
             { name: 'NODE_ENV', value: 'production' }
-            // Graph API credentials (Option B - Job downloads VTT)
-            { name: 'GRAPH_CLIENT_ID', secretRef: 'graph-client-id' }
-            { name: 'GRAPH_CLIENT_SECRET', secretRef: 'graph-client-secret' }
-            { name: 'GRAPH_TENANT_ID', secretRef: 'graph-tenant-id' }
-            // These are passed when job is triggered:
-            // MEETING_ID, TRANSCRIPT_ID, PROJECT_NAME
           ]
         }
       ]
@@ -616,14 +612,13 @@ azure-function/
     └── index.js
 ```
 
-### `TranscriptWebhook/index.js` (Option B - Simplified)
+### `TranscriptWebhook/index.js` (Option A - POC)
 
 ```javascript
 const { DefaultAzureCredential } = require('@azure/identity');
 const { ContainerAppsAPIClient } = require('@azure/arm-appcontainers');
 const { ConfidentialClientApplication } = require('@azure/msal-node');
 
-// Option B: Function is a pure trigger - Job downloads VTT directly from Graph API
 module.exports = async function (context, req) {
   // Handle Graph webhook validation
   if (req.query.validationToken) {
@@ -638,13 +633,20 @@ module.exports = async function (context, req) {
       continue;
     }
 
-    const meetingId = notification.resourceData.meetingId;
+    // Extract IDs from notification
+    // Resource path format: /users/{userId}/onlineMeetings/{meetingId}/transcripts/{transcriptId}
+    const resourceParts = notification.resource?.split('/') || [];
+    const userIdIndex = resourceParts.indexOf('users') + 1;
+    const meetingIdIndex = resourceParts.indexOf('onlineMeetings') + 1;
+
+    const userId = resourceParts[userIdIndex];
+    const meetingId = resourceParts[meetingIdIndex] || notification.resourceData.meetingId;
     const transcriptId = notification.resourceData.id;
 
-    // 1. Get Graph API token to fetch meeting details
+    // 1. Get Graph API token
     const graphToken = await getGraphToken();
 
-    // 2. Get meeting details for project name and date
+    // 2. Get meeting details (need organizer userId)
     const meeting = await fetchMeeting(graphToken, meetingId);
     const meetingDate = meeting.startDateTime.split('T')[0];
     const projectName = extractProjectName(meeting.subject);
@@ -660,8 +662,7 @@ module.exports = async function (context, req) {
           containers: [{
             name: 'tiger-processor',
             env: [
-              { name: 'MEETING_ID', value: meetingId },
-              { name: 'TRANSCRIPT_ID', value: transcriptId },
+              { name: 'BLOB_PATH', value: blobPath },
               { name: 'PROJECT_NAME', value: projectName },
               { name: 'MEETING_DATE', value: meetingDate },
               { name: 'FILENAME', value: filename }
@@ -684,13 +685,13 @@ function extractProjectName(subject) {
 }
 
 function generateFilename(meeting) {
-  const date = meeting.startDateTime.split('T')[0];
+  const date = meeting.startDateTime?.split('T')[0] || new Date().toISOString().split('T')[0];
   const slug = meeting.subject
     ?.replace(/^\[[^\]]+\]\s*/, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '') || '';
-  return slug ? `${date}-${slug}.vtt` : `${date}.vtt`;
+    .replace(/^-|-$/g, '') || 'meeting';
+  return `${date}-${slug}.vtt`;
 }
 
 async function getGraphToken() {
@@ -707,12 +708,20 @@ async function getGraphToken() {
   return result.accessToken;
 }
 
-async function fetchMeeting(token, meetingId) {
-  // Note: May need to use /users/{organizerId}/onlineMeetings/{meetingId}
-  const res = await fetch(`https://graph.microsoft.com/v1.0/me/onlineMeetings/${meetingId}`, {
+async function fetchMeeting(token, userId, meetingId) {
+  // Application permissions require /users/{userId} path (cannot use /me)
+  const res = await fetch(`https://graph.microsoft.com/v1.0/users/${userId}/onlineMeetings/${meetingId}`, {
     headers: { Authorization: `Bearer ${token}` }
   });
   return res.json();
+}
+
+async function downloadTranscript(token, meetingId, transcriptId) {
+  const res = await fetch(
+    `https://graph.microsoft.com/v1.0/me/onlineMeetings/${meetingId}/transcripts/${transcriptId}/content?$format=text/vtt`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  return res.text();
 }
 ```
 
