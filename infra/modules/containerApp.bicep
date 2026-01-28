@@ -14,9 +14,9 @@ param managedIdentityClientId string
 // Parameters for container resources
 param cpu string = '2.0'
 param memory string = '4Gi'
-param replicaTimeout int = 3600  // 60 minutes max
+param replicaTimeout int = 3600 
 
-var envName = toLower('cae-${project}-${environment}')
+var envName = toLower('ce-${project}-${environment}')
 var jobName = toLower('job-${project}-${environment}')
 
 // Container Apps Environment (the "cluster")
@@ -36,7 +36,6 @@ resource containerEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
 }
 
 // Container App Job (the actual processor)
-// Triggered manually by Azure Function when transcript is ready
 resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
   name: jobName
   location: location

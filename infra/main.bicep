@@ -78,7 +78,6 @@ module storage 'modules/storage.bicep' = {
 }
 
 // 5. Container App Environment + Job - Runs the Claude processor
-// Option B: Job downloads VTT directly from Graph API (no Blob storage needed)
 module containerApp 'modules/containerApp.bicep' = {
   name: 'provision-container-app-${suffix}'
   params: {

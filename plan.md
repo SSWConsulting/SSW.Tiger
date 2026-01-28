@@ -4,26 +4,24 @@ Automate meeting transcript processing from Microsoft Teams through to surge.sh 
 
 ---
 
-## Architecture Overview
+## Architecture Overview (Option B)
 
 ```
 Microsoft Teams Meeting Ends
        ↓
 Graph API Webhook → Azure Function
        ↓
-Function downloads VTT from Graph API
+Function extracts meeting info (project name, date, filename)
        ↓
-Function uploads VTT to Blob Storage (with date-based naming)
+Function triggers Container App Job (passes: MEETING_ID, TRANSCRIPT_ID, PROJECT_NAME)
        ↓
-Function triggers Container App Job (passes: BLOB_PATH, PROJECT_NAME, MEETING_DATE)
-       ↓
-Job downloads VTT from Blob Storage
+Job downloads VTT directly from Graph API
        ↓
 Job runs: node processor.js /tmp/{date}.vtt {project-name}
        ↓
 Claude processes transcript → Deploys dashboard to surge.sh
        ↓
-Posts link back to Teams (via Graph API)
+Posts link back to Teams chat/channel (via Graph API)
 ```
 
 ---
