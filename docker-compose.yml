@@ -88,5 +88,5 @@ services:
 # 6. Verify authentication in container:
 #    docker-compose run --rm meeting-processor sh -c "claude /status"
 #
-# Note: Each meeting is isolated by its filename. Multiple meetings on the same date 
+# Note: Each meeting is isolated by its filename. Multiple meetings on the same date
 #       are supported (e.g., 2026-01-22-standup.vtt, 2026-01-22-sprint-review.vtt)

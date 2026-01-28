@@ -112,5 +112,26 @@ if [ "$1" = "--test-auth" ]; then
     exit $exitcode
 fi
 
-# Execute the main command (processor.js with arguments)
-exec node processor.js "$@"
+# Check if running in Azure mode (Graph API environment variables set)
+if [ -n "$GRAPH_MEETING_ID" ] && [ -n "$GRAPH_TRANSCRIPT_ID" ] && [ -n "$GRAPH_USER_ID" ] && [ -n "$PROJECT_NAME" ]; then
+    echo "=== Azure Mode ==="
+
+    # Step 1: Download transcript from Graph API
+    echo "Step 1: Downloading transcript from Graph API..."
+    TRANSCRIPT_PATH=$(node download-transcript.js)
+    download_exitcode=$?
+
+    if [ $download_exitcode -ne 0 ]; then
+        echo "❌ Download failed (exit code: $download_exitcode)"
+        exit $download_exitcode
+    fi
+
+    echo "✅ Downloaded: $TRANSCRIPT_PATH"
+
+    # Step 2: Run processor with downloaded transcript
+    echo "Step 2: Processing transcript..."
+    exec node processor.js "$TRANSCRIPT_PATH" "$PROJECT_NAME"
+else
+    # Local mode: pass arguments directly to processor
+    exec node processor.js "$@"
+fi

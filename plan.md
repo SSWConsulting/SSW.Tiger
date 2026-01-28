@@ -33,11 +33,11 @@ Posts link back to Teams (via Graph API)
 ### Architecture Choice: Option B
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│  Webhook → Function → Job → Graph API → /tmp → Process                               │
-│              │                                                                        │
-│              └─ Passes: GRAPH_USER_ID, GRAPH_MEETING_ID, GRAPH_TRANSCRIPT_ID, ...    │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│  Webhook → Function → Job → Graph API → /tmp → Process                           │
+│              │                                                                    │
+│              └─ Passes: GRAPH_MEETING_ID, GRAPH_TRANSCRIPT_ID, GRAPH_USER_ID, ... │
+└──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Why Option B?
@@ -52,10 +52,9 @@ Posts link back to Teams (via Graph API)
 ### How It Works
 
 1. **Graph Webhook** notifies Function when transcript is created
-2. **Function** extracts IDs from notification and triggers Container App Job with:
-   - `GRAPH_USER_ID` - Meeting organizer (needed for Graph API call)
-   - `GRAPH_MEETING_ID` - Graph meeting identifier
-   - `GRAPH_TRANSCRIPT_ID` - Graph transcript identifier
+2. **Function** extracts meeting info and triggers Container App Job with:
+   - `MEETING_ID` - Graph meeting identifier
+   - `TRANSCRIPT_ID` - Graph transcript identifier
    - `PROJECT_NAME` - Extracted from meeting subject
    - `MEETING_DATE` - Meeting start date (YYYY-MM-DD)
    - `FILENAME` - Generated filename for the transcript
@@ -84,10 +83,13 @@ When issues occur:
 | processor.js | ✅ DONE | Wrapper for Claude CLI |
 | docker-compose.yml | ✅ DONE | Local testing ready |
 | Local Testing | ✅ DONE | Test container locally first |
-| Bicep Infrastructure | ⏳ NEXT | Container App + Function + Key Vault |
+| Bicep Infrastructure | ✅ DONE | Container App + Function + Key Vault |
 | GitHub Actions CI/CD | ✅ DONE | Build image → Push to ghcr.io |
-| Azure Function | ⏳ NEXT | Webhook receiver |
-| Graph Subscription | ❌ TODO | Trigger on transcript created |
+| Download transcript | ✅ DONE | processor.js downloads VTT from Graph API |
+| Azure Function | ⏳ IN PROGRESS | Webhook receiver not fully wired yet, local test with mock data is done, webhook validation and real Graph payload not tested yet
+| Graph Subscription | ❌ TODO | Subscribe to transcript created event
+| Notification | ✅ DONE | processor.js posts dashboard link to Teams chat/channel
+| E2E Test | ❌ TODO | Real Teams meeting → transcript → webhook → dashboard link → notification
 
 ---
 
@@ -366,6 +368,12 @@ resource processorJob 'Microsoft.App/jobs@2024-03-01' = {
             { name: 'SURGE_EMAIL', secretRef: 'surge-email' }
             { name: 'SURGE_TOKEN', secretRef: 'surge-token' }
             { name: 'NODE_ENV', value: 'production' }
+            // Graph API credentials (Option B - Job downloads VTT)
+            { name: 'GRAPH_CLIENT_ID', secretRef: 'graph-client-id' }
+            { name: 'GRAPH_CLIENT_SECRET', secretRef: 'graph-client-secret' }
+            { name: 'GRAPH_TENANT_ID', secretRef: 'graph-tenant-id' }
+            // These are passed when job is triggered by Function App:
+            // GRAPH_MEETING_ID, GRAPH_TRANSCRIPT_ID, GRAPH_USER_ID, PROJECT_NAME, MEETING_DATE, FILENAME
           ]
         }
       ]
@@ -633,20 +641,18 @@ module.exports = async function (context, req) {
       continue;
     }
 
-    // Extract IDs from notification
-    // Resource path format: /users/{userId}/onlineMeetings/{meetingId}/transcripts/{transcriptId}
-    const resourceParts = notification.resource?.split('/') || [];
-    const userIdIndex = resourceParts.indexOf('users') + 1;
-    const meetingIdIndex = resourceParts.indexOf('onlineMeetings') + 1;
-
-    const userId = resourceParts[userIdIndex];
-    const meetingId = resourceParts[meetingIdIndex] || notification.resourceData.meetingId;
+    const meetingId = notification.resourceData.meetingId;
     const transcriptId = notification.resourceData.id;
+
+    if (!userId || !meetingId || !transcriptId) {
+      context.log.error('Missing required IDs from notification', { userId, meetingId, transcriptId });
+      continue;
+    }
 
     // 1. Get Graph API token
     const graphToken = await getGraphToken();
 
-    // 2. Get meeting details (need organizer userId)
+    // 2. Get meeting details for project name and date
     const meeting = await fetchMeeting(graphToken, meetingId);
     const meetingDate = meeting.startDateTime.split('T')[0];
     const projectName = extractProjectName(meeting.subject);
@@ -662,7 +668,8 @@ module.exports = async function (context, req) {
           containers: [{
             name: 'tiger-processor',
             env: [
-              { name: 'BLOB_PATH', value: blobPath },
+              { name: 'MEETING_ID', value: meetingId },
+              { name: 'TRANSCRIPT_ID', value: transcriptId },
               { name: 'PROJECT_NAME', value: projectName },
               { name: 'MEETING_DATE', value: meetingDate },
               { name: 'FILENAME', value: filename }
@@ -708,9 +715,9 @@ async function getGraphToken() {
   return result.accessToken;
 }
 
-async function fetchMeeting(token, userId, meetingId) {
-  // Application permissions require /users/{userId} path (cannot use /me)
-  const res = await fetch(`https://graph.microsoft.com/v1.0/users/${userId}/onlineMeetings/${meetingId}`, {
+async function fetchMeeting(token, meetingId) {
+  // Note: May need to use /users/{organizerId}/onlineMeetings/{meetingId}
+  const res = await fetch(`https://graph.microsoft.com/v1.0/me/onlineMeetings/${meetingId}`, {
     headers: { Authorization: `Bearer ${token}` }
   });
   return res.json();
