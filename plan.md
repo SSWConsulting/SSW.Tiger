@@ -13,13 +13,11 @@ Graph API Webhook → Azure Function (TranscriptWebhook)
        ↓
 Function validates webhook & filters for "sprint" meetings only
        ↓
-Function extracts meeting info (project name, date, filename)
+Function extracts IDs from notification (user ID, meeting ID, transcript ID)
        ↓
-Function uploads VTT to Blob Storage (with date-based naming)
+Function triggers Container App Job (passes: GRAPH_USER_ID, GRAPH_MEETING_ID, GRAPH_TRANSCRIPT_ID, ...)
        ↓
-Function triggers Container App Job (passes: BLOB_PATH, PROJECT_NAME, MEETING_DATE)
-       ↓
-Job downloads VTT from Blob Storage
+Job downloads VTT directly from Graph API
        ↓
 Job runs: node processor.js /tmp/{date}.vtt {project-name}
        ↓
@@ -35,11 +33,11 @@ Posts link back to Teams (via Graph API)
 ### Architecture Choice: Option B
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  Webhook → Function → Job → Graph API → /tmp → Process         │
-│              │                                                  │
-│              └─ Passes: MEETING_ID, TRANSCRIPT_ID, PROJECT_NAME │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────────────┐
+│  Webhook → Function → Job → Graph API → /tmp → Process                               │
+│              │                                                                        │
+│              └─ Passes: GRAPH_USER_ID, GRAPH_MEETING_ID, GRAPH_TRANSCRIPT_ID, ...    │
+└──────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Why Option B?
@@ -54,10 +52,13 @@ Posts link back to Teams (via Graph API)
 ### How It Works
 
 1. **Graph Webhook** notifies Function when transcript is created
-2. **Function** extracts meeting info and triggers Container App Job with:
-   - `MEETING_ID` - Graph meeting identifier
-   - `TRANSCRIPT_ID` - Graph transcript identifier
+2. **Function** extracts IDs from notification and triggers Container App Job with:
+   - `GRAPH_USER_ID` - Meeting organizer (needed for Graph API call)
+   - `GRAPH_MEETING_ID` - Graph meeting identifier
+   - `GRAPH_TRANSCRIPT_ID` - Graph transcript identifier
    - `PROJECT_NAME` - Extracted from meeting subject
+   - `MEETING_DATE` - Meeting start date (YYYY-MM-DD)
+   - `FILENAME` - Generated filename for the transcript
 3. **Container App Job** downloads VTT directly from Graph API
 4. **processor.js** processes transcript and deploys dashboard
 5. **Posts link** back to Teams chat/channel
