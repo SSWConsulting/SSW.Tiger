@@ -1,10 +1,5 @@
 // Container Apps Environment + Job
 // Runs the Claude meeting processor from ghcr.io
-//
-// Architecture Decision (POC Phase - Option A):
-// - Job reads VTT from Blob Storage (uploaded by Function)
-// - Enables debugging: can re-run Job with same Blob file
-// - See plan.md for full rationale
 
 param project string
 param environment string
@@ -16,16 +11,12 @@ param ghcrUsername string
 param managedIdentityId string
 param managedIdentityClientId string
 
-// Storage account for reading transcripts (Option A - POC)
-param storageAccountName string
-param transcriptContainerName string = 'transcripts'
-
 // Parameters for container resources
 param cpu string = '2.0'
 param memory string = '4Gi'
-param replicaTimeout int = 3600  // 60 minutes max
+param replicaTimeout int = 3600 
 
-var envName = toLower('cae-${project}-${environment}')
+var envName = toLower('ce-${project}-${environment}')
 var jobName = toLower('job-${project}-${environment}')
 
 // Container Apps Environment (the "cluster")
@@ -45,7 +36,6 @@ resource containerEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
 }
 
 // Container App Job (the actual processor)
-// Triggered manually by Azure Function when transcript is ready
 resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
   name: jobName
   location: location
@@ -86,6 +76,22 @@ resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
           keyVaultUrl: 'https://${keyVaultName}${az.environment().suffixes.keyvaultDns}/secrets/ghcr-token'
           identity: managedIdentityId
         }
+        // Graph API credentials
+        {
+          name: 'graph-client-id'
+          keyVaultUrl: 'https://${keyVaultName}${az.environment().suffixes.keyvaultDns}/secrets/graph-client-id'
+          identity: managedIdentityId
+        }
+        {
+          name: 'graph-client-secret'
+          keyVaultUrl: 'https://${keyVaultName}${az.environment().suffixes.keyvaultDns}/secrets/graph-client-secret'
+          identity: managedIdentityId
+        }
+        {
+          name: 'graph-tenant-id'
+          keyVaultUrl: 'https://${keyVaultName}${az.environment().suffixes.keyvaultDns}/secrets/graph-tenant-id'
+          identity: managedIdentityId
+        }
       ]
 
       // Pull image from GitHub Container Registry
@@ -115,13 +121,10 @@ resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
             // Surge.sh deployment credentials
             { name: 'SURGE_EMAIL', secretRef: 'surge-email' }
             { name: 'SURGE_TOKEN', secretRef: 'surge-token' }
-            // Environment
             { name: 'NODE_ENV', value: environment == 'prod' ? 'production' : 'development' }
-            // Blob Storage for transcripts (Option A - POC)
-            { name: 'STORAGE_ACCOUNT_NAME', value: storageAccountName }
-            { name: 'TRANSCRIPT_CONTAINER_NAME', value: transcriptContainerName }
-            // These will be overridden when job is triggered:
-            // BLOB_PATH, PROJECT_NAME, MEETING_DATE (passed by Function App)
+            { name: 'GRAPH_CLIENT_ID', secretRef: 'graph-client-id' }
+            { name: 'GRAPH_CLIENT_SECRET', secretRef: 'graph-client-secret' }
+            { name: 'GRAPH_TENANT_ID', secretRef: 'graph-tenant-id' }
           ]
         }
       ]

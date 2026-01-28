@@ -22,7 +22,6 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
     softDeleteRetentionInDays: environment == 'prod' ? 90 : 7
     enabledForTemplateDeployment: true
     enableRbacAuthorization: true
-    enablePurgeProtection: environment == 'prod'
     networkAcls: {
       bypass: 'AzureServices'
       defaultAction: 'Allow'

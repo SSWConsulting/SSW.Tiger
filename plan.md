@@ -4,7 +4,7 @@ Automate meeting transcript processing from Microsoft Teams through to surge.sh 
 
 ---
 
-## Architecture Overview
+## Architecture Overview (Option B)
 
 ```
 Microsoft Teams Meeting Ends
@@ -13,97 +13,61 @@ Graph API Webhook → Azure Function (TranscriptWebhook)
        ↓
 Function validates webhook & filters for "sprint" meetings only
        ↓
-Function downloads VTT from Graph API (via MSAL client credentials)
+Function extracts meeting info (project name, date, filename)
        ↓
-Function uploads VTT to Blob Storage: {project}/{date}-{slug}.vtt
+Function uploads VTT to Blob Storage (with date-based naming)
        ↓
-Function triggers Container App Job (fire-and-forget via beginStart)
-  - Container image: ghcr.io/{org}/tiger-processor:{tag}
-  - Environment variables:
-    • BLOB_PATH = {project}/{date}-{slug}.vtt
-    • PROJECT_NAME = {project}
-    • MEETING_DATE = {date}
-    • FILENAME = {date}-{slug}.vtt
-  - Job config provides: STORAGE_ACCOUNT_NAME, TRANSCRIPT_CONTAINER_NAME
+Function triggers Container App Job (passes: BLOB_PATH, PROJECT_NAME, MEETING_DATE)
        ↓
-Function returns HTTP 202 immediately (webhook completes in seconds)
+Job downloads VTT from Blob Storage
        ↓
-Container App Job runs asynchronously (30-60 minutes):
-  1. Pulls Docker image from ghcr.io
-  2. Downloads VTT from Blob Storage using env vars
-  3. Runs Claude processor on VTT
-  4. Deploys dashboard to surge.sh
-  5. Posts link back to Teams (via Graph API)
+Job runs: node processor.js /tmp/{date}.vtt {project-name}
+       ↓
+Claude processes transcript → Deploys dashboard to surge.sh
+       ↓
+Posts link back to Teams (via Graph API)
 ```
 
 ---
 
-## 🏗️ Decision: Option A vs Option B
+## 🏗️ Decision: Option B (Job downloads VTT directly)
 
-### Current Choice: Option A (Function downloads VTT → Blob → Job)
-
-This is a deliberate POC-phase decision. Evaluated two approaches:
-
-### Option A: Function Downloads VTT (Current - POC Phase)
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Webhook → Function → Graph API → Blob Storage → Job → Process │
-│                                        ↓                        │
-│                              VTT persists here                  │
-│                              (7 days auto-delete)               │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Advantages for POC:**
-- **Debuggability**: VTT files persist in Blob even if Job fails
-- **Scene Preservation**: Can download VTT, reproduce issues locally
-- **Quick Iteration**: `node processor.js ./downloaded.vtt test-project`
-- **Auth Simplicity**: Function already has Graph credentials
-- **Observability**: Can inspect VTT content before Job runs
-
-### Option B: Job Downloads VTT (Future - Production)
+### Architecture Choice: Option B
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  Webhook → Function → Job → Graph API → /tmp → Process         │
-│                                           ↓                     │
-│                                   VTT lost on container exit    │
+│              │                                                  │
+│              └─ Passes: MEETING_ID, TRANSCRIPT_ID, PROJECT_NAME │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Advantages for Production:**
-- **Simpler Architecture**: No Blob intermediate layer
-- **Single Responsibility**: Function is pure trigger
-- **Cohesion**: All processing logic in one place
-- **Less Infrastructure**: No Blob lifecycle management
+### Why Option B?
 
-### Why Option A for POC?
+| Factor | Benefit |
+|--------|---------|
+| **Simpler Architecture** | No Blob intermediate layer |
+| **Single Responsibility** | Function is pure trigger, Job handles everything |
+| **Less Infrastructure** | No transcript container, no lifecycle policy |
+| **Debugging** | Can manually download VTT from Teams when needed |
 
-| POC Priority | Option A | Option B |
-|--------------|----------|----------|
-| **Debug failed Jobs** | ✅ VTT in Blob, downloadable | ❌ VTT lost with container |
-| **Reproduce issues** | ✅ Download VTT, run locally | ❌ Need to mock Graph API |
-| **Validate VTT format** | ✅ Check Blob before Job | ❌ Only visible in Job logs |
-| **Auth complexity** | ✅ Function already has creds | ⚠️ Need MSAL in container |
+### How It Works
 
-**Key Insight**: In POC, the most expensive thing is **uncertainty**, not infrastructure.
-Blob Storage provides **observability** that helps validate the entire pipeline faster.
+1. **Graph Webhook** notifies Function when transcript is created
+2. **Function** extracts meeting info and triggers Container App Job with:
+   - `MEETING_ID` - Graph meeting identifier
+   - `TRANSCRIPT_ID` - Graph transcript identifier
+   - `PROJECT_NAME` - Extracted from meeting subject
+3. **Container App Job** downloads VTT directly from Graph API
+4. **processor.js** processes transcript and deploys dashboard
+5. **Posts link** back to Teams chat/channel
 
-### Migration Path: POC → Production
+### Debugging Strategy
 
-When ready to migrate to Option B:
-
-1. **Add Graph credentials to Container App Job** (containerApp.bicep)
-2. **Create download-transcript.js** (~100 lines, uses MSAL)
-3. **Simplify Function** to pure trigger (remove Graph download logic)
-4. **Remove Blob container** (optional - may keep for archival)
-5. **Update entrypoint** in Dockerfile
-
-**Trigger for Migration:**
-- POC validates the concept successfully
-- System is stable and well-understood
-- Want to reduce infrastructure complexity
+When issues occur:
+1. Download VTT manually from Teams meeting
+2. Run locally: `node processor.js ./downloaded.vtt test-project`
+3. Check Container App Job logs in Azure Portal
 
 ---
 
@@ -137,30 +101,27 @@ Resource Group (rg-tiger-dev)
 │
 ├── Managed Identity (User-Assigned)
 │   └── Used by Function App and Container App Job
-│   └── Has RBAC access to Key Vault and Storage
+│   └── Has RBAC access to Key Vault
 │
 ├── Container Apps Environment
 │   └── Container App Job
 │       └── Pulls image from ghcr.io (NOT Azure)
-│       └── Reads VTT from Blob Storage
+│       └── Downloads VTT directly from Graph API
 │       └── Runs Claude processor
 │
 ├── Function App
 │   └── Receives Graph webhook
-│   └── Downloads VTT from Graph API
-│   └── Uploads VTT to Blob Storage
-│   └── Triggers Container App Job
+│   └── Triggers Container App Job (passes meeting ID, transcript ID)
 │
 ├── Storage Account
-│   └── Required by Function App
-│   └── transcripts/ container (VTT files, 7-day retention)
+│   └── Required by Function App runtime only
 │
 └── Key Vault
     └── Stores: CLAUDE_CODE_OAUTH_TOKEN, SURGE_TOKEN, GHCR_TOKEN, Graph secrets
 ```
 
 **No Azure Container Registry needed** - images live in GitHub Container Registry (ghcr.io).
-**Blob Storage** - Used for transcript files (Option A architecture, auto-deleted after 7 days).
+**No Blob transcript storage** - Job downloads VTT directly from Graph API (Option B).
 
 ---
 
@@ -315,7 +276,7 @@ output functionAppUrl string = functionApp.outputs.url
 output keyVaultName string = keyVault.outputs.name
 ```
 
-### `modules/containerApp.bicep` - Container App Job
+### `modules/containerApp.bicep` - Container App Job (Option B)
 
 ```bicep
 param name string
@@ -333,6 +294,7 @@ resource environment 'Microsoft.App/managedEnvironments@2024-03-01' = {
 }
 
 // Container App Job (pulls from ghcr.io)
+// Option B: Job downloads VTT directly from Graph API
 resource processorJob 'Microsoft.App/jobs@2024-03-01' = {
   name: '${name}-processor'
   location: location
@@ -347,8 +309,8 @@ resource processorJob 'Microsoft.App/jobs@2024-03-01' = {
       replicaRetryLimit: 1
       secrets: [
         {
-          name: 'anthropic-api-key'
-          keyVaultUrl: 'https://${keyVaultName}.vault.azure.net/secrets/anthropic-api-key'
+          name: 'anthropic-oauth-token'
+          keyVaultUrl: 'https://${keyVaultName}.vault.azure.net/secrets/anthropic-oauth-token'
           identity: 'system'
         }
         {
@@ -364,6 +326,22 @@ resource processorJob 'Microsoft.App/jobs@2024-03-01' = {
         {
           name: 'ghcr-token'
           keyVaultUrl: 'https://${keyVaultName}.vault.azure.net/secrets/ghcr-token'
+          identity: 'system'
+        }
+        // Graph API credentials (Option B - Job downloads VTT)
+        {
+          name: 'graph-client-id'
+          keyVaultUrl: 'https://${keyVaultName}.vault.azure.net/secrets/graph-client-id'
+          identity: 'system'
+        }
+        {
+          name: 'graph-client-secret'
+          keyVaultUrl: 'https://${keyVaultName}.vault.azure.net/secrets/graph-client-secret'
+          identity: 'system'
+        }
+        {
+          name: 'graph-tenant-id'
+          keyVaultUrl: 'https://${keyVaultName}.vault.azure.net/secrets/graph-tenant-id'
           identity: 'system'
         }
       ]
@@ -385,10 +363,16 @@ resource processorJob 'Microsoft.App/jobs@2024-03-01' = {
             memory: '4Gi'
           }
           env: [
-            { name: 'ANTHROPIC_API_KEY', secretRef: 'anthropic-api-key' }
+            { name: 'CLAUDE_CODE_OAUTH_TOKEN', secretRef: 'anthropic-oauth-token' }
             { name: 'SURGE_EMAIL', secretRef: 'surge-email' }
             { name: 'SURGE_TOKEN', secretRef: 'surge-token' }
             { name: 'NODE_ENV', value: 'production' }
+            // Graph API credentials (Option B - Job downloads VTT)
+            { name: 'GRAPH_CLIENT_ID', secretRef: 'graph-client-id' }
+            { name: 'GRAPH_CLIENT_SECRET', secretRef: 'graph-client-secret' }
+            { name: 'GRAPH_TENANT_ID', secretRef: 'graph-tenant-id' }
+            // These are passed when job is triggered:
+            // MEETING_ID, TRANSCRIPT_ID, PROJECT_NAME
           ]
         }
       ]
@@ -635,14 +619,14 @@ azure-function/
     └── index.js
 ```
 
-### `TranscriptWebhook/index.js` (Option A - POC)
+### `TranscriptWebhook/index.js` (Option B - Simplified)
 
 ```javascript
 const { DefaultAzureCredential } = require('@azure/identity');
-const { BlobServiceClient } = require('@azure/storage-blob');
 const { ContainerAppsAPIClient } = require('@azure/arm-appcontainers');
 const { ConfidentialClientApplication } = require('@azure/msal-node');
 
+// Option B: Function is a pure trigger - Job downloads VTT directly from Graph API
 module.exports = async function (context, req) {
   // Handle Graph webhook validation
   if (req.query.validationToken) {
@@ -660,27 +644,16 @@ module.exports = async function (context, req) {
     const meetingId = notification.resourceData.meetingId;
     const transcriptId = notification.resourceData.id;
 
-    // 1. Get Graph API token
+    // 1. Get Graph API token to fetch meeting details
     const graphToken = await getGraphToken();
 
-    // 2. Get meeting details (need organizer userId)
+    // 2. Get meeting details for project name and date
     const meeting = await fetchMeeting(graphToken, meetingId);
     const meetingDate = meeting.startDateTime.split('T')[0];
     const projectName = extractProjectName(meeting.subject);
     const filename = generateFilename(meeting);
 
-    // 3. Download transcript from Graph API
-    const vttContent = await downloadTranscript(graphToken, meetingId, transcriptId);
-
-    // 4. Upload to Blob Storage
-    const blobPath = `${projectName}/${filename}`;
-    const blobService = BlobServiceClient.fromConnectionString(process.env.AzureWebJobsStorage);
-    const container = blobService.getContainerClient(process.env.TRANSCRIPT_CONTAINER_NAME);
-    await container.getBlockBlobClient(blobPath).upload(vttContent, vttContent.length);
-
-    context.log(`Uploaded VTT to Blob: ${blobPath}`);
-
-    // 5. Trigger Container App Job
+    // 3. Trigger Container App Job (Job will download VTT itself)
     const containerClient = new ContainerAppsAPIClient(credential, process.env.SUBSCRIPTION_ID);
     await containerClient.jobs.start(
       process.env.CONTAINER_APP_JOB_RESOURCE_GROUP,
@@ -690,7 +663,8 @@ module.exports = async function (context, req) {
           containers: [{
             name: 'tiger-processor',
             env: [
-              { name: 'BLOB_PATH', value: blobPath },
+              { name: 'MEETING_ID', value: meetingId },
+              { name: 'TRANSCRIPT_ID', value: transcriptId },
               { name: 'PROJECT_NAME', value: projectName },
               { name: 'MEETING_DATE', value: meetingDate },
               { name: 'FILENAME', value: filename }
@@ -742,14 +716,6 @@ async function fetchMeeting(token, meetingId) {
     headers: { Authorization: `Bearer ${token}` }
   });
   return res.json();
-}
-
-async function downloadTranscript(token, meetingId, transcriptId) {
-  const res = await fetch(
-    `https://graph.microsoft.com/v1.0/me/onlineMeetings/${meetingId}/transcripts/${transcriptId}/content?$format=text/vtt`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  return res.text();
 }
 ```
 
