@@ -2,16 +2,14 @@
   "name": "tiger-azure-function",
   "version": "1.0.0",
   "description": "Azure Function for T.I.G.E.R. - Receives Graph webhook, triggers Container App Job (Option B)",
-  "main": "src/functions/*.js",
+  "main": "src/functions/TranscriptWebhook.js",
   "scripts": {
-    "start": "func start",
-    "test": "node test/test-webhook.js"
+    "start": "func start"
   },
   "dependencies": {
     "@azure/arm-appcontainers": "^2.0.0",
     "@azure/functions": "^4.0.0",
-    "@azure/identity": "^4.13.0",
-    "@azure/msal-node": "^2.6.0"
+    "@azure/identity": "^4.13.0"
   },
   "devDependencies": {
     "azure-functions-core-tools": "^4.x"
