@@ -66,7 +66,7 @@ module kvRoleAssignment 'modules/keyVaultRoleAssignment.bicep' = {
   }
 }
 
-// 4. Storage Account - Required by Function App + Transcript storage (POC)
+// 4. Storage Account - Required by Function App runtime only
 module storage 'modules/storage.bicep' = {
   name: 'provision-storage-${suffix}'
   params: {
@@ -77,18 +77,8 @@ module storage 'modules/storage.bicep' = {
   }
 }
 
-// 4b. Storage Role Assignment - Grant managed identity read/write access to transcripts
-// Function writes VTT to Blob, Container App Job reads VTT from Blob
-module storageRoleAssignment 'modules/storageRoleAssignment.bicep' = {
-  name: 'provision-storage-role-assignment-${suffix}'
-  params: {
-    storageAccountName: storage.outputs.name
-    principalId: id.outputs.principalId
-    roleName: 'Storage Blob Data Contributor'
-  }
-}
-
 // 5. Container App Environment + Job - Runs the Claude processor
+// Option B: Job downloads VTT directly from Graph API (no Blob storage needed)
 module containerApp 'modules/containerApp.bicep' = {
   name: 'provision-container-app-${suffix}'
   params: {
@@ -101,13 +91,10 @@ module containerApp 'modules/containerApp.bicep' = {
     ghcrUsername: githubOrg
     managedIdentityId: id.outputs.id
     managedIdentityClientId: id.outputs.clientId
-    // Storage for transcript files (Option A - POC)
-    storageAccountName: storage.outputs.name
-    transcriptContainerName: storage.outputs.transcriptContainerName
   }
 }
 
-// 6. Function App - Webhook receiver, downloads VTT, triggers Container App Job
+// 6. Function App - Webhook receiver, triggers Container App Job
 module functionApp 'modules/functionApp.bicep' = {
   name: 'provision-function-app-${suffix}'
   params: {
@@ -122,8 +109,6 @@ module functionApp 'modules/functionApp.bicep' = {
     containerAppJobImage: containerImage
     managedIdentityId: id.outputs.id
     managedIdentityClientId: id.outputs.clientId
-    // Transcript container for Option A
-    transcriptContainerName: storage.outputs.transcriptContainerName
   }
 }
 
@@ -134,7 +119,6 @@ output keyVault object = {
 
 output storage object = {
   name: storage.outputs.name
-  transcriptContainer: storage.outputs.transcriptContainerName
   blobEndpoint: storage.outputs.blobEndpoint
 }
 
