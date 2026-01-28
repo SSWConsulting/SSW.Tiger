@@ -114,11 +114,8 @@ resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
             memory: memory
           }
           env: [
-            // Azure Managed Identity
             { name: 'AZURE_CLIENT_ID', value: managedIdentityClientId }
-            // Claude API authentication
             { name: 'CLAUDE_CODE_OAUTH_TOKEN', secretRef: 'anthropic-oauth-token' }
-            // Surge.sh deployment credentials
             { name: 'SURGE_EMAIL', secretRef: 'surge-email' }
             { name: 'SURGE_TOKEN', secretRef: 'surge-token' }
             { name: 'NODE_ENV', value: environment == 'prod' ? 'production' : 'development' }

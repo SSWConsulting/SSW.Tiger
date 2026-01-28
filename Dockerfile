@@ -32,6 +32,7 @@ WORKDIR /app
 
 # Copy application code
 COPY processor.js ./
+COPY download-transcript.js ./
 COPY CLAUDE.md ./
 COPY templates/ ./templates/
 COPY entrypoint.sh ./
