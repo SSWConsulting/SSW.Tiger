@@ -112,7 +112,7 @@ Resource Group (rg-tiger-dev)
 │
 ├── Function App
 │   └── Receives Graph webhook
-│   └── Triggers Container App Job (passes meeting ID, transcript ID)
+│   └── Triggers Container App Job (passes user ID, meeting ID, transcript ID, etc.)
 │
 ├── Storage Account
 │   └── Required by Function App runtime only
@@ -176,15 +176,14 @@ infra/
 ├── staging.bicepparam            # Parameters (staging)
 └── modules/
     ├── containerApp.bicep        # Container Apps Environment + Job
-    ├── functionApp.bicep         # Function App + webhook + Graph download
-    ├── storage.bicep             # Storage Account + transcripts container
+    ├── functionApp.bicep         # Function App + webhook
+    ├── storage.bicep             # Storage Account (Function App runtime only)
     ├── keyVault.bicep            # Key Vault + secret references
     ├── keyVaultRoleAssignment.bicep    # RBAC for Key Vault access
-    ├── storageRoleAssignment.bicep     # RBAC for Blob access
     └── managedIdentity.bicep     # User-assigned managed identity
 ```
 
-### Resource Dependencies
+### Resource Dependencies (Option B)
 
 ```
 Resource Group
@@ -194,21 +193,18 @@ Resource Group
      ├── Key Vault (stores all secrets)
      │        └── RBAC: Managed Identity → Key Vault Secrets User
      │
-     ├── Storage Account (Function App + transcript storage)
-     │        └── transcripts/ container (7-day lifecycle)
-     │        └── RBAC: Managed Identity → Storage Blob Data Reader
+     ├── Storage Account (Function App runtime only)
      │
      ├── Container Apps Environment
      │        └── Container App Job
      │                └── Uses Managed Identity
      │                └── References Key Vault secrets
-     │                └── Reads VTT from Blob Storage
+     │                └── Downloads VTT directly from Graph API
      │
      └── Function App
               └── Uses Managed Identity
               └── References Key Vault for Graph credentials
-              └── Writes VTT to Blob Storage
-              └── Triggers Container App Job
+              └── Triggers Container App Job (passes meeting IDs)
 ```
 
 ### `main.bicep` - Orchestration
