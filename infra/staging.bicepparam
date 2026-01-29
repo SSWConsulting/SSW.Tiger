@@ -6,6 +6,6 @@ param costCategoryTag = { 'cost-category': 'dev/test' }
 
 // GitHub Container Registry settings
 param githubOrg = 'sswconsulting'
-param imageTag = 'test-workflow'
+param imageTag = 'latest'
 
 // Deploy with: az deployment group create --resource-group "SSW.Transcript-Intelligence-Group-Event-Reasoning.Dev" --template-file main.bicep --parameters main.bicepparam

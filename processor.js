@@ -41,6 +41,7 @@ class MeetingProcessor {
     const logEntry = {
       timestamp,
       level: level.toUpperCase(),
+      component: "processor",
       message,
       ...(data && { data }),
     };

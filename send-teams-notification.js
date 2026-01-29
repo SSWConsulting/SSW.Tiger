@@ -107,13 +107,6 @@ async function main() {
       process.exit(0);
     }
 
-    log("info", "Starting Teams notification", {
-      dashboardUrl: CONFIG.dashboardUrl,
-      projectName: CONFIG.projectName,
-      meetingSubject: CONFIG.meetingSubject,
-      recipientCount: participants.length,
-    });
-
     await sendViaLogicApp(participants);
 
     outputResult({ success: true, recipientCount: participants.length });

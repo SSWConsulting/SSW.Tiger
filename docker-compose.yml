@@ -26,6 +26,22 @@ services:
       - SURGE_EMAIL=${SURGE_EMAIL}
       - SURGE_TOKEN=${SURGE_TOKEN}
 
+      # Microsoft Graph API (Azure mode - for webhook-triggered processing)
+      # These are passed by Azure Container Apps when triggered by webhook
+      - GRAPH_CLIENT_ID=${GRAPH_CLIENT_ID}
+      - GRAPH_CLIENT_SECRET=${GRAPH_CLIENT_SECRET}
+      - GRAPH_TENANT_ID=${GRAPH_TENANT_ID}
+      - GRAPH_USER_ID=${GRAPH_USER_ID}
+      - GRAPH_MEETING_ID=${GRAPH_MEETING_ID}
+      - GRAPH_TRANSCRIPT_ID=${GRAPH_TRANSCRIPT_ID}
+
+      # Teams notification via Logic App (optional)
+      - LOGIC_APP_URL=${LOGIC_APP_URL}
+
+      # Meeting filter pattern (optional, default: "sprint")
+      # Set to ".*" to process all meetings
+      - MEETING_FILTER_PATTERN=${MEETING_FILTER_PATTERN:-sprint}
+
       # Output directory (defaults to ./output)
       - OUTPUT_DIR=${OUTPUT_DIR:-/app/output}
     volumes:
@@ -62,31 +78,3 @@ services:
         reservations:
           cpus: '1.0'
           memory: 512M
-
-# Example usage:
-#
-# 1. Set your authentication (choose one):
-#    # Option A: API Key
-#    export ANTHROPIC_API_KEY=your-key-here
-#    # Option B: OAuth Token (subscription - get from Claude CLI)
-#    # Run on host: claude /status | grep "Auth Token"
-#    export CLAUDE_CODE_OAUTH_TOKEN=your-oauth-token-here
-#
-# 2. Set Surge credentials for deployment
-#    export SURGE_EMAIL=your-email@example.com
-#    export SURGE_TOKEN=your-surge-token
-#
-# 3. Build the container:
-#    docker-compose build
-#
-# 4. Run with a transcript:
-#    docker-compose run --rm meeting-processor /app/dropzone/2026-01-22-standup.vtt projectname
-#
-# 5. View logs:
-#    docker-compose logs -f meeting-processor
-#
-# 6. Verify authentication in container:
-#    docker-compose run --rm meeting-processor sh -c "claude /status"
-#
-# Note: Each meeting is isolated by its filename. Multiple meetings on the same date
-#       are supported (e.g., 2026-01-22-standup.vtt, 2026-01-22-sprint-review.vtt)
