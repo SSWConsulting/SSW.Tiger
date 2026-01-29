@@ -93,7 +93,17 @@ module containerApp 'modules/containerApp.bicep' = {
   }
 }
 
-// 6. Function App - Webhook receiver, triggers Container App Job
+// 6. Logic App - Teams notification via meeting chat
+module logicApp 'modules/logicApp.bicep' = {
+  name: 'provision-logic-app-${suffix}'
+  params: {
+    project: project
+    costCategoryTag: costCategoryTag
+    location: location
+  }
+}
+
+// 7. Function App - Webhook receiver, triggers Container App Job
 module functionApp 'modules/functionApp.bicep' = {
   name: 'provision-function-app-${suffix}'
   params: {
@@ -136,4 +146,8 @@ output managedIdentity object = {
   principalId: id.outputs.principalId
   clientId: id.outputs.clientId
   name: id.outputs.name
+}
+
+output logicApp object = {
+  name: logicApp.outputs.name
 }

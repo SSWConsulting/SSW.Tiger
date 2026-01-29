@@ -92,6 +92,11 @@ resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
           keyVaultUrl: 'https://${keyVaultName}${az.environment().suffixes.keyvaultDns}/secrets/graph-tenant-id'
           identity: managedIdentityId
         }
+        {
+          name: 'logic-app-url'
+          keyVaultUrl: 'https://${keyVaultName}${az.environment().suffixes.keyvaultDns}/secrets/logic-app-url'
+          identity: managedIdentityId
+        }
       ]
 
       // Pull image from GitHub Container Registry
@@ -122,6 +127,7 @@ resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
             { name: 'GRAPH_CLIENT_ID', secretRef: 'graph-client-id' }
             { name: 'GRAPH_CLIENT_SECRET', secretRef: 'graph-client-secret' }
             { name: 'GRAPH_TENANT_ID', secretRef: 'graph-tenant-id' }
+            { name: 'LOGIC_APP_URL', secretRef: 'logic-app-url' }
           ]
         }
       ]
