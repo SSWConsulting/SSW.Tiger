@@ -54,17 +54,84 @@ class MeetingProcessor {
     }
   }
 
-  logError(error, context = null) {
-    this.log("error", error.message || String(error), {
-      name: error.name,
-      stack: error.stack,
-      ...(context && { context }),
-    });
+  truncate(text, maxLength = 120) {
+    if (!text) return "";
+    return text.length > maxLength
+      ? `${text.substring(0, maxLength)}...`
+      : text;
+  }
+
+  parseStreamJsonLine(line) {
+    const trimmed = line.trim();
+    if (!trimmed) return { ok: false };
+
+    try {
+      const event = JSON.parse(trimmed);
+      return { ok: true, event };
+    } catch (error) {
+      return { ok: false };
+    }
+  }
+
+  shouldSkipEvent(event) {
+    if (!event) return true;
+
+    // Skip tool_use and tool_result events
+    if (event.type === "tool_use" || event.type === "tool_result") return true;
+
+    // Skip user/assistant events that contain tool_use_id or tool_result content
+    const content = event.message?.content;
+    if (Array.isArray(content)) {
+      const hasToolContent = content.some(
+        (block) =>
+          block.type === "tool_use" ||
+          block.type === "tool_result" ||
+          block.tool_use_id,
+      );
+      if (hasToolContent) return true;
+    }
+
+    return false;
+  }
+
+  extractEventPreview(event) {
+    if (!event) return "";
+
+    if (event.type === "system" && event.subtype) {
+      if (event.subtype === "init") {
+        const sessionId = event.session_id?.substring(0, 8) || "unknown";
+        return `Session initialized (${sessionId})`;
+      }
+      return event.subtype;
+    }
+
+    const messageObj = event.message || event;
+    const content = messageObj.content;
+
+    if (typeof content === "string") {
+      return this.truncate(content.split("\n")[0].trim());
+    }
+
+    if (Array.isArray(content) && content.length > 0) {
+      const firstBlock = content[0];
+      if (firstBlock?.type === "text" && firstBlock.text) {
+        return this.truncate(firstBlock.text.split("\n")[0].trim());
+      }
+    }
+
+    if (typeof messageObj.text === "string" && messageObj.text.trim()) {
+      return this.truncate(messageObj.text.split("\n")[0].trim());
+    }
+
+    if (typeof messageObj.message === "string" && messageObj.message.trim()) {
+      return this.truncate(messageObj.message.split("\n")[0].trim());
+    }
+
+    // Can't extract meaningful text - skip this event
+    return "";
   }
 
   validateCredentials() {
-    this.log("info", "Validating credentials");
-
     // Validate Claude credentials
     if (
       process.env.NODE_ENV === "production" &&
@@ -80,18 +147,7 @@ class MeetingProcessor {
     }
 
     if (!CONFIG.claudeOAuthToken && !CONFIG.claudeApiKey) {
-      this.log(
-        "warn",
-        "No explicit Claude credentials provided. Relying on Claude CLI logged-in session.",
-      );
-      this.log(
-        "warn",
-        "For production, set CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY explicitly.",
-      );
-    } else if (CONFIG.claudeOAuthToken) {
-      this.log("info", "Claude OAuth token credentials detected");
-    } else if (CONFIG.claudeApiKey) {
-      this.log("info", "Claude API key credentials detected");
+      this.log("warn", "No Claude credentials - using CLI logged-in session");
     }
 
     // Validate Surge credentials (required for deployment)
@@ -104,14 +160,11 @@ class MeetingProcessor {
           "Get your token by running: surge token",
       );
     }
-
-    this.log("info", "Surge.sh credentials validated");
   }
 
   getClaudeAuthMethod() {
     // Prioritize OAuth token (subscription - lower per-request cost for high volume)
     if (CONFIG.claudeOAuthToken) {
-      this.log("info", "Using Claude OAuth token authentication");
       return {
         useOAuth: true,
         env: {
@@ -119,7 +172,6 @@ class MeetingProcessor {
         },
       };
     } else if (CONFIG.claudeApiKey) {
-      this.log("info", "Using Claude API key authentication");
       return {
         useOAuth: false,
         env: {
@@ -127,11 +179,6 @@ class MeetingProcessor {
         },
       };
     } else {
-      // Fallback: Let Claude CLI use its stored session credentials
-      this.log(
-        "info",
-        "Using Claude CLI session authentication (logged-in user)",
-      );
       return {
         useOAuth: false,
         env: {}, // Don't inject any auth vars, let Claude CLI handle it
@@ -169,8 +216,6 @@ class MeetingProcessor {
   }
 
   async initialize(transcriptPath, projectName) {
-    this.log("info", "Initializing processor", { transcriptPath, projectName });
-
     // Validate transcript file exists
     try {
       await fs.access(transcriptPath);
@@ -189,19 +234,10 @@ class MeetingProcessor {
     this.projectPath = path.join(__dirname, "projects", projectName);
     this.meetingPath = path.join(this.projectPath, meetingId);
 
-    this.log("info", "Initialization complete", {
-      meetingId: this.meetingId,
-      meetingDate: this.meetingDate,
-      meetingPath: this.meetingPath,
-    });
+    this.log("debug", "Initialized", { meetingId, meetingDate });
   }
 
   async setupProjectStructure() {
-    this.log("info", "Setting up self-contained meeting structure", {
-      meetingId: this.meetingId,
-      meetingPath: this.meetingPath,
-    });
-
     // Create self-contained meeting directory structure
     const dirs = [
       this.projectPath,
@@ -212,7 +248,6 @@ class MeetingProcessor {
 
     for (const dir of dirs) {
       await fs.mkdir(dir, { recursive: true });
-      this.log("debug", `Created directory: ${dir}`);
     }
 
     // Copy transcript to meeting folder
@@ -220,42 +255,25 @@ class MeetingProcessor {
 
     try {
       await fs.copyFile(this.transcriptPath, meetingTranscriptPath);
-      this.log("info", "Transcript copied to meeting folder", {
-        from: this.transcriptPath,
-        to: meetingTranscriptPath,
-      });
     } catch (error) {
-      this.log("warn", "Failed to copy transcript to meeting folder", {
-        error: error.message,
-      });
+      this.log("warn", "Failed to copy transcript", { error: error.message });
     }
 
     // Clean up previous analysis for this specific meeting (if exists)
-    // This prevents AI confusion from stale data
     const analysisDir = path.join(this.meetingPath, "analysis");
     try {
       const files = await fs.readdir(analysisDir);
       for (const file of files) {
         if (file.endsWith(".json")) {
-          const filePath = path.join(analysisDir, file);
-          await fs.unlink(filePath);
-          this.log("debug", `Cleaned previous analysis file: ${file}`);
+          await fs.unlink(path.join(analysisDir, file));
         }
       }
-      this.log("info", "Previous analysis cleaned");
     } catch (error) {
       // Directory might not exist or be empty - that's fine
-      this.log("debug", "No previous analysis to clean");
     }
-
-    this.log("info", "Self-contained meeting structure ready");
   }
 
   async invokeClaude() {
-    this.log("info", "Invoking Claude Code CLI", {
-      meetingId: this.meetingId,
-    });
-
     // Ensure output directory exists
     await fs.mkdir(CONFIG.outputDir, { recursive: true });
 
@@ -313,71 +331,45 @@ Follow all steps in CLAUDE.md including deployment. Output DEPLOYED_URL as speci
         },
       };
 
-      // On Windows, use PowerShell shell (tested and works with stdin)
+      // On Windows, join command and args to avoid DEP0190 deprecation warning
+      // (spawn() with shell option + args array is deprecated)
       if (process.platform === "win32") {
         spawnOptions.shell = "powershell.exe";
-        this.log("debug", "Using PowerShell shell to invoke Claude command", {
-          command: CONFIG.claudeCommand,
-          authMethod: authConfig.useOAuth ? "oauth-token" : "api-key",
-        });
+        // Escape args for PowerShell and join into single command string
+        const escapedArgs = spawnArgs.map((arg) =>
+          arg.includes(" ") ? `"${arg}"` : arg,
+        );
+        command = `${CONFIG.claudeCommand} ${escapedArgs.join(" ")}`;
+        spawnArgs = []; // Clear args array when using shell with command string
       }
-
-      this.log("info", "Spawning Claude CLI with flags", {
-        flags: spawnArgs.join(" "),
-        promptLength: prompt.length,
-      });
 
       const claude = spawn(command, spawnArgs, spawnOptions);
 
       // Write prompt to stdin and close
-      this.log("info", "Sending prompt to Claude CLI...");
       claude.stdin.write(prompt);
       claude.stdin.end();
-      this.log(
-        "info",
-        "Prompt sent. Waiting for Claude analysis (this may take 5-10 minutes)...",
-      );
+      this.log("info", "Processing transcript with Claude CLI...");
 
       let stdout = "";
       let stderr = "";
       let firstOutputReceived = false;
       let lastOutputTime = Date.now();
-      let currentActivity = "initializing";
       let jsonBuffer = ""; // Buffer for incomplete JSON lines
 
-      // Progress indicator: track elapsed time
-      const startTime = Date.now();
-      const progressInterval = setInterval(() => {
-        const elapsedMinutes = Math.floor((Date.now() - startTime) / 60000);
-        console.error(
-          JSON.stringify({
-            timestamp: new Date().toISOString(),
-            level: "INFO",
-            message: `Processing... ${elapsedMinutes} minute(s) elapsed`,
-            currentActivity,
-          }),
-        );
-      }, 60000); // Every 1 minute
-
       // Inactivity timeout: fail if no output received for 15 minutes
-      const INACTIVITY_TIMEOUT = 900000; // 15 minutes
+      const INACTIVITY_TIMEOUT = 900000;
       const inactivityTimer = setInterval(() => {
         const timeSinceLastOutput = Date.now() - lastOutputTime;
         if (timeSinceLastOutput > INACTIVITY_TIMEOUT) {
           clearInterval(inactivityTimer);
-          clearInterval(progressInterval);
-          const error = `Claude CLI timeout: No output received for ${Math.floor(timeSinceLastOutput / 60000)} minutes. Last activity: ${currentActivity}`;
           claude.kill();
-          reject(new Error(error));
+          reject(new Error("Claude CLI timeout: no output for 15 minutes"));
         }
-      }, 30000); // Check every 30 seconds
+      }, 30000);
 
       claude.stdout.on("data", (data) => {
         lastOutputTime = Date.now(); // Reset inactivity timer
-        if (!firstOutputReceived) {
-          firstOutputReceived = true;
-          this.log("info", "Receiving streaming output from Claude CLI...");
-        }
+        firstOutputReceived = true;
 
         const output = data.toString();
         stdout += output;
@@ -392,118 +384,43 @@ Follow all steps in CLAUDE.md including deployment. Output DEPLOYED_URL as speci
           if (!line.trim()) continue;
 
           try {
-            const event = JSON.parse(line);
+            const parsed = this.parseStreamJsonLine(line);
+            if (!parsed.ok) continue;
 
-            // Extract first meaningful text from event for logging
-            const extractPreview = (obj) => {
-              if (!obj) return "";
-              const truncate = (s, len = 120) =>
-                s && s.length > len ? s.substring(0, len) + "..." : s || "";
+            if (this.shouldSkipEvent(parsed.event)) continue;
 
-              // Handle system events with subtype
-              if (obj.type === "system" && obj.subtype) {
-                if (obj.subtype === "init") {
-                  const sessionId =
-                    obj.session_id?.substring(0, 8) || "unknown";
-                  return `Session initialized (${sessionId})`;
-                }
-                return obj.subtype;
-              }
-
-              // Handle nested message object (Claude CLI stream-json format)
-              const messageObj = obj.message || obj;
-              const content = messageObj.content;
-
-              if (content !== undefined) {
-                // Content is a string directly
-                if (typeof content === "string") {
-                  return truncate(content.split("\n")[0].trim());
-                }
-                // Content is an array of blocks
-                if (Array.isArray(content) && content.length > 0) {
-                  const firstBlock = content[0];
-                  if (firstBlock) {
-                    // Text block
-                    if (firstBlock.type === "text" && firstBlock.text) {
-                      return truncate(firstBlock.text.split("\n")[0].trim());
-                    }
-                  }
-                }
-                // Content is something else - stringify it directly
-                return truncate(JSON.stringify(content));
-              }
-
-              // Handle direct text fields
-              if (typeof obj.text === "string" && obj.text.trim()) {
-                return truncate(obj.text.split("\n")[0].trim());
-              }
-              if (typeof obj.message === "string" && obj.message.trim()) {
-                return truncate(obj.message.split("\n")[0].trim());
-              }
-
-              // Final fallback: stringify relevant fields
-              const relevantKeys = [
-                "content",
-                "text",
-                "message",
-                "data",
-                "result",
-              ];
-              for (const key of relevantKeys) {
-                if (obj[key] !== undefined) {
-                  const val = JSON.stringify(obj[key]);
-                  return truncate(val);
-                }
-              }
-
-              return truncate(JSON.stringify(obj));
-            };
-
-            // Log events
-            const preview = extractPreview(event);
-            this.log("info", preview);
-          } catch (parseError) {
-            // Ignore parse errors for non-JSON lines (e.g., plain text output)
-            if (line.includes("DEPLOYED_URL=")) {
-              this.log("info", "Deployment URL detected", { line });
+            const preview = this.extractEventPreview(parsed.event);
+            if (preview) {
+              this.log("info", preview);
             }
+          } catch (parseError) {
+            // Ignore parse errors for non-JSON lines
           }
         }
       });
 
       claude.stderr.on("data", (data) => {
         lastOutputTime = Date.now(); // Reset inactivity timer
-        if (!firstOutputReceived) {
-          firstOutputReceived = true;
-        }
-        const stderrText = data.toString();
-        stderr += stderrText;
-        // Log stderr for visibility
-        this.log("warn", `Claude stderr: ${stderrText.trim()}`);
+        firstOutputReceived = true;
+        stderr += data.toString();
       });
 
       claude.on("close", async (code) => {
         clearInterval(inactivityTimer);
-        clearInterval(progressInterval);
         if (code === 0) {
-          this.log("info", "Claude Code CLI completed successfully");
-          // Extract deployed URL from stdout (URL only, stop at whitespace/newline)
+          // Extract deployed URL from stdout
           const match = stdout.match(/DEPLOYED_URL=(https?:\/\/[^\s"'\\]+)/);
           const deployedUrl = match ? match[1].trim() : null;
           resolve({ stdout, stderr, deployedUrl });
         } else {
-          const error = `Claude Code CLI failed with exit code ${code}\nStderr: ${stderr}`;
-          await this.logError(error);
+          const error = `Claude CLI failed (exit ${code}): ${stderr.substring(0, 200)}`;
           reject(new Error(error));
         }
       });
 
-      claude.on("error", async (err) => {
+      claude.on("error", (err) => {
         clearInterval(inactivityTimer);
-        clearInterval(progressInterval);
-        const error = `Failed to spawn Claude Code CLI: ${err.message}`;
-        await this.logError(error);
-        reject(new Error(error));
+        reject(new Error(`Failed to spawn Claude CLI: ${err.message}`));
       });
     });
   }
@@ -511,46 +428,35 @@ Follow all steps in CLAUDE.md including deployment. Output DEPLOYED_URL as speci
   async checkOutputExists() {
     // Primary (canonical): Check self-contained meeting dashboard folder
     const primaryPath = path.join(this.meetingPath, "dashboard", "index.html");
+    const fallbackPath = path.join(
+      CONFIG.outputDir,
+      `${this.projectName}-${this.meetingId}.html`,
+    );
 
     try {
       await fs.access(primaryPath);
-      this.log("info", "Dashboard generated successfully", {
-        path: primaryPath,
-        meetingId: this.meetingId,
-      });
       return primaryPath;
     } catch (error) {
-      throw new Error(
-        `Dashboard not found at canonical location: ${primaryPath}`,
-      );
+      try {
+        await fs.access(fallbackPath);
+        this.log("warn", "Dashboard not in canonical location, using fallback");
+        return fallbackPath;
+      } catch (fallbackError) {
+        throw new Error(`Dashboard not found: ${primaryPath}`);
+      }
     }
   }
 
   async copyToOutputDirectory(sourcePath) {
-    // Optional: Copy dashboard to output directory for convenience
-    if (!CONFIG.outputDir) {
-      this.log("debug", "No output directory configured, skipping copy");
-      return null;
-    }
+    if (!CONFIG.outputDir) return null;
 
     try {
       await fs.mkdir(CONFIG.outputDir, { recursive: true });
-
       const outputFilename = `${this.projectName}-${this.meetingId}.html`;
       const outputPath = path.join(CONFIG.outputDir, outputFilename);
-
       await fs.copyFile(sourcePath, outputPath);
-
-      this.log("info", "Dashboard copied to output directory", {
-        from: sourcePath,
-        to: outputPath,
-      });
-
       return outputPath;
     } catch (error) {
-      this.log("warn", "Failed to copy dashboard to output directory", {
-        error: error.message,
-      });
       return null;
     }
   }
@@ -576,15 +482,6 @@ Follow all steps in CLAUDE.md including deployment. Output DEPLOYED_URL as speci
       // Optional: Copy to output directory for convenience
       const outputCopyPath = await this.copyToOutputDirectory(canonicalPath);
 
-      this.log("info", "Processing complete", {
-        project: this.projectName,
-        meetingId: this.meetingId,
-        meetingDate: this.meetingDate,
-        canonicalPath,
-        outputCopyPath: outputCopyPath || "not copied",
-        deployedUrl: claudeResult.deployedUrl || "not deployed",
-      });
-
       // Log deployed URL for external scripts (e.g., send-teams-notification.js)
       if (claudeResult.deployedUrl) {
         this.log("info", `DEPLOYED_URL=${claudeResult.deployedUrl}`);
@@ -599,9 +496,7 @@ Follow all steps in CLAUDE.md including deployment. Output DEPLOYED_URL as speci
         deployedUrl: claudeResult.deployedUrl,
       };
     } catch (error) {
-      await this.logError(
-        `Processing failed: ${error.message}\n${error.stack}`,
-      );
+      this.log("error", error.message);
       throw error;
     }
   }
@@ -612,8 +507,6 @@ async function main() {
   const processor = new MeetingProcessor();
 
   // Parse command line arguments
-  // Note: In Azure mode, entrypoint.sh calls download-transcript.js first,
-  // then passes the local transcript path to this script
   const args = process.argv.slice(2);
 
   if (args.length < 2) {

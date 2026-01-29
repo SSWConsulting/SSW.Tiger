@@ -94,50 +94,6 @@ When issues occur:
 
 ---
 
-## 🚨 Blockers
-
-### Application Access Policy (Teams Admin Required)
-
-**Status**: ⛔ BLOCKED - Waiting for Teams Admin
-
-**What it blocks**:
-- Downloading transcript content from Graph API
-- Getting meeting details (subject, date)
-- Full E2E pipeline
-
-**Required action** - Teams Admin needs to run:
-```powershell
-# Create policy
-New-CsApplicationAccessPolicy -Identity "Tiger-Policy" `
-  -AppIds "YOUR_APP_CLIENT_ID" `
-  -Description "Allow Tiger to access meeting transcripts"
-
-# Grant policy (tenant-wide or specific users)
-Grant-CsApplicationAccessPolicy -PolicyName "Tiger-Policy" -Global
-```
-
-**Reference**: [Microsoft Docs - Application Access Policy](https://learn.microsoft.com/en-us/graph/cloud-communication-online-meeting-application-access-policy)
-
----
-
-## ✅ What's Working Now
-
-1. **Azure Function** (`func-tiger-staging`)
-   - Receives Graph webhook notifications ✅
-   - Validates webhook requests ✅
-   - Parses transcript notifications ✅
-   - Will trigger Container App Job (once env vars configured)
-
-2. **Graph Subscription**
-   - Created with app-only authentication ✅
-   - Listening for `communications/onlineMeetings/getAllTranscripts` ✅
-   - Expires: 3 days (auto-renewal TODO)
-
-3. **Scripts**
-   - `azure-function/scripts/Create-GraphSubscription.ps1` - Creates subscription with app auth
-
----
-
 ## Azure Resources (Minimal)
 
 Your entire Azure footprint:

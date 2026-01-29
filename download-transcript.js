@@ -110,11 +110,6 @@ function validateConfig() {
  * Mock mode: Read local VTT file and simulate Graph API response
  */
 async function runMockMode() {
-  log("info", "Running in MOCK MODE (local testing)", {
-    mockTranscriptPath: CONFIG.mockTranscriptPath,
-    mockMeetingSubject: CONFIG.mockMeetingSubject,
-  });
-
   // Validate mock transcript file exists
   try {
     await fs.access(CONFIG.mockTranscriptPath);
@@ -135,7 +130,6 @@ async function runMockMode() {
   // Filter: only process meetings matching the filter pattern
   const subject = mockMeeting.subject || "";
   if (!matchesMeetingFilter(subject)) {
-    log("info", `Skipping meeting not matching filter: "${subject}"`);
     outputResult({
       skipped: true,
       reason: `Subject does not match filter pattern '${CONFIG.meetingFilterPattern}': "${subject}"`,
@@ -150,16 +144,8 @@ async function runMockMode() {
     : new Date().toISOString().split("T")[0];
   const filename = generateFilename(mockMeeting);
 
-  log("info", "Mock meeting matches filter", {
-    subject,
-    projectName,
-    meetingDate,
-    filename,
-  });
-
   // Read local VTT content
   const content = await fs.readFile(CONFIG.mockTranscriptPath, "utf-8");
-  log("info", "Mock transcript content read", { size: content.length });
 
   // Validate VTT content
   if (!content.startsWith("WEBVTT")) {
@@ -172,20 +158,11 @@ async function runMockMode() {
   const transcriptPath = await saveTranscript(content, filename);
 
   // Mock values for notification (can be overridden via env)
-  const mockChatId = process.env.MOCK_CHAT_ID || null;
   // Mock participants - can be set via MOCK_PARTICIPANTS as JSON array
+  // Format: [{"userId": "...", "displayName": "..."}]
   const mockParticipants = process.env.MOCK_PARTICIPANTS
     ? JSON.parse(process.env.MOCK_PARTICIPANTS)
     : [];
-
-  log("info", "Mock transcript download completed successfully", {
-    transcriptPath,
-    projectName,
-    meetingDate,
-    filename,
-    chatId: mockChatId,
-    participantCount: mockParticipants.length,
-  });
 
   // Output result as JSON to stdout
   outputResult({
@@ -195,7 +172,6 @@ async function runMockMode() {
     meetingDate,
     filename,
     meetingSubject: subject,
-    chatId: mockChatId,
     participants: mockParticipants,
   });
 
@@ -203,8 +179,6 @@ async function runMockMode() {
 }
 
 async function getGraphToken() {
-  log("info", "Acquiring Graph API token");
-
   const tokenUrl = `https://login.microsoftonline.com/${CONFIG.graphTenantId}/oauth2/v2.0/token`;
 
   const params = new URLSearchParams({
@@ -228,18 +202,11 @@ async function getGraphToken() {
   }
 
   const data = await response.json();
-  log("info", "Graph API token acquired successfully");
   return data.access_token;
 }
 
 async function fetchMeeting(token) {
   const graphUrl = `https://graph.microsoft.com/v1.0/users/${CONFIG.userId}/onlineMeetings/${CONFIG.meetingId}`;
-
-  log("info", "Fetching meeting details from Graph API", {
-    userId: CONFIG.userId,
-    meetingId: CONFIG.meetingId,
-    url: graphUrl,
-  });
 
   const response = await fetch(graphUrl, {
     method: "GET",
@@ -257,41 +224,32 @@ async function fetchMeeting(token) {
 
   const meeting = await response.json();
 
-  // Extract chat ID for Teams notification via Logic App
-  const chatId = meeting.chatInfo?.threadId || null;
-
-  // Extract participant user IDs for individual notifications
+  // Extract participant user IDs for Teams notification via Logic App
+  // Format: [{userId}] as expected by send-teams-notification.js
   const participants = [];
-  if (meeting.participants?.attendees) {
-    for (const attendee of meeting.participants.attendees) {
-      if (attendee.identity?.user?.id) {
-        participants.push({
-          userId: attendee.identity.user.id,
-          displayName: attendee.identity.user.displayName || "Unknown",
-        });
-      }
-    }
-  }
-  // Also include the organizer
+
+  // Add organizer first
   if (meeting.participants?.organizer?.identity?.user?.id) {
-    const organizer = meeting.participants.organizer.identity.user;
     participants.push({
-      userId: organizer.id,
-      displayName: organizer.displayName || "Organizer",
-      isOrganizer: true,
+      userId: meeting.participants.organizer.identity.user.id,
     });
   }
 
-  log("info", "Meeting details fetched", {
-    subject: meeting.subject,
-    startDateTime: meeting.startDateTime,
-    chatId: chatId ? `${chatId.substring(0, 30)}...` : null,
-    participantCount: participants.length,
-  });
+  // Add attendees
+  if (meeting.participants?.attendees) {
+    for (const attendee of meeting.participants.attendees) {
+      if (attendee.identity?.user?.id) {
+        const userId = attendee.identity.user.id;
+        // Skip if already added (avoid duplicates)
+        if (!participants.some((p) => p.userId === userId)) {
+          participants.push({ userId });
+        }
+      }
+    }
+  }
 
   return {
     ...meeting,
-    chatId,
     participants,
   };
 }
@@ -300,13 +258,6 @@ async function downloadTranscript(token) {
   // Graph API endpoint for transcript content
   // GET /users/{userId}/onlineMeetings/{meetingId}/transcripts/{transcriptId}/content?$format=text/vtt
   const graphUrl = `https://graph.microsoft.com/v1.0/users/${CONFIG.userId}/onlineMeetings/${CONFIG.meetingId}/transcripts/${CONFIG.transcriptId}/content?$format=text/vtt`;
-
-  log("info", "Downloading transcript from Graph API", {
-    userId: CONFIG.userId,
-    meetingId: CONFIG.meetingId,
-    transcriptId: CONFIG.transcriptId,
-    url: graphUrl,
-  });
 
   const response = await fetch(graphUrl, {
     method: "GET",
@@ -323,8 +274,6 @@ async function downloadTranscript(token) {
   }
 
   const vttContent = await response.text();
-  log("info", "Transcript content downloaded", { size: vttContent.length });
-
   return vttContent;
 }
 
@@ -409,12 +358,6 @@ async function saveTranscript(content, filename) {
 
   await fs.writeFile(outputPath, content, "utf-8");
 
-  log("info", "Transcript saved to file", {
-    path: outputPath,
-    filename,
-    size: content.length,
-  });
-
   return outputPath;
 }
 
@@ -452,12 +395,6 @@ async function main() {
       return await runMockMode();
     }
 
-    log("info", "Starting transcript download", {
-      userId: CONFIG.userId,
-      meetingId: CONFIG.meetingId,
-      transcriptId: CONFIG.transcriptId,
-    });
-
     // Get access token
     const token = await getGraphToken();
 
@@ -467,7 +404,6 @@ async function main() {
     // Filter: only process meetings matching the filter pattern
     const subject = meeting.subject || "";
     if (!matchesMeetingFilter(subject)) {
-      log("info", `Skipping meeting not matching filter: "${subject}"`);
       outputResult({
         skipped: true,
         reason: `Subject does not match filter pattern '${CONFIG.meetingFilterPattern}': "${subject}"`,
@@ -482,13 +418,6 @@ async function main() {
       : new Date().toISOString().split("T")[0];
     const filename = generateFilename(meeting);
 
-    log("info", "Meeting matches filter", {
-      subject,
-      projectName,
-      meetingDate,
-      filename,
-    });
-
     // Download transcript
     const content = await downloadTranscript(token);
 
@@ -502,14 +431,6 @@ async function main() {
     // Save to file
     const transcriptPath = await saveTranscript(content, filename);
 
-    log("info", "Transcript download completed successfully", {
-      transcriptPath,
-      projectName,
-      meetingDate,
-      filename,
-      chatId: meeting.chatId,
-    });
-
     // Output result as JSON to stdout (includes notification info)
     outputResult({
       success: true,
@@ -518,7 +439,6 @@ async function main() {
       meetingDate,
       filename,
       meetingSubject: subject,
-      chatId: meeting.chatId,
       participants: meeting.participants,
     });
 

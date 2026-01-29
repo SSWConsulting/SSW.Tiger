@@ -16,7 +16,7 @@
  * Optional:
  *   MEETING_SUBJECT       - Meeting subject for the message
  *   PROJECT_NAME          - Project name
- *   PARTICIPANTS_JSON     - JSON array of participants [{userId, displayName}]
+ *   PARTICIPANTS_JSON     - JSON array of participants [{userId}]
  *
  * Output (JSON to stdout):
  *   Success: {"success": true, "recipientCount": N}
