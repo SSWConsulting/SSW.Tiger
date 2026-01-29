@@ -21,6 +21,9 @@ function getContainerAppsClient(subscriptionId) {
   return containerAppsClient;
 }
 
+// Log prefix for easy filtering
+const LOG_PREFIX = "[TIGER]";
+
 app.http("TranscriptWebhook", {
   methods: ["GET", "POST"],
   authLevel: "anonymous", // TODO: Use 'function' in production
@@ -28,7 +31,7 @@ app.http("TranscriptWebhook", {
     // Handle Graph webhook validation
     const validationToken = request.query.get("validationToken");
     if (validationToken) {
-      context.log("Webhook validation request received");
+      context.log(`${LOG_PREFIX} Validation request - returning token`);
       return {
         status: 200,
         headers: { "Content-Type": "text/plain" },
@@ -39,21 +42,29 @@ app.http("TranscriptWebhook", {
     // Parse notification payload
     let body;
     try {
-      body = await request.json();
+      const rawBody = await request.text();
+      body = JSON.parse(rawBody);
     } catch (error) {
-      context.error("Failed to parse request body:", error);
+      context.error(
+        `${LOG_PREFIX} ERROR: Failed to parse request body:`,
+        error.message,
+      );
       return { status: 400, body: "Invalid JSON payload" };
     }
 
     const notifications = body.value || [];
 
     const results = [];
-    for (const notification of notifications) {
+    for (let i = 0; i < notifications.length; i++) {
+      const notification = notifications[i];
       try {
         const result = await processNotification(notification, context);
         results.push({ success: true, ...result });
       } catch (error) {
-        context.error(`Failed to process notification:`, error);
+        context.error(
+          `${LOG_PREFIX} ERROR: Notification ${i + 1} failed:`,
+          error.message,
+        );
         results.push({ success: false, error: error.message });
       }
     }
@@ -73,58 +84,37 @@ async function processNotification(notification, context) {
   // Validate clientState per notification (Graph sends it per notification, not at body level)
   const expectedClientState = process.env.WEBHOOK_CLIENT_STATE;
   if (expectedClientState && notification.clientState !== expectedClientState) {
-    context.warn("Invalid clientState in notification");
+    context.warn(`${LOG_PREFIX} SKIP: Invalid clientState`);
     return { skipped: true, reason: "Invalid client state" };
   }
 
-  // Filter: only process callTranscript notifications
+  // Filter: only process callTranscript notifications (case-insensitive)
   const odataType = notification.resourceData?.["@odata.type"];
-  if (odataType !== "#microsoft.graph.callTranscript") {
-    context.log(`Skipping notification type: ${odataType}`);
+  if (!odataType?.toLowerCase().includes("calltranscript")) {
+    context.log(`${LOG_PREFIX} SKIP: Not a transcript - type: ${odataType}`);
     return { skipped: true, reason: `Not a transcript: ${odataType}` };
   }
-
   // Extract IDs from notification
-  // Resource path format: /users/{userId}/onlineMeetings/{meetingId}/transcripts/{transcriptId}
-  // Note: path starts with "/" so split gives ["", "users", "{userId}", ...]
-  const resourceParts = notification.resource?.split("/") || [];
+  // Resource format: users('userId')/onlineMeetings('meetingId')/transcripts('transcriptId')
+  const resource = notification.resource || "";
 
-  // Find indices - only use if found (indexOf returns -1 if not found)
-  const usersIdx = resourceParts.indexOf("users");
-  const meetingsIdx = resourceParts.indexOf("onlineMeetings");
+  // Extract IDs using regex to handle format: users('id')/onlineMeetings('id')/transcripts('id')
+  const userMatch = resource.match(/users\('([^']+)'\)/);
+  const meetingMatch = resource.match(/onlineMeetings\('([^']+)'\)/);
+  const transcriptMatch = resource.match(/transcripts\('([^']+)'\)/);
 
-  // Extract from path if indices are valid, otherwise fall back to resourceData
-  const userIdFromPath =
-    usersIdx >= 0 && usersIdx + 1 < resourceParts.length
-      ? resourceParts[usersIdx + 1]
-      : null;
-  const meetingIdFromPath =
-    meetingsIdx >= 0 && meetingsIdx + 1 < resourceParts.length
-      ? resourceParts[meetingsIdx + 1]
-      : null;
-
-  // Use path values first, fall back to resourceData (with optional chaining)
   const userId =
-    userIdFromPath || notification.resourceData?.meetingOrganizerId;
-  const meetingId = meetingIdFromPath || notification.resourceData?.meetingId;
-  const transcriptId = notification.resourceData?.id;
+    userMatch?.[1] || notification.resourceData?.meetingOrganizerId;
+  const meetingId = meetingMatch?.[1] || notification.resourceData?.meetingId;
+  const transcriptId = transcriptMatch?.[1] || notification.resourceData?.id;
 
   if (!userId || !meetingId || !transcriptId) {
-    context.error("Missing required IDs from notification", {
-      userId,
-      meetingId,
-      transcriptId,
-      resource: notification.resource,
-    });
+    context.error(`${LOG_PREFIX} ERROR: Missing required IDs`);
     return {
       skipped: true,
       reason: `Missing IDs: userId=${userId}, meetingId=${meetingId}, transcriptId=${transcriptId}`,
     };
   }
-
-  context.log(
-    `Triggering job for transcript: userId=${userId}, meetingId=${meetingId}, transcriptId=${transcriptId}`,
-  );
 
   await triggerContainerAppJob({ userId, meetingId, transcriptId }, context);
 
@@ -152,6 +142,9 @@ async function triggerContainerAppJob(params, context) {
   if (!containerImage) missingEnvVars.push("CONTAINER_APP_JOB_IMAGE");
 
   if (missingEnvVars.length > 0) {
+    context.error(
+      `${LOG_PREFIX} ERROR: Missing env vars: ${missingEnvVars.join(", ")}`,
+    );
     throw new Error(
       `Missing required environment variables: ${missingEnvVars.join(", ")}`,
     );
@@ -160,7 +153,9 @@ async function triggerContainerAppJob(params, context) {
   // Use singleton client for better performance
   const client = getContainerAppsClient(subscriptionId);
 
-  const poller = await client.jobs.beginStart(resourceGroup, jobName, {
+  context.log(`${LOG_PREFIX} Starting Container App Job: ${jobName}`);
+
+  await client.jobs.beginStart(resourceGroup, jobName, {
     template: {
       containers: [
         {
@@ -176,6 +171,5 @@ async function triggerContainerAppJob(params, context) {
     },
   });
 
-  context.log(`Container App Job started with image: ${containerImage}`);
-  context.log(`Operation state: ${poller.getOperationState().status}`);
+  context.log(`${LOG_PREFIX} SUCCESS: Container App Job triggered - ${jobName}`);
 }
