@@ -2,7 +2,7 @@
   "name": "tiger-azure-function",
   "version": "1.0.0",
   "description": "Azure Function for T.I.G.E.R. - Receives Graph webhook, triggers Container App Job (Option B)",
-  "main": "src/functions/TranscriptWebhook.js",
+  "main": "src/functions/index.js",
   "scripts": {
     "start": "func start"
   },
