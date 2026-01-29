@@ -4,7 +4,7 @@ Automate meeting transcript processing from Microsoft Teams through to surge.sh 
 
 ---
 
-## Architecture Overview (Option B) (Option B)
+## Architecture Overview
 
 ```
 Microsoft Teams Meeting Ends
@@ -28,49 +28,6 @@ Posts link back to Teams (via Graph API)
 
 ---
 
-## 🏗️ Decision: Option B (Job downloads VTT directly)
-
-### Architecture Choice: Option B
-
-```
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│  Webhook → Function → Job → Graph API → /tmp → Process                           │
-│              │                                                                    │
-│              └─ Passes: GRAPH_MEETING_ID, GRAPH_TRANSCRIPT_ID, GRAPH_USER_ID, ... │
-└──────────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Why Option B?
-
-| Factor | Benefit |
-|--------|---------|
-| **Simpler Architecture** | No Blob intermediate layer |
-| **Single Responsibility** | Function is pure trigger, Job handles everything |
-| **Less Infrastructure** | No transcript container, no lifecycle policy |
-| **Debugging** | Can manually download VTT from Teams when needed |
-
-### How It Works
-
-1. **Graph Webhook** notifies Function when transcript is created
-2. **Function** extracts meeting info and triggers Container App Job with:
-   - `MEETING_ID` - Graph meeting identifier
-   - `TRANSCRIPT_ID` - Graph transcript identifier
-   - `PROJECT_NAME` - Extracted from meeting subject
-   - `MEETING_DATE` - Meeting start date (YYYY-MM-DD)
-   - `FILENAME` - Generated filename for the transcript
-3. **Container App Job** downloads VTT directly from Graph API
-4. **processor.js** processes transcript and deploys dashboard
-5. **Posts link** back to Teams chat/channel
-
-### Debugging Strategy
-
-When issues occur:
-1. Download VTT manually from Teams meeting
-2. Run locally: `node processor.js ./downloaded.vtt test-project`
-3. Check Container App Job logs in Azure Portal
-
----
-
 ## ✅ Current Status
 
 | Component | Status | Notes |
@@ -87,10 +44,10 @@ When issues occur:
 | Azure Function | ✅ DONE | Deployed to `func-tiger-staging`, webhook validation working |
 | Graph Subscription | ✅ DONE | Created with app-only auth, expires in 3 days, auto-renewal |
 | Webhook Handler Test | ✅ DONE | Testing and got permission error when triggering Container App Job |
-| Download transcript | ⛔ BLOCKED | Requires Application Access Policy |
-| Container App Job | ❌ TODO |  Grant permissions and wire trigger from Azure Function |
-| Notification | ❌ TODO | Posts dashboard link to Teams chat/channel |
-| E2E Test | ⛔ BLOCKED | Waiting for Access Policy |
+| Download transcript | ✅ DONE | Requires Application Access Policy |
+| Container App Job | ✅ DONE |  Grant permissions and wire trigger from Azure Function |
+| Notification | ✅ DONE | Posts dashboard link to Teams chat/channel |
+| E2E Test | TODO | Waiting for Access Policy |
 
 ---
 

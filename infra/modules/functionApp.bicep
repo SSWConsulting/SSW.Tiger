@@ -100,6 +100,16 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'CONTAINER_APP_JOB_IMAGE', value: containerAppJobImage }
         // Subscription ID (for Container App API calls)
         { name: 'SUBSCRIPTION_ID', value: subscription().subscriptionId }
+        // Graph Subscription ID (stored in Key Vault after creation via script)
+        {
+          name: 'GRAPH_SUBSCRIPTION_ID'
+          value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=graph-subscription-id)'
+        }
+        // Logic App URL (stored in Key Vault after Portal configuration)
+        {
+          name: 'LOGIC_APP_URL'
+          value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=logic-app-url)'
+        }
       ]
     }
   }

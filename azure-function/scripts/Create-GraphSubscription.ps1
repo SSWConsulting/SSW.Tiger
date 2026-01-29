@@ -15,6 +15,7 @@ param(
     [string]$FunctionKey,
 
     [string]$FunctionAppName = "func-tiger-staging",
+    [string]$KeyVaultName = "kv-tiger-staging",
     [string]$ClientState = "tiger-secret-state",
     [int]$ExpirationDays = 3
 )
@@ -61,7 +62,7 @@ $functionUrl = "https://$FunctionAppName.azurewebsites.net/api/TranscriptWebhook
 }
 
 # Step 3: Create Subscription
-Write-Host "`n[3/3] Creating Graph subscription..." -ForegroundColor Yellow
+Write-Host "`n[3/4] Creating Graph subscription..." -ForegroundColor Yellow
 
 $expirationDateTime = (Get-Date).AddDays($ExpirationDays).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
@@ -89,7 +90,16 @@ try {
     Write-Host "  Subscription ID : $($response.id)"
     Write-Host "  Resource        : $($response.resource)"
     Write-Host "  Expires         : $($response.expirationDateTime)"
-    Write-Host "`nSave the Subscription ID for renewal!" -ForegroundColor Cyan
+
+    # Save subscription ID to Key Vault
+    Write-Host "`n[4/4] Saving subscription ID to Key Vault..." -ForegroundColor Yellow
+    try {
+        az keyvault secret set --vault-name $KeyVaultName --name "graph-subscription-id" --value $response.id | Out-Null
+        Write-Host "  Saved to Key Vault: $KeyVaultName/graph-subscription-id" -ForegroundColor Green
+    } catch {
+        Write-Host "  Warning: Failed to save to Key Vault: $_" -ForegroundColor Yellow
+        Write-Host "  Manually run: az keyvault secret set --vault-name $KeyVaultName --name graph-subscription-id --value $($response.id)" -ForegroundColor Yellow
+    }
 
     # Output subscription ID for scripting
     return $response
