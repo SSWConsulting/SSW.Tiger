@@ -5,8 +5,10 @@
  * Invokes Claude Code CLI to process meeting transcripts
  *
  * Usage:
- *   Local:  node processor.js <transcript-file-path> <project-name>
- *   Azure:  Set env vars: GRAPH_MEETING_ID, GRAPH_TRANSCRIPT_ID, GRAPH_USER_ID, PROJECT_NAME, MEETING_DATE, FILENAME
+ *   node processor.js <transcript-file-path> <project-name>
+ *
+ * Example:
+ *   node processor.js ./dropzone/2026-01-22-sprint.vtt yakshaver
  *
  * Exit Codes: 0 = success, 1 = error
  */
@@ -22,14 +24,6 @@ const CONFIG = {
   // Auth configuration - supports both API key and OAuth token
   claudeApiKey: process.env.ANTHROPIC_API_KEY,
   claudeOAuthToken: process.env.CLAUDE_CODE_OAUTH_TOKEN,
-  // Graph API configuration (for downloading transcripts in Azure mode)
-  graphClientId: process.env.GRAPH_CLIENT_ID,
-  graphClientSecret: process.env.GRAPH_CLIENT_SECRET,
-  graphTenantId: process.env.GRAPH_TENANT_ID,
-  // Teams notification configuration (optional)
-  teamsChatId: process.env.TEAMS_CHAT_ID,
-  teamsTeamId: process.env.TEAMS_TEAM_ID,
-  teamsChannelId: process.env.TEAMS_CHANNEL_ID,
 };
 
 class MeetingProcessor {
@@ -351,12 +345,17 @@ Follow all steps in CLAUDE.md including deployment. Output DEPLOYED_URL as speci
       let currentActivity = "initializing";
       let jsonBuffer = ""; // Buffer for incomplete JSON lines
 
-      // Progress indicator: log current activity every minute
-      let elapsedMinutes = 0;
+      // Progress indicator: track elapsed time
+      const startTime = Date.now();
       const progressInterval = setInterval(() => {
-        elapsedMinutes++;
-        const minutesSinceLastOutput = Math.floor(
-          (Date.now() - lastOutputTime) / 60000,
+        const elapsedMinutes = Math.floor((Date.now() - startTime) / 60000);
+        console.error(
+          JSON.stringify({
+            timestamp: new Date().toISOString(),
+            level: "INFO",
+            message: `Processing... ${elapsedMinutes} minute(s) elapsed`,
+            currentActivity,
+          }),
         );
       }, 60000); // Every 1 minute
 
@@ -368,7 +367,6 @@ Follow all steps in CLAUDE.md including deployment. Output DEPLOYED_URL as speci
           clearInterval(inactivityTimer);
           clearInterval(progressInterval);
           const error = `Claude CLI timeout: No output received for ${Math.floor(timeSinceLastOutput / 60000)} minutes. Last activity: ${currentActivity}`;
-          this.log("error", error);
           claude.kill();
           reject(new Error(error));
         }
@@ -429,20 +427,6 @@ Follow all steps in CLAUDE.md including deployment. Output DEPLOYED_URL as speci
                     if (firstBlock.type === "text" && firstBlock.text) {
                       return truncate(firstBlock.text.split("\n")[0].trim());
                     }
-                    // Tool use block
-                    if (firstBlock.type === "tool_use" && firstBlock.name) {
-                      return `Calling tool: ${firstBlock.name}`;
-                    }
-                    // Tool result block
-                    if (firstBlock.type === "tool_result") {
-                      const resultText =
-                        typeof firstBlock.content === "string"
-                          ? firstBlock.content.split("\n")[0].trim()
-                          : "completed";
-                      return truncate(`Tool result: ${resultText}`);
-                    }
-                    // Fallback: stringify first block
-                    return truncate(JSON.stringify(firstBlock));
                   }
                 }
                 // Content is something else - stringify it directly
@@ -571,148 +555,6 @@ Follow all steps in CLAUDE.md including deployment. Output DEPLOYED_URL as speci
     }
   }
 
-  /**
-   * Get Graph API access token using client credentials flow (MSAL)
-   */
-  async getGraphToken() {
-    this.log("info", "Acquiring Graph API token");
-
-    if (
-      !CONFIG.graphClientId ||
-      !CONFIG.graphClientSecret ||
-      !CONFIG.graphTenantId
-    ) {
-      throw new Error(
-        "Graph API credentials not configured.\n" +
-          "Set: GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, GRAPH_TENANT_ID",
-      );
-    }
-
-    const tokenUrl = `https://login.microsoftonline.com/${CONFIG.graphTenantId}/oauth2/v2.0/token`;
-
-    const params = new URLSearchParams({
-      client_id: CONFIG.graphClientId,
-      client_secret: CONFIG.graphClientSecret,
-      scope: "https://graph.microsoft.com/.default",
-      grant_type: "client_credentials",
-    });
-
-    const response = await fetch(tokenUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: params.toString(),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(
-        `Failed to acquire Graph token: ${response.status} - ${errorText}`,
-      );
-    }
-
-    const data = await response.json();
-    this.log("info", "Graph API token acquired successfully");
-    return data.access_token;
-  }
-
-  async downloadFromGraphApi(userId, meetingId, transcriptId, filename) {
-    this.log("info", "Downloading transcript from Graph API", {
-      userId,
-      meetingId,
-      transcriptId,
-    });
-
-    const token = await this.getGraphToken();
-
-    // Graph API endpoint for transcript content
-    // GET /users/{userId}/onlineMeetings/{meetingId}/transcripts/{transcriptId}/content?$format=text/vtt
-    const graphUrl = `https://graph.microsoft.com/v1.0/users/${userId}/onlineMeetings/${meetingId}/transcripts/${transcriptId}/content?$format=text/vtt`;
-
-    const response = await fetch(graphUrl, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(
-        `Failed to download transcript: ${response.status} - ${errorText}`,
-      );
-    }
-
-    const vttContent = await response.text();
-
-    // Save to temp file
-    const tempDir = path.join(__dirname, "temp");
-    await fs.mkdir(tempDir, { recursive: true });
-
-    const localPath = path.join(tempDir, filename);
-    await fs.writeFile(localPath, vttContent, "utf-8");
-
-    this.log("info", "Transcript downloaded from Graph API", {
-      localPath,
-      size: vttContent.length,
-    });
-
-    return localPath;
-  }
-
-  async postToTeams(deployedUrl) {
-    const isGroupChat = !!CONFIG.teamsChatId;
-    const isChannel = !!(CONFIG.teamsTeamId && CONFIG.teamsChannelId);
-
-    if (!isGroupChat && !isChannel) {
-      this.log("info", "Teams not configured, skipping notification");
-      return;
-    }
-
-    const targetType = isGroupChat ? "group chat" : "channel";
-    this.log("info", `Posting dashboard link to Teams ${targetType}`, {
-      deployedUrl,
-    });
-
-    try {
-      const token = await this.getGraphToken();
-
-      const message = {
-        body: {
-          contentType: "html",
-          content: `<p><strong>📊 Meeting Dashboard Ready</strong></p>
-<p><strong>Project:</strong> ${this.projectName}</p>
-<p><strong>Meeting:</strong> ${this.meetingId} (${this.meetingDate})</p>
-<p><a href="${deployedUrl}">🔗 View Dashboard</a></p>`,
-        },
-      };
-
-      const graphUrl = isGroupChat
-        ? `https://graph.microsoft.com/v1.0/chats/${CONFIG.teamsChatId}/messages`
-        : `https://graph.microsoft.com/v1.0/teams/${CONFIG.teamsTeamId}/channels/${CONFIG.teamsChannelId}/messages`;
-
-      const response = await fetch(graphUrl, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(message),
-      });
-
-      if (!response.ok) {
-        const errorBody = await response.text();
-        throw new Error(`Graph API error: ${response.status} - ${errorBody}`);
-      }
-
-      const result = await response.json();
-      this.log("info", `Successfully posted to Teams ${targetType}`, {
-        messageId: result.id,
-      });
-    } catch (error) {
-      this.log("warn", `Failed to post to Teams: ${error.message}`);
-    }
-  }
-
   async process(transcriptPath, projectName) {
     try {
       // Validate credentials first (fail fast)
@@ -743,10 +585,9 @@ Follow all steps in CLAUDE.md including deployment. Output DEPLOYED_URL as speci
         deployedUrl: claudeResult.deployedUrl || "not deployed",
       });
 
-      // Post link back to Teams (if configured)
+      // Log deployed URL for external scripts (e.g., send-teams-notification.js)
       if (claudeResult.deployedUrl) {
         this.log("info", `DEPLOYED_URL=${claudeResult.deployedUrl}`);
-        await this.postToTeams(claudeResult.deployedUrl);
       }
 
       return {
@@ -766,83 +607,29 @@ Follow all steps in CLAUDE.md including deployment. Output DEPLOYED_URL as speci
   }
 }
 
-/**
- * Check if running in Azure mode (Graph API env vars set)
- */
-function isAzureMode() {
-  return !!(
-    process.env.GRAPH_MEETING_ID &&
-    process.env.GRAPH_TRANSCRIPT_ID &&
-    process.env.GRAPH_USER_ID &&
-    process.env.PROJECT_NAME
-  );
-}
-
 // Main execution
 async function main() {
   const processor = new MeetingProcessor();
 
-  let transcriptPath, projectName;
+  // Parse command line arguments
+  // Note: In Azure mode, entrypoint.sh calls download-transcript.js first,
+  // then passes the local transcript path to this script
+  const args = process.argv.slice(2);
 
-  if (isAzureMode()) {
-    // Azure Container App Job mode: download transcript from Graph API
-    processor.log("info", "Running in Azure mode (Graph API)");
-
-    const graphMeetingId = process.env.GRAPH_MEETING_ID;
-    const graphTranscriptId = process.env.GRAPH_TRANSCRIPT_ID;
-    const graphUserId = process.env.GRAPH_USER_ID;
-    projectName = process.env.PROJECT_NAME;
-    const meetingDate = process.env.MEETING_DATE;
-    const filename = process.env.FILENAME || `${meetingDate}.vtt`;
-
-    processor.log("info", "Azure environment variables", {
-      graphMeetingId,
-      graphTranscriptId,
-      graphUserId,
-      projectName,
-      meetingDate,
-      filename,
-    });
-
-    // Download VTT from Graph API
-    try {
-      transcriptPath = await processor.downloadFromGraphApi(
-        graphUserId,
-        graphMeetingId,
-        graphTranscriptId,
-        filename,
-      );
-    } catch (error) {
-      console.error(
-        JSON.stringify({
-          timestamp: new Date().toISOString(),
-          level: "ERROR",
-          message: "Failed to download transcript from Graph API",
-          error: error.message,
-          exitCode: 1,
-        }),
-      );
-      process.exit(1);
-    }
-  } else {
-    // Local mode: parse command line arguments
-    const args = process.argv.slice(2);
-
-    if (args.length < 2) {
-      console.error(
-        "Usage: node processor.js <transcript-file-path> <project-name>",
-      );
-      console.error(
-        "Example: node processor.js ./transcripts/meeting.vtt yakshaver",
-      );
-      console.error(
-        "\nOr set Azure env vars: GRAPH_MEETING_ID, GRAPH_TRANSCRIPT_ID, GRAPH_USER_ID, PROJECT_NAME",
-      );
-      process.exit(1);
-    }
-
-    [transcriptPath, projectName] = args;
+  if (args.length < 2) {
+    console.error(
+      "Usage: node processor.js <transcript-file-path> <project-name>",
+    );
+    console.error(
+      "Example: node processor.js ./transcripts/2026-01-22-sprint.vtt yakshaver",
+    );
+    console.error(
+      "\nNote: For Azure/Graph API mode, use entrypoint.sh which handles transcript download",
+    );
+    process.exit(1);
   }
+
+  const [transcriptPath, projectName] = args;
 
   try {
     const result = await processor.process(transcriptPath, projectName);

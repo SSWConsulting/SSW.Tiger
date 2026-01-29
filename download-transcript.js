@@ -3,8 +3,12 @@
 /**
  * Download Transcript from Microsoft Graph API
  *
- * Standalone script to download meeting transcripts from Teams.
- * Can be tested independently before running the full processor.
+ * This script:
+ * 1. Fetches meeting details from Graph API
+ * 2. Filters: only processes meetings with "sprint" in subject
+ * 3. Extracts project name and generates filename
+ * 4. Downloads transcript content (VTT format)
+ * 5. Outputs JSON result for entrypoint.sh to parse
  *
  * Usage:
  *   node download-transcript.js
@@ -19,10 +23,14 @@
  *
  * Optional:
  *   OUTPUT_PATH          - Where to save the file (default: ./dropzone/{filename})
- *   FILENAME             - Output filename (default: transcript.vtt)
+ *
+ * Output (JSON to stdout):
+ *   Success: {"success": true, "transcriptPath": "...", "projectName": "...", "meetingDate": "...", "filename": "..."}
+ *   Skipped: {"skipped": true, "reason": "..."}
+ *   Error: {"error": true, "message": "..."}
  *
  * Exit Codes:
- *   0 = success (outputs file path to stdout)
+ *   0 = success or skipped
  *   1 = error
  */
 
@@ -38,12 +46,17 @@ const CONFIG = {
   meetingId: process.env.GRAPH_MEETING_ID,
   transcriptId: process.env.GRAPH_TRANSCRIPT_ID,
   outputPath: process.env.OUTPUT_PATH,
-  filename: process.env.FILENAME || "transcript.vtt",
+  // Mock mode for local testing (bypasses Graph API)
+  mockMode: process.env.USE_MOCK_TRANSCRIPT === "true",
+  mockTranscriptPath: process.env.MOCK_TRANSCRIPT_PATH,
+  mockMeetingSubject:
+    process.env.MOCK_MEETING_SUBJECT || "[TestProject] Sprint Review",
+  mockMeetingDate: process.env.MOCK_MEETING_DATE,
+  // Meeting filter: regex pattern to match meeting subjects (default: "sprint")
+  // Set to empty string or ".*" to process all meetings
+  meetingFilterPattern: process.env.MEETING_FILTER_PATTERN || "sprint",
 };
 
-/**
- * Structured logging
- */
 function log(level, message, data = null) {
   const timestamp = new Date().toISOString();
   const logEntry = {
@@ -57,11 +70,22 @@ function log(level, message, data = null) {
   if (level === "error") {
     console.error(output);
   } else {
-    console.error(output); // Log to stderr so stdout is clean for file path
+    console.error(output);
   }
 }
 
 function validateConfig() {
+  // In mock mode, only require the mock transcript path
+  if (CONFIG.mockMode) {
+    if (!CONFIG.mockTranscriptPath) {
+      throw new Error(
+        "Mock mode enabled but MOCK_TRANSCRIPT_PATH not set.\n" +
+          "Set MOCK_TRANSCRIPT_PATH to a local .vtt file path.",
+      );
+    }
+    return;
+  }
+
   const required = [
     ["GRAPH_CLIENT_ID", CONFIG.graphClientId],
     ["GRAPH_CLIENT_SECRET", CONFIG.graphClientSecret],
@@ -83,8 +107,101 @@ function validateConfig() {
 }
 
 /**
- * Get Graph API access token using client credentials flow
+ * Mock mode: Read local VTT file and simulate Graph API response
  */
+async function runMockMode() {
+  log("info", "Running in MOCK MODE (local testing)", {
+    mockTranscriptPath: CONFIG.mockTranscriptPath,
+    mockMeetingSubject: CONFIG.mockMeetingSubject,
+  });
+
+  // Validate mock transcript file exists
+  try {
+    await fs.access(CONFIG.mockTranscriptPath);
+  } catch (error) {
+    throw new Error(
+      `Mock transcript file not found: ${CONFIG.mockTranscriptPath}`,
+    );
+  }
+
+  // Simulate meeting object
+  const mockMeeting = {
+    subject: CONFIG.mockMeetingSubject,
+    startDateTime: CONFIG.mockMeetingDate
+      ? `${CONFIG.mockMeetingDate}T10:00:00Z`
+      : new Date().toISOString(),
+  };
+
+  // Filter: only process meetings matching the filter pattern
+  const subject = mockMeeting.subject || "";
+  if (!matchesMeetingFilter(subject)) {
+    log("info", `Skipping meeting not matching filter: "${subject}"`);
+    outputResult({
+      skipped: true,
+      reason: `Subject does not match filter pattern '${CONFIG.meetingFilterPattern}': "${subject}"`,
+    });
+    process.exit(0);
+  }
+
+  // Extract project name and generate filename
+  const projectName = extractProjectName(subject);
+  const meetingDate = mockMeeting.startDateTime
+    ? mockMeeting.startDateTime.split("T")[0]
+    : new Date().toISOString().split("T")[0];
+  const filename = generateFilename(mockMeeting);
+
+  log("info", "Mock meeting matches filter", {
+    subject,
+    projectName,
+    meetingDate,
+    filename,
+  });
+
+  // Read local VTT content
+  const content = await fs.readFile(CONFIG.mockTranscriptPath, "utf-8");
+  log("info", "Mock transcript content read", { size: content.length });
+
+  // Validate VTT content
+  if (!content.startsWith("WEBVTT")) {
+    log("warn", "Mock content may not be valid VTT format", {
+      preview: content.substring(0, 100),
+    });
+  }
+
+  // Save to dropzone (same as real mode)
+  const transcriptPath = await saveTranscript(content, filename);
+
+  // Mock values for notification (can be overridden via env)
+  const mockChatId = process.env.MOCK_CHAT_ID || null;
+  // Mock participants - can be set via MOCK_PARTICIPANTS as JSON array
+  const mockParticipants = process.env.MOCK_PARTICIPANTS
+    ? JSON.parse(process.env.MOCK_PARTICIPANTS)
+    : [];
+
+  log("info", "Mock transcript download completed successfully", {
+    transcriptPath,
+    projectName,
+    meetingDate,
+    filename,
+    chatId: mockChatId,
+    participantCount: mockParticipants.length,
+  });
+
+  // Output result as JSON to stdout
+  outputResult({
+    success: true,
+    transcriptPath,
+    projectName,
+    meetingDate,
+    filename,
+    meetingSubject: subject,
+    chatId: mockChatId,
+    participants: mockParticipants,
+  });
+
+  process.exit(0);
+}
+
 async function getGraphToken() {
   log("info", "Acquiring Graph API token");
 
@@ -115,9 +232,70 @@ async function getGraphToken() {
   return data.access_token;
 }
 
-/**
- * Download transcript content from Graph API
- */
+async function fetchMeeting(token) {
+  const graphUrl = `https://graph.microsoft.com/v1.0/users/${CONFIG.userId}/onlineMeetings/${CONFIG.meetingId}`;
+
+  log("info", "Fetching meeting details from Graph API", {
+    userId: CONFIG.userId,
+    meetingId: CONFIG.meetingId,
+    url: graphUrl,
+  });
+
+  const response = await fetch(graphUrl, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `Failed to fetch meeting: ${response.status} - ${errorText}`,
+    );
+  }
+
+  const meeting = await response.json();
+
+  // Extract chat ID for Teams notification via Logic App
+  const chatId = meeting.chatInfo?.threadId || null;
+
+  // Extract participant user IDs for individual notifications
+  const participants = [];
+  if (meeting.participants?.attendees) {
+    for (const attendee of meeting.participants.attendees) {
+      if (attendee.identity?.user?.id) {
+        participants.push({
+          userId: attendee.identity.user.id,
+          displayName: attendee.identity.user.displayName || "Unknown",
+        });
+      }
+    }
+  }
+  // Also include the organizer
+  if (meeting.participants?.organizer?.identity?.user?.id) {
+    const organizer = meeting.participants.organizer.identity.user;
+    participants.push({
+      userId: organizer.id,
+      displayName: organizer.displayName || "Organizer",
+      isOrganizer: true,
+    });
+  }
+
+  log("info", "Meeting details fetched", {
+    subject: meeting.subject,
+    startDateTime: meeting.startDateTime,
+    chatId: chatId ? `${chatId.substring(0, 30)}...` : null,
+    participantCount: participants.length,
+  });
+
+  return {
+    ...meeting,
+    chatId,
+    participants,
+  };
+}
+
 async function downloadTranscript(token) {
   // Graph API endpoint for transcript content
   // GET /users/{userId}/onlineMeetings/{meetingId}/transcripts/{transcriptId}/content?$format=text/vtt
@@ -150,7 +328,75 @@ async function downloadTranscript(token) {
   return vttContent;
 }
 
-async function saveTranscript(content) {
+function parseSubject(subject) {
+  if (!subject) return { projectName: "general", title: "meeting" };
+
+  let projectName = "general";
+  let title = subject;
+
+  // Format 1: [ProjectName] Meeting Title
+  const bracketMatch = subject.match(/^\[([^\]]+)\]\s*(.*)$/);
+  if (bracketMatch) {
+    projectName = bracketMatch[1].trim();
+    title = bracketMatch[2].trim() || "meeting";
+    return {
+      projectName: projectName.toLowerCase().replace(/\s+/g, "-"),
+      title,
+    };
+  }
+
+  // Format 2: ProjectName - Meeting Title (dash separator)
+  const dashMatch = subject.match(/^([^-]+)\s*-\s*(.+)$/);
+  if (dashMatch) {
+    const projectPart = dashMatch[1].trim();
+    if (projectPart.length <= 30 && !projectPart.includes(" and ")) {
+      projectName = projectPart;
+      title = dashMatch[2].trim();
+      return {
+        projectName: projectName.toLowerCase().replace(/\s+/g, "-"),
+        title,
+      };
+    }
+  }
+
+  // Format 3: ProjectName: Meeting Title (colon separator)
+  const colonMatch = subject.match(/^([^:]+)\s*:\s*(.+)$/);
+  if (colonMatch) {
+    const projectPart = colonMatch[1].trim();
+    if (projectPart.length <= 30 && !projectPart.includes(" and ")) {
+      projectName = projectPart;
+      title = colonMatch[2].trim();
+      return {
+        projectName: projectName.toLowerCase().replace(/\s+/g, "-"),
+        title,
+      };
+    }
+  }
+
+  return { projectName: "general", title: subject };
+}
+
+function extractProjectName(subject) {
+  return parseSubject(subject).projectName;
+}
+
+function generateFilename(meeting) {
+  const date =
+    meeting.startDateTime?.split("T")[0] ||
+    new Date().toISOString().split("T")[0];
+
+  const { title } = parseSubject(meeting.subject);
+
+  const slug =
+    title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "meeting";
+
+  return `${date}-${slug}.vtt`;
+}
+
+async function saveTranscript(content, filename) {
   let outputPath;
 
   if (CONFIG.outputPath) {
@@ -158,34 +404,90 @@ async function saveTranscript(content) {
   } else {
     const tempDir = path.join(process.cwd(), "dropzone");
     await fs.mkdir(tempDir, { recursive: true });
-    outputPath = path.join(tempDir, CONFIG.filename);
+    outputPath = path.join(tempDir, filename);
   }
 
   await fs.writeFile(outputPath, content, "utf-8");
 
   log("info", "Transcript saved to file", {
     path: outputPath,
-    filename: CONFIG.filename,
+    filename,
     size: content.length,
   });
 
   return outputPath;
 }
 
+function outputResult(result) {
+  console.log(JSON.stringify(result));
+}
+
+function matchesMeetingFilter(subject) {
+  const pattern = CONFIG.meetingFilterPattern;
+
+  // No filter or wildcard = process all
+  if (!pattern || pattern === ".*" || pattern === "*") {
+    return true;
+  }
+
+  try {
+    const regex = new RegExp(pattern, "i"); // Case-insensitive
+    return regex.test(subject || "");
+  } catch (error) {
+    // Invalid regex, fallback to simple includes
+    log("warn", `Invalid filter pattern '${pattern}', using simple match`, {
+      error: error.message,
+    });
+    return (subject || "").toLowerCase().includes(pattern.toLowerCase());
+  }
+}
+
 async function main() {
   try {
+    // Validate configuration (checks mock mode or Graph API config)
+    validateConfig();
+
+    // Mock mode: use local file instead of Graph API
+    if (CONFIG.mockMode) {
+      return await runMockMode();
+    }
+
     log("info", "Starting transcript download", {
       userId: CONFIG.userId,
       meetingId: CONFIG.meetingId,
       transcriptId: CONFIG.transcriptId,
-      filename: CONFIG.filename,
     });
-
-    // Validate configuration
-    validateConfig();
 
     // Get access token
     const token = await getGraphToken();
+
+    // Fetch meeting details
+    const meeting = await fetchMeeting(token);
+
+    // Filter: only process meetings matching the filter pattern
+    const subject = meeting.subject || "";
+    if (!matchesMeetingFilter(subject)) {
+      log("info", `Skipping meeting not matching filter: "${subject}"`);
+      outputResult({
+        skipped: true,
+        reason: `Subject does not match filter pattern '${CONFIG.meetingFilterPattern}': "${subject}"`,
+      });
+      process.exit(0);
+    }
+
+    // Extract project name and generate filename
+    const projectName = extractProjectName(subject);
+    const meetingDate = meeting.startDateTime
+      ? meeting.startDateTime.split("T")[0]
+      : new Date().toISOString().split("T")[0];
+    const filename = generateFilename(meeting);
+
+    log("info", "Meeting matches filter", {
+      subject,
+      projectName,
+      meetingDate,
+      filename,
+    });
 
     // Download transcript
     const content = await downloadTranscript(token);
@@ -198,18 +500,37 @@ async function main() {
     }
 
     // Save to file
-    const outputPath = await saveTranscript(content);
+    const transcriptPath = await saveTranscript(content, filename);
 
-    log("info", "Transcript download completed successfully", { outputPath });
+    log("info", "Transcript download completed successfully", {
+      transcriptPath,
+      projectName,
+      meetingDate,
+      filename,
+      chatId: meeting.chatId,
+    });
 
-    // Output the file path to stdout (for piping to processor)
-    console.log(outputPath);
+    // Output result as JSON to stdout (includes notification info)
+    outputResult({
+      success: true,
+      transcriptPath,
+      projectName,
+      meetingDate,
+      filename,
+      meetingSubject: subject,
+      chatId: meeting.chatId,
+      participants: meeting.participants,
+    });
 
     process.exit(0);
   } catch (error) {
     log("error", error.message, {
       name: error.name,
       stack: error.stack,
+    });
+    outputResult({
+      error: true,
+      message: error.message,
     });
     process.exit(1);
   }
@@ -223,8 +544,14 @@ if (require.main === module) {
 // Export for testing
 module.exports = {
   getGraphToken,
+  fetchMeeting,
   downloadTranscript,
   saveTranscript,
+  parseSubject,
+  extractProjectName,
+  generateFilename,
+  matchesMeetingFilter,
   validateConfig,
+  runMockMode,
   CONFIG,
 };

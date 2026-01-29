@@ -113,25 +113,90 @@ if [ "$1" = "--test-auth" ]; then
 fi
 
 # Check if running in Azure mode (Graph API environment variables set)
-if [ -n "$GRAPH_MEETING_ID" ] && [ -n "$GRAPH_TRANSCRIPT_ID" ] && [ -n "$GRAPH_USER_ID" ] && [ -n "$PROJECT_NAME" ]; then
+if [ -n "$GRAPH_MEETING_ID" ] && [ -n "$GRAPH_TRANSCRIPT_ID" ] && [ -n "$GRAPH_USER_ID" ]; then
     echo "=== Azure Mode ==="
 
     # Step 1: Download transcript from Graph API
-    echo "Step 1: Downloading transcript from Graph API..."
-    TRANSCRIPT_PATH=$(node download-transcript.js)
+    # download-transcript.js outputs JSON with meeting details and file path
+    echo "Step 1: Fetching meeting details and downloading transcript..."
+    DOWNLOAD_RESULT=$(node download-transcript.js)
     download_exitcode=$?
 
     if [ $download_exitcode -ne 0 ]; then
         echo "❌ Download failed (exit code: $download_exitcode)"
+        echo "Result: $DOWNLOAD_RESULT"
         exit $download_exitcode
     fi
 
-    echo "✅ Downloaded: $TRANSCRIPT_PATH"
+    # Parse JSON result
+    # Check if skipped (meeting doesn't contain "sprint")
+    SKIPPED=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).skipped || false")
+    if [ "$SKIPPED" = "true" ]; then
+        REASON=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).reason || 'unknown'")
+        echo "⏭️  Skipped: $REASON"
+        exit 0
+    fi
+
+    # Extract values from JSON (including notification info)
+    TRANSCRIPT_PATH=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).transcriptPath")
+    PROJECT_NAME=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).projectName")
+    MEETING_DATE=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).meetingDate")
+    FILENAME=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).filename")
+    MEETING_SUBJECT=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).meetingSubject || ''")
+    # Extract participants for individual notifications
+    PARTICIPANTS_JSON=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.stringify(JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).participants || [])")
+
+    PARTICIPANT_COUNT=$(echo "$PARTICIPANTS_JSON" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).length")
+
+    echo "✅ Meeting matches filter"
+    echo "   Project: $PROJECT_NAME"
+    echo "   Date: $MEETING_DATE"
+    echo "   File: $FILENAME"
+    echo "   Path: $TRANSCRIPT_PATH"
+    echo "   Participants: $PARTICIPANT_COUNT"
 
     # Step 2: Run processor with downloaded transcript
     echo "Step 2: Processing transcript..."
-    exec node processor.js "$TRANSCRIPT_PATH" "$PROJECT_NAME"
+    PROCESSOR_OUTPUT=$(node processor.js "$TRANSCRIPT_PATH" "$PROJECT_NAME" 2>&1)
+    processor_exitcode=$?
+
+    echo "$PROCESSOR_OUTPUT"
+
+    if [ $processor_exitcode -ne 0 ]; then
+        echo "❌ Processing failed (exit code: $processor_exitcode)"
+        exit $processor_exitcode
+    fi
+
+    # Step 3: Send Teams notification via Logic App (if configured)
+    # Extract DEPLOYED_URL from processor output
+    DEPLOYED_URL=$(echo "$PROCESSOR_OUTPUT" | grep -oP 'DEPLOYED_URL=\K[^\s"]+' | head -1)
+
+    if [ -n "$DEPLOYED_URL" ] && [ -n "$LOGIC_APP_URL" ]; then
+        echo "Step 3: Sending Teams notification via Logic App..."
+
+        # Export notification environment variables
+        export DASHBOARD_URL="$DEPLOYED_URL"
+        export MEETING_SUBJECT="$MEETING_SUBJECT"
+        export PROJECT_NAME="$PROJECT_NAME"
+        export PARTICIPANTS_JSON="$PARTICIPANTS_JSON"
+
+        node send-teams-notification.js
+        teams_exitcode=$?
+
+        if [ $teams_exitcode -eq 0 ]; then
+            echo "✅ Teams notification sent to $PARTICIPANT_COUNT participants"
+        else
+            echo "⚠️  Teams notification failed (exit code: $teams_exitcode)"
+            # Don't fail the whole pipeline for notification failure
+        fi
+    else
+        echo "ℹ️  Teams notification skipped (LOGIC_APP_URL not configured or no deployed URL)"
+    fi
+
+    echo "✅ Pipeline completed successfully"
+    exit 0
 else
     # Local mode: pass arguments directly to processor
-    exec node processor.js "$@"
+    node processor.js "$@"
+    exit $?
 fi

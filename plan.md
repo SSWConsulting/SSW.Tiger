@@ -76,7 +76,6 @@ When issues occur:
 | Component | Status | Notes |
 |-----------|--------|-------|
 | App Registration | ✅ DONE | Graph permissions configured |
-| Application Access Policy | ⏳ BLOCKED | Waiting for Teams Admin to create policy |
 | Resource Group | ✅ DONE | Dev environment provisioned |
 | API Key | ✅ DONE | ANTHROPIC_API_KEY available |
 | Dockerfile | ✅ DONE | Claude CLI, Node.js, surge configured |
@@ -85,11 +84,57 @@ When issues occur:
 | Local Testing | ✅ DONE | Test container locally first |
 | Bicep Infrastructure | ✅ DONE | Container App + Function + Key Vault |
 | GitHub Actions CI/CD | ✅ DONE | Build image → Push to ghcr.io |
-| Download transcript | ✅ DONE | processor.js downloads VTT from Graph API |
-| Azure Function | ⏳ IN PROGRESS | Webhook receiver not fully wired yet, local test with mock data is done, webhook validation and real Graph payload not tested yet
-| Graph Subscription | ❌ TODO | Subscribe to transcript created event
-| Notification | ✅ DONE | processor.js posts dashboard link to Teams chat/channel
-| E2E Test | ❌ TODO | Real Teams meeting → transcript → webhook → dashboard link → notification
+| Azure Function | ✅ DONE | Deployed to `func-tiger-staging`, webhook validation working |
+| Graph Subscription | ✅ DONE | Created with app-only auth, expires in 3 days, auto-renewal |
+| Webhook Handler Test | ✅ DONE | Testing and got permission error when triggering Container App Job |
+| Download transcript | ⛔ BLOCKED | Requires Application Access Policy |
+| Container App Job | ❌ TODO |  Grant permissions and wire trigger from Azure Function |
+| Notification | ❌ TODO | Posts dashboard link to Teams chat/channel |
+| E2E Test | ⛔ BLOCKED | Waiting for Access Policy |
+
+---
+
+## 🚨 Blockers
+
+### Application Access Policy (Teams Admin Required)
+
+**Status**: ⛔ BLOCKED - Waiting for Teams Admin
+
+**What it blocks**:
+- Downloading transcript content from Graph API
+- Getting meeting details (subject, date)
+- Full E2E pipeline
+
+**Required action** - Teams Admin needs to run:
+```powershell
+# Create policy
+New-CsApplicationAccessPolicy -Identity "Tiger-Policy" `
+  -AppIds "YOUR_APP_CLIENT_ID" `
+  -Description "Allow Tiger to access meeting transcripts"
+
+# Grant policy (tenant-wide or specific users)
+Grant-CsApplicationAccessPolicy -PolicyName "Tiger-Policy" -Global
+```
+
+**Reference**: [Microsoft Docs - Application Access Policy](https://learn.microsoft.com/en-us/graph/cloud-communication-online-meeting-application-access-policy)
+
+---
+
+## ✅ What's Working Now
+
+1. **Azure Function** (`func-tiger-staging`)
+   - Receives Graph webhook notifications ✅
+   - Validates webhook requests ✅
+   - Parses transcript notifications ✅
+   - Will trigger Container App Job (once env vars configured)
+
+2. **Graph Subscription**
+   - Created with app-only authentication ✅
+   - Listening for `communications/onlineMeetings/getAllTranscripts` ✅
+   - Expires: 3 days (auto-renewal TODO)
+
+3. **Scripts**
+   - `azure-function/scripts/Create-GraphSubscription.ps1` - Creates subscription with app auth
 
 ---
 
@@ -295,7 +340,6 @@ resource environment 'Microsoft.App/managedEnvironments@2024-03-01' = {
 }
 
 // Container App Job (pulls from ghcr.io)
-// Option B: Job downloads VTT directly from Graph API
 resource processorJob 'Microsoft.App/jobs@2024-03-01' = {
   name: '${name}-processor'
   location: location
@@ -752,40 +796,45 @@ az rest --method POST \
 
 ## 📋 Development Checklist
 
-### ✅ Completed
+### ✅ Phase 1: Local Validation
 - [x] App Registration with Graph permissions
 - [x] Azure Resource Group
 - [x] Anthropic API Key
 - [x] Dockerfile
 - [x] processor.js
 - [x] docker-compose.yml
+- [x] Local testing with mock data
 
-### 🔄 Phase 1: Local Validation (Current)
-- [ ] Create `.env` file with credentials
-- [ ] Test with `docker-compose run`
-- [ ] Verify dashboard deploys to surge.sh
+### ✅ Phase 2: Bicep Infrastructure
+- [x] Create Bicep modules
+- [x] Deploy infrastructure
+- [x] Function App created
 
-### ⏳ Phase 2: Bicep Infrastructure
-- [ ] Create `infra/main.bicep`
-- [ ] Create `infra/modules/containerApp.bicep`
-- [ ] Create `infra/modules/keyVault.bicep`
-- [ ] Create `infra/modules/storage.bicep`
-- [ ] Create `infra/modules/functionApp.bicep`
-- [ ] Run `az deployment sub create`
-- [ ] Populate Key Vault secrets
-- [ ] Grant RBAC permissions
+### ✅ Phase 3: GitHub Actions
+- [x] Build container workflow
+- [x] Push to ghcr.io
 
-### ⏳ Phase 3: GitHub Actions
-- [ ] Create `.github/workflows/build-container.yml`
-- [ ] Create `.github/workflows/deploy-infra.yml`
-- [ ] Configure Azure OIDC credentials
-- [ ] Push and verify image appears in ghcr.io
+### ✅ Phase 4: Azure Function (Option B)
+- [x] Create Function App code (`TranscriptWebhook.js`)
+- [x] Deploy to Azure (`func-tiger-staging`)
+- [x] Fix GET/POST methods for validation
+- [x] Fix package.json main entry
+- [x] Create Graph subscription (app-only auth)
+- [x] Create `Create-GraphSubscription.ps1` script
+- [ ] **Function Test** - Test with real Teams meeting transcript notification (in progress)
+- [ ] **Auto Renewal** - Add subscription auto-renewal (Timer Trigger or lifecycle handler)
 
-### ⏳ Phase 4: Azure Function
-- [ ] Create Function App code
-- [ ] Deploy to Azure
-- [ ] Create Graph subscription
-- [ ] Test end-to-end
+### ⛔ Phase 5: E2E Testing (BLOCKED)
+- [ ] **BLOCKER**: Application Access Policy (Teams Admin)
+- [ ] Configure Function App environment variables
+- [ ] Test real Teams meeting → transcript → webhook
+- [ ] Verify Container App Job triggers
+- [ ] Verify dashboard deployment
+
+### ❌ Phase 6: Production Ready
+- [ ] Add Application Insights (optional)
+- [ ] Configure WEBHOOK_CLIENT_STATE validation
+- [ ] Production environment deployment
 
 ---
 
