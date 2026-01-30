@@ -6,7 +6,7 @@ set -e
 
 # Simple logging function
 log() {
-    echo "[$(date -u +%H:%M:%S)] [$1] $2"
+    echo "[$1] $2"
 }
 
 # Setup Claude CLI authentication
@@ -50,11 +50,8 @@ EOF
 
 # Send failure notification
 send_failure_notification() {
-    local ERROR_MSG="$1"
     if [ -n "$LOGIC_APP_URL" ] && [ -n "$PARTICIPANTS_JSON" ]; then
-        log "INFO" "Sending failure notification..."
         export NOTIFICATION_TYPE="failed"
-        export ERROR_MESSAGE="$ERROR_MSG"
         node send-teams-notification.js || true
     fi
 }
@@ -62,7 +59,11 @@ send_failure_notification() {
 # Main pipeline
 run_pipeline() {
     # Step 1: Download transcript
-    DOWNLOAD_RESULT=$(node download-transcript.js)
+    if ! DOWNLOAD_RESULT=$(node download-transcript.js 2>&1); then
+        log "ERROR" "Failed to download transcript"
+        echo "$DOWNLOAD_RESULT"
+        exit 1
+    fi
 
     # Check if skipped
     if echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).skipped" 2>/dev/null | grep -q "true"; then
@@ -77,27 +78,25 @@ run_pipeline() {
     MEETING_SUBJECT=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).meetingSubject")
     PARTICIPANTS_JSON=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.stringify(JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).participants || [])")
 
+    # Export variables for notifications
+    export PROJECT_NAME="$PROJECT_NAME"
+    export MEETING_SUBJECT="$MEETING_SUBJECT"
+    export PARTICIPANTS_JSON="$PARTICIPANTS_JSON"
+
     # Step 2: Send "started" notification (if configured)
     if [ -n "$LOGIC_APP_URL" ]; then
         export NOTIFICATION_TYPE="started"
-        export PROJECT_NAME="$PROJECT_NAME"
-        export MEETING_SUBJECT="$MEETING_SUBJECT"
-        export PARTICIPANTS_JSON="$PARTICIPANTS_JSON"
-
-        if ! node send-teams-notification.js; then
-            log "WARN" "Started notification failed (continuing anyway)"
-        fi
+        node send-teams-notification.js || log "WARN" "Started notification failed"
     fi
 
-    # Set up error trap after "started" notification (so users know if processing fails)
-    trap 'send_failure_notification "Processing failed unexpectedly. Please check the logs."' ERR
-
-    # Step 3: Process transcript
-    PROCESSOR_OUTPUT=$(node processor.js "$TRANSCRIPT_PATH" "$PROJECT_NAME" 2>&1) || {
+    # Step 3: Process transcript (no trap, handle errors explicitly)
+    log "INFO" "Processing transcript with Claude..."
+    if ! PROCESSOR_OUTPUT=$(node processor.js "$TRANSCRIPT_PATH" "$PROJECT_NAME" 2>&1); then
         echo "$PROCESSOR_OUTPUT"
-        send_failure_notification "Claude processing failed. Check logs for details."
+        log "ERROR" "Claude processing failed"
+        send_failure_notification
         exit 1
-    }
+    fi
     echo "$PROCESSOR_OUTPUT"
 
     # Extract deployed URL
@@ -105,7 +104,7 @@ run_pipeline() {
 
     if [ -z "$DEPLOYED_URL" ]; then
         log "ERROR" "Failed to extract deployed URL"
-        send_failure_notification "Failed to generate dashboard. Claude processing may have encountered an error."
+        send_failure_notification
         exit 1
     fi
 
@@ -113,15 +112,10 @@ run_pipeline() {
 
     # Step 4: Send "completed" notification (if configured)
     if [ -n "$LOGIC_APP_URL" ]; then
+        log "INFO" "Sending completed notification..."
         export NOTIFICATION_TYPE="completed"
         export DASHBOARD_URL="$DEPLOYED_URL"
-        export PROJECT_NAME="$PROJECT_NAME"
-        export MEETING_SUBJECT="$MEETING_SUBJECT"
-        export PARTICIPANTS_JSON="$PARTICIPANTS_JSON"
-
-        if ! node send-teams-notification.js; then
-            log "WARN" "Completed notification failed"
-        fi
+        node send-teams-notification.js || log "WARN" "Completed notification failed"
     fi
 }
 

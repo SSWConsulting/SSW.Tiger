@@ -17,6 +17,7 @@
  *   MEETING_SUBJECT       - Meeting subject for the message
  *   PROJECT_NAME          - Project name
  *   PARTICIPANTS_JSON     - JSON array of participants [{userId}]
+ *   NOTIFICATION_TYPE     - "started", "completed", or "failed"
  *
  * Output (JSON to stdout):
  *   Success: {"success": true, "recipientCount": N}
@@ -30,19 +31,12 @@ const CONFIG = {
   projectName: process.env.PROJECT_NAME || "General Project",
   participantsJson: process.env.PARTICIPANTS_JSON,
   notificationType: process.env.NOTIFICATION_TYPE || "completed", // "started", "completed", or "failed"
-  errorMessage: process.env.ERROR_MESSAGE || "", // For "failed" notifications
 };
 
 function log(level, message, data = null) {
-  const timestamp = new Date().toISOString();
-  const logEntry = {
-    timestamp,
-    level: level.toUpperCase(),
-    component: "send-teams-notification",
-    message,
-    ...(data && { data }),
-  };
-  console.error(JSON.stringify(logEntry));
+  const prefix = `[${level.toUpperCase()}]`;
+  const suffix = data ? ` ${JSON.stringify(data)}` : "";
+  console.error(`${prefix} ${message}${suffix}`);
 }
 
 function outputResult(result) {
@@ -74,7 +68,6 @@ async function sendViaLogicApp(participants) {
     projectName: CONFIG.projectName,
     meetingSubject: CONFIG.meetingSubject,
     participants: participants,
-    errorMessage: CONFIG.errorMessage, // For "failed" notifications
   };
 
   const response = await fetch(CONFIG.logicAppUrl, {

@@ -58,20 +58,9 @@ const CONFIG = {
 };
 
 function log(level, message, data = null) {
-  const timestamp = new Date().toISOString();
-  const logEntry = {
-    timestamp,
-    level: level.toUpperCase(),
-    component: "download-transcript",
-    message,
-    ...(data && { data }),
-  };
-  const output = JSON.stringify(logEntry);
-  if (level === "error") {
-    console.error(output);
-  } else {
-    console.error(output);
-  }
+  const prefix = `[${level.toUpperCase()}]`;
+  const suffix = data ? ` ${JSON.stringify(data)}` : "";
+  console.error(`${prefix} ${message}${suffix}`);
 }
 
 function validateConfig() {

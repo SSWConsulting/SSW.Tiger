@@ -37,21 +37,14 @@ class MeetingProcessor {
   }
 
   log(level, message, data = null) {
-    const timestamp = new Date().toISOString();
-    const logEntry = {
-      timestamp,
-      level: level.toUpperCase(),
-      component: "processor",
-      message,
-      ...(data && { data }),
-    };
-
-    const serialized = JSON.stringify(logEntry);
+    const prefix = `[${level.toUpperCase()}]`;
+    const suffix = data ? ` ${JSON.stringify(data)}` : "";
+    const output = `${prefix} ${message}${suffix}`;
 
     if (level === "error") {
-      console.error(serialized);
+      console.error(output);
     } else {
-      console.log(serialized);
+      console.log(output);
     }
   }
 
@@ -486,11 +479,6 @@ Follow all steps in CLAUDE.md including deployment. Output DEPLOYED_URL as speci
       // Optional: Copy to output directory for convenience
       const outputCopyPath = await this.copyToOutputDirectory(canonicalPath);
 
-      // Log deployed URL for external scripts (e.g., send-teams-notification.js)
-      if (claudeResult.deployedUrl) {
-        this.log("info", `DEPLOYED_URL=${claudeResult.deployedUrl}`);
-      }
-
       return {
         success: true,
         meetingId: this.meetingId,
@@ -530,30 +518,13 @@ async function main() {
 
   try {
     const result = await processor.process(transcriptPath, projectName);
-    console.log(
-      JSON.stringify({
-        timestamp: new Date().toISOString(),
-        level: "INFO",
-        message: "SUCCESS: Meeting processing completed",
-        meetingId: result.meetingId,
-        meetingDate: result.meetingDate,
-        dashboardPath: result.dashboardPath,
-        outputCopyPath: result.outputCopyPath || "",
-        deployedUrl: result.deployedUrl || "",
-        exitCode: 0,
-      }),
-    );
+    console.log(`[OK] Processing completed: ${result.meetingId}`);
+    if (result.deployedUrl) {
+      console.log(`DEPLOYED_URL=${result.deployedUrl}`);
+    }
     process.exit(0);
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        timestamp: new Date().toISOString(),
-        level: "ERROR",
-        message: "FAILURE: Meeting processing failed",
-        error: error.message,
-        exitCode: 1,
-      }),
-    );
+    console.error(`[ERROR] Processing failed: ${error.message}`);
     process.exit(1);
   }
 }
