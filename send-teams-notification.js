@@ -29,6 +29,8 @@ const CONFIG = {
   meetingSubject: process.env.MEETING_SUBJECT || "Untitled Meeting",
   projectName: process.env.PROJECT_NAME || "General Project",
   participantsJson: process.env.PARTICIPANTS_JSON,
+  notificationType: process.env.NOTIFICATION_TYPE || "completed", // "started", "completed", or "failed"
+  errorMessage: process.env.ERROR_MESSAGE || "", // For "failed" notifications
 };
 
 function log(level, message, data = null) {
@@ -67,10 +69,12 @@ function parseParticipants() {
 
 async function sendViaLogicApp(participants) {
   const payload = {
+    notificationType: CONFIG.notificationType,
     dashboardUrl: CONFIG.dashboardUrl,
     projectName: CONFIG.projectName,
     meetingSubject: CONFIG.meetingSubject,
     participants: participants,
+    errorMessage: CONFIG.errorMessage, // For "failed" notifications
   };
 
   const response = await fetch(CONFIG.logicAppUrl, {
@@ -84,8 +88,9 @@ async function sendViaLogicApp(participants) {
     throw new Error(`Logic App failed: ${response.status} - ${errorText}`);
   }
 
-  log("info", "Logic App notification sent successfully", {
+  log("info", `Logic App notification (${CONFIG.notificationType}) sent successfully`, {
     recipientCount: participants.length,
+    notificationType: CONFIG.notificationType,
   });
 }
 
@@ -95,8 +100,9 @@ async function main() {
     if (!CONFIG.logicAppUrl) {
       throw new Error("LOGIC_APP_URL is required");
     }
-    if (!CONFIG.dashboardUrl) {
-      throw new Error("DASHBOARD_URL is required");
+    // DASHBOARD_URL is only required for "completed" notifications
+    if (CONFIG.notificationType === "completed" && !CONFIG.dashboardUrl) {
+      throw new Error("DASHBOARD_URL is required for completed notifications");
     }
 
     const participants = parseParticipants();

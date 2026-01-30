@@ -48,6 +48,17 @@ EOF
     fi
 }
 
+# Send failure notification
+send_failure_notification() {
+    local ERROR_MSG="$1"
+    if [ -n "$LOGIC_APP_URL" ] && [ -n "$PARTICIPANTS_JSON" ]; then
+        log "INFO" "Sending failure notification..."
+        export NOTIFICATION_TYPE="failed"
+        export ERROR_MESSAGE="$ERROR_MSG"
+        node send-teams-notification.js || true
+    fi
+}
+
 # Main pipeline
 run_pipeline() {
     # Step 1: Download transcript
@@ -66,8 +77,27 @@ run_pipeline() {
     MEETING_SUBJECT=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).meetingSubject")
     PARTICIPANTS_JSON=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.stringify(JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).participants || [])")
 
-    # Step 2: Process transcript
-    PROCESSOR_OUTPUT=$(node processor.js "$TRANSCRIPT_PATH" "$PROJECT_NAME" 2>&1)
+    # Step 2: Send "started" notification (if configured)
+    if [ -n "$LOGIC_APP_URL" ]; then
+        export NOTIFICATION_TYPE="started"
+        export PROJECT_NAME="$PROJECT_NAME"
+        export MEETING_SUBJECT="$MEETING_SUBJECT"
+        export PARTICIPANTS_JSON="$PARTICIPANTS_JSON"
+
+        if ! node send-teams-notification.js; then
+            log "WARN" "Started notification failed (continuing anyway)"
+        fi
+    fi
+
+    # Set up error trap after "started" notification (so users know if processing fails)
+    trap 'send_failure_notification "Processing failed unexpectedly. Please check the logs."' ERR
+
+    # Step 3: Process transcript
+    PROCESSOR_OUTPUT=$(node processor.js "$TRANSCRIPT_PATH" "$PROJECT_NAME" 2>&1) || {
+        echo "$PROCESSOR_OUTPUT"
+        send_failure_notification "Claude processing failed. Check logs for details."
+        exit 1
+    }
     echo "$PROCESSOR_OUTPUT"
 
     # Extract deployed URL
@@ -75,20 +105,22 @@ run_pipeline() {
 
     if [ -z "$DEPLOYED_URL" ]; then
         log "ERROR" "Failed to extract deployed URL"
+        send_failure_notification "Failed to generate dashboard. Claude processing may have encountered an error."
         exit 1
     fi
 
     log "OK" "Deployed: $DEPLOYED_URL"
 
-    # Step 3: Send notification (if configured)
+    # Step 4: Send "completed" notification (if configured)
     if [ -n "$LOGIC_APP_URL" ]; then
+        export NOTIFICATION_TYPE="completed"
         export DASHBOARD_URL="$DEPLOYED_URL"
         export PROJECT_NAME="$PROJECT_NAME"
         export MEETING_SUBJECT="$MEETING_SUBJECT"
         export PARTICIPANTS_JSON="$PARTICIPANTS_JSON"
 
         if ! node send-teams-notification.js; then
-            log "WARN" "Teams notification failed"
+            log "WARN" "Completed notification failed"
         fi
     fi
 }
