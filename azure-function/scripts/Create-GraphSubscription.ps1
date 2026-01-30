@@ -16,9 +16,21 @@ param(
 
     [string]$FunctionAppName = "func-tiger-staging",
     [string]$KeyVaultName = "kv-tiger-staging",
-    [string]$ClientState = "tiger-secret-state",
+    [string]$ClientState = "",  # Will auto-generate if empty
     [int]$ExpirationDays = 3
 )
+
+# Generate secure clientState if not provided
+if ([string]::IsNullOrEmpty($ClientState)) {
+    # Generate a cryptographically secure random string (48 chars)
+    # Using RNGCryptoServiceProvider for Windows PowerShell 5.1 compatibility
+    $bytes = New-Object byte[] 36
+    $rng = [System.Security.Cryptography.RNGCryptoServiceProvider]::new()
+    $rng.GetBytes($bytes)
+    $rng.Dispose()
+    $ClientState = [Convert]::ToBase64String($bytes)
+    Write-Host "Generated secure clientState: $($ClientState.Substring(0, 8))..." -ForegroundColor Cyan
+}
 
 $ErrorActionPreference = "Stop"
 

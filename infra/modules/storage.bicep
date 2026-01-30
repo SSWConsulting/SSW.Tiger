@@ -32,6 +32,18 @@ resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01'
   name: 'default'
 }
 
+// Queue service for Function App messaging
+resource queueService 'Microsoft.Storage/storageAccounts/queueServices@2023-05-01' = {
+  parent: storageAccount
+  name: 'default'
+}
+
+// Queue for transcript notifications from Graph webhook
+resource transcriptQueue 'Microsoft.Storage/storageAccounts/queueServices/queues@2023-05-01' = {
+  parent: queueService
+  name: 'transcript-notifications'
+}
+
 output name string = storageAccount.name
 output id string = storageAccount.id
 output primaryEndpoints object = storageAccount.properties.primaryEndpoints

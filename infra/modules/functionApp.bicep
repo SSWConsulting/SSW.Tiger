@@ -110,6 +110,10 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
           name: 'LOGIC_APP_URL'
           value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=logic-app-url)'
         }
+        {
+          name: 'WEBHOOK_CLIENT_STATE'
+          value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=webhook-client-state)'
+        }
       ]
     }
   }
