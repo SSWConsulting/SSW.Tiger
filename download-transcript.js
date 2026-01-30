@@ -139,10 +139,12 @@ async function runMockMode() {
 
   // Extract project name and generate filename
   const projectName = extractProjectName(subject);
-  const meetingDate = mockMeeting.startDateTime
-    ? mockMeeting.startDateTime.split("T")[0]
-    : new Date().toISOString().split("T")[0];
-  const filename = generateFilename(mockMeeting);
+  // In mock mode, use the mock date directly
+  const mockTranscriptDate = CONFIG.mockMeetingDate
+    ? `${CONFIG.mockMeetingDate}T10:00:00Z`
+    : new Date().toISOString();
+  const meetingDate = mockTranscriptDate.split("T")[0];
+  const filename = generateFilename(mockMeeting, mockTranscriptDate);
 
   // Read local VTT content
   const content = await fs.readFile(CONFIG.mockTranscriptPath, "utf-8");
@@ -254,7 +256,105 @@ async function fetchMeeting(token) {
   };
 }
 
-async function downloadTranscript(token) {
+async function fetchTranscriptMetadata(token) {
+  // Graph API endpoint for transcript metadata (includes createdDateTime)
+  // GET /users/{userId}/onlineMeetings/{meetingId}/transcripts/{transcriptId}
+  const graphUrl = `https://graph.microsoft.com/v1.0/users/${CONFIG.userId}/onlineMeetings/${CONFIG.meetingId}/transcripts/${CONFIG.transcriptId}`;
+
+  const response = await fetch(graphUrl, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `Failed to fetch transcript metadata: ${response.status} - ${errorText}`,
+    );
+  }
+
+  return await response.json();
+}
+
+async function fetchActualParticipantsFromChat(token, chatId) {
+  // Fetch chat messages and extract actual participants (real users only, no bots)
+  // Sources: recording initiator + meeting starter + members joined
+  // Filter: userIdentityType === "aadUser" (excludes bots/applications)
+  // Deduped by userId
+  const graphUrl = `https://graph.microsoft.com/v1.0/chats/${encodeURIComponent(chatId)}/messages?$top=50`;
+
+  const response = await fetch(graphUrl, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    log("warn", `Failed to fetch chat messages: ${response.status}`, {
+      error: errorText,
+    });
+    return []; // Return empty array on failure, don't block the pipeline
+  }
+
+  const data = await response.json();
+  const messages = data.value || [];
+
+  // Collect unique participants from multiple event types
+  const participantMap = new Map(); // Use Map to dedupe by ID
+
+  for (const msg of messages) {
+    const eventType = msg.eventDetail?.["@odata.type"];
+
+    // 1. callRecordingEventMessageDetail - person who started/stopped recording
+    if (eventType === "#microsoft.graph.callRecordingEventMessageDetail") {
+      const initiator = msg.eventDetail?.initiator?.user;
+      if (initiator?.id && initiator.userIdentityType === "aadUser") {
+        participantMap.set(initiator.id, {
+          userId: initiator.id,
+          displayName: initiator.displayName || "",
+        });
+      }
+    }
+
+    // 2. callStartedEventMessageDetail - meeting initiator
+    if (eventType === "#microsoft.graph.callStartedEventMessageDetail") {
+      const initiator = msg.eventDetail?.initiator?.user;
+      if (initiator?.id && initiator.userIdentityType === "aadUser") {
+        participantMap.set(initiator.id, {
+          userId: initiator.id,
+          displayName: initiator.displayName || "",
+        });
+      }
+    }
+
+    // 3. membersJoinedEventMessageDetail - people who joined
+    if (eventType === "#microsoft.graph.membersJoinedEventMessageDetail") {
+      const members = msg.eventDetail?.members || [];
+      for (const member of members) {
+        if (member.id && member.userIdentityType === "aadUser") {
+          participantMap.set(member.id, {
+            userId: member.id,
+            displayName: member.displayName || "",
+          });
+        }
+      }
+    }
+  }
+
+  const participants = Array.from(participantMap.values());
+
+  log("info", `Found ${participants.length} actual participants from chat`, {
+    participants: participants.map((p) => p.displayName || p.userId),
+  });
+
+  return participants;
+}
+
+async function downloadTranscriptContent(token) {
   // Graph API endpoint for transcript content
   // GET /users/{userId}/onlineMeetings/{meetingId}/transcripts/{transcriptId}/content?$format=text/vtt
   const graphUrl = `https://graph.microsoft.com/v1.0/users/${CONFIG.userId}/onlineMeetings/${CONFIG.meetingId}/transcripts/${CONFIG.transcriptId}/content?$format=text/vtt`;
@@ -329,10 +429,10 @@ function extractProjectName(subject) {
   return parseSubject(subject).projectName;
 }
 
-function generateFilename(meeting) {
+function generateFilename(meeting, transcriptDate) {
+  // Use transcript createdDateTime (actual recording time)
   const date =
-    meeting.startDateTime?.split("T")[0] ||
-    new Date().toISOString().split("T")[0];
+    transcriptDate?.split("T")[0] || new Date().toISOString().split("T")[0];
 
   const { title } = parseSubject(meeting.subject);
 
@@ -411,15 +511,19 @@ async function main() {
       process.exit(0);
     }
 
-    // Extract project name and generate filename
-    const projectName = extractProjectName(subject);
-    const meetingDate = meeting.startDateTime
-      ? meeting.startDateTime.split("T")[0]
-      : new Date().toISOString().split("T")[0];
-    const filename = generateFilename(meeting);
+    // Fetch transcript metadata to get actual recording date
+    const transcriptMeta = await fetchTranscriptMetadata(token);
+    const transcriptDate = transcriptMeta.createdDateTime;
 
-    // Download transcript
-    const content = await downloadTranscript(token);
+    // Extract project name and generate filename using transcript date
+    const projectName = extractProjectName(subject);
+    const meetingDate = transcriptDate
+      ? transcriptDate.split("T")[0]
+      : new Date().toISOString().split("T")[0];
+    const filename = generateFilename(meeting, transcriptDate);
+
+    // Download transcript content
+    const content = await downloadTranscriptContent(token);
 
     // Validate VTT content
     if (!content.startsWith("WEBVTT")) {
@@ -431,6 +535,16 @@ async function main() {
     // Save to file
     const transcriptPath = await saveTranscript(content, filename);
 
+    // Get actual participants from chat messages (not invitees)
+    // This uses Chat.Read.All permission to read callEndedEventMessageDetail
+    let participants = [];
+    const chatId = meeting.chatInfo?.threadId;
+    if (chatId) {
+      participants = await fetchActualParticipantsFromChat(token, chatId);
+    } else {
+      log("warn", "No chatId found in meeting, cannot fetch actual participants");
+    }
+
     // Output result as JSON to stdout (includes notification info)
     outputResult({
       success: true,
@@ -439,7 +553,7 @@ async function main() {
       meetingDate,
       filename,
       meetingSubject: subject,
-      participants: meeting.participants,
+      participants,
     });
 
     process.exit(0);
@@ -465,7 +579,9 @@ if (require.main === module) {
 module.exports = {
   getGraphToken,
   fetchMeeting,
-  downloadTranscript,
+  fetchTranscriptMetadata,
+  fetchActualParticipantsFromChat,
+  downloadTranscriptContent,
   saveTranscript,
   parseSubject,
   extractProjectName,
