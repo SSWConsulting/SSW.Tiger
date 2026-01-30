@@ -141,6 +141,22 @@ projects/{project-name}/
 
 ## Dashboard Generation
 
+### IMPORTANT: Use the Template
+
+**You MUST use the template file at `templates/dashboard.html` as the base for generating the dashboard.**
+
+1. Read the template file first: `templates/dashboard.html`
+2. The template contains:
+   - SSW brand colors and styling
+   - Tab navigation (Overview, Timeline, People, Insights, Analytics, Trends)
+   - Placeholder variables like `{{PROJECT_NAME}}`, `{{DATE}}`, `{{SUMMARY}}`, etc.
+   - Chart.js setup with SSW colors
+   - Speaker timeline CSS styles
+3. Replace ALL placeholders with actual content from `consolidated.json`
+4. Save the final HTML to `projects/{project}/{meeting-id}/dashboard/index.html`
+
+**DO NOT create HTML from scratch - USE THE TEMPLATE!**
+
 ### Speaker Timeline Visualization
 
 The `{{SPEAKER_TIMELINE}}` placeholder must be populated with HTML showing horizontal bars for each speaker, visualizing when they spoke throughout the meeting.

@@ -11,6 +11,11 @@ param ghcrUsername string
 param managedIdentityId string
 param managedIdentityClientId string
 
+// Log Analytics for container logs
+param logAnalyticsCustomerId string
+@secure()
+param logAnalyticsPrimaryKey string
+
 // Parameters for container resources
 param cpu string = '2.0'
 param memory string = '4Gi'
@@ -32,6 +37,14 @@ resource containerEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
         workloadProfileType: 'Consumption'
       }
     ]
+    // Log Analytics integration - logs are automatically collected
+    appLogsConfiguration: {
+      destination: 'log-analytics'
+      logAnalyticsConfiguration: {
+        customerId: logAnalyticsCustomerId
+        sharedKey: logAnalyticsPrimaryKey
+      }
+    }
   }
 }
 

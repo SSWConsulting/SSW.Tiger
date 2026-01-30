@@ -292,6 +292,7 @@ Meeting ID: ${this.meetingId}
 Meeting Date: ${this.meetingDate}
 Meeting folder: projects/${this.projectName}/${this.meetingId}/
 Transcript: projects/${this.projectName}/${this.meetingId}/transcript.vtt
+Dashboard template: templates/dashboard.html
 
 Follow all steps in CLAUDE.md including deployment. Output DEPLOYED_URL as specified.`;
 
@@ -315,6 +316,8 @@ Follow all steps in CLAUDE.md including deployment. Output DEPLOYED_URL as speci
         CONFIG.outputDir,
         "--add-dir",
         this.meetingPath,
+        "--add-dir",
+        path.join(__dirname, "templates"),
       ];
 
       // Determine command and args based on platform

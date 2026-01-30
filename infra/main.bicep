@@ -77,7 +77,18 @@ module storage 'modules/storage.bicep' = {
   }
 }
 
-// 5. Container App Environment + Job - Runs the Claude processor
+// 5. Monitoring - Log Analytics + Application Insights
+module monitoring 'modules/monitoring.bicep' = {
+  name: 'provision-monitoring-${suffix}'
+  params: {
+    project: project
+    environment: environment
+    costCategoryTag: costCategoryTag
+    location: location
+  }
+}
+
+// 6. Container App Environment + Job - Runs the Claude processor
 module containerApp 'modules/containerApp.bicep' = {
   name: 'provision-container-app-${suffix}'
   params: {
@@ -90,10 +101,12 @@ module containerApp 'modules/containerApp.bicep' = {
     ghcrUsername: githubOrg
     managedIdentityId: id.outputs.id
     managedIdentityClientId: id.outputs.clientId
+    logAnalyticsCustomerId: monitoring.outputs.logAnalyticsCustomerId
+    logAnalyticsPrimaryKey: monitoring.outputs.logAnalyticsPrimaryKey
   }
 }
 
-// 6. Logic App - Teams notification via meeting chat
+// 7. Logic App - Teams notification via meeting chat
 module logicApp 'modules/logicApp.bicep' = {
   name: 'provision-logic-app-${suffix}'
   params: {
@@ -103,7 +116,7 @@ module logicApp 'modules/logicApp.bicep' = {
   }
 }
 
-// 7. Function App - Webhook receiver, triggers Container App Job
+// 8. Function App - Webhook receiver, triggers Container App Job
 module functionApp 'modules/functionApp.bicep' = {
   name: 'provision-function-app-${suffix}'
   params: {
@@ -118,6 +131,7 @@ module functionApp 'modules/functionApp.bicep' = {
     containerAppJobImage: containerImage
     managedIdentityId: id.outputs.id
     managedIdentityClientId: id.outputs.clientId
+    appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
   }
 }
 
@@ -150,4 +164,9 @@ output managedIdentity object = {
 
 output logicApp object = {
   name: logicApp.outputs.name
+}
+
+output monitoring object = {
+  logAnalyticsName: monitoring.outputs.logAnalyticsName
+  appInsightsName: monitoring.outputs.appInsightsName
 }

@@ -14,6 +14,9 @@ param containerAppJobImage string
 param managedIdentityId string
 param managedIdentityClientId string
 
+// Application Insights for logging
+param appInsightsConnectionString string
+
 var functionAppName = toLower('func-${project}-${environment}')
 var hostingPlanName = toLower('plan-${project}-${environment}')
 
@@ -65,6 +68,8 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         ]
       }
       appSettings: [
+        // Application Insights for logging
+        { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
         // Azure Managed Identity
         { name: 'AZURE_CLIENT_ID', value: managedIdentityClientId }
         // Storage connection (required for Function runtime)
