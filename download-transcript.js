@@ -307,11 +307,12 @@ async function fetchActualParticipantsFromChat(token, chatId) {
     // 1. callRecordingEventMessageDetail - person who started/stopped recording
     if (eventType === "#microsoft.graph.callRecordingEventMessageDetail") {
       const initiator = msg.eventDetail?.initiator?.user;
-      if (initiator?.id && initiator.userIdentityType === "aadUser") {
+      if (initiator?.id) {
         participantMap.set(initiator.id, {
           userId: initiator.id,
           displayName: initiator.displayName || "",
           tenantId: initiator.tenantId || "",
+          userIdentityType: initiator.userIdentityType || "",
         });
       }
     }
@@ -319,11 +320,12 @@ async function fetchActualParticipantsFromChat(token, chatId) {
     // 2. callStartedEventMessageDetail - meeting initiator
     if (eventType === "#microsoft.graph.callStartedEventMessageDetail") {
       const initiator = msg.eventDetail?.initiator?.user;
-      if (initiator?.id && initiator.userIdentityType === "aadUser") {
+      if (initiator?.id) {
         participantMap.set(initiator.id, {
           userId: initiator.id,
           displayName: initiator.displayName || "",
           tenantId: initiator.tenantId || "",
+          userIdentityType: initiator.userIdentityType || "",
         });
       }
     }
@@ -332,11 +334,12 @@ async function fetchActualParticipantsFromChat(token, chatId) {
     if (eventType === "#microsoft.graph.membersJoinedEventMessageDetail") {
       const members = msg.eventDetail?.members || [];
       for (const member of members) {
-        if (member.id && member.userIdentityType === "aadUser") {
+        if (member.id) {
           participantMap.set(member.id, {
             userId: member.id,
             displayName: member.displayName || "",
             tenantId: member.tenantId || "",
+            userIdentityType: member.userIdentityType || "",
           });
         }
       }
@@ -485,8 +488,10 @@ function matchesMeetingFilter(subject) {
 
 /**
  * Check if meeting has external participants (non-SSW)
- * External = any participant with different tenantId
- * @param {Array} participants - Array of {userId, displayName, tenantId}
+ * External = any participant with:
+ *   - userIdentityType !== "aadUser" (e.g., anonymousGuest)
+ *   - OR different tenantId than SSW
+ * @param {Array} participants - Array of {userId, displayName, tenantId, userIdentityType}
  * @returns {boolean} true if any external participant found
  */
 function hasExternalParticipants(participants) {
@@ -495,12 +500,18 @@ function hasExternalParticipants(participants) {
   }
 
   for (const p of participants) {
-    // Skip if no tenant info (can't determine)
-    if (!p.tenantId) continue;
+    // Non-AAD users are external (anonymousGuest, personalMicrosoftAccountUser, etc.)
+    if (p.userIdentityType && p.userIdentityType !== "aadUser") {
+      log("info", "Found external participant (non-AAD user)", {
+        userIdentityType: p.userIdentityType,
+        displayName: p.displayName,
+      });
+      return true;
+    }
 
     // Different tenant = external participant
-    if (p.tenantId !== CONFIG.sswTenantId) {
-      log("info", "Found external participant", {
+    if (p.tenantId && p.tenantId !== CONFIG.sswTenantId) {
+      log("info", "Found external participant (different tenant)", {
         tenantId: p.tenantId,
         displayName: p.displayName,
       });
