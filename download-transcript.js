@@ -55,6 +55,8 @@ const CONFIG = {
   // Meeting filter: regex pattern to match meeting subjects (default: "sprint")
   // Set to empty string or ".*" to process all meetings
   meetingFilterPattern: process.env.MEETING_FILTER_PATTERN || "sprint",
+  // SSW tenant ID for filtering external meetings
+  sswTenantId: "ac2f7c34-b935-48e9-abdc-11e5d4fcb2b0",
 };
 
 function log(level, message, data = null) {
@@ -305,6 +307,7 @@ async function fetchActualParticipantsFromChat(token, chatId) {
         participantMap.set(initiator.id, {
           userId: initiator.id,
           displayName: initiator.displayName || "",
+          tenantId: initiator.tenantId || "",
         });
       }
     }
@@ -316,6 +319,7 @@ async function fetchActualParticipantsFromChat(token, chatId) {
         participantMap.set(initiator.id, {
           userId: initiator.id,
           displayName: initiator.displayName || "",
+          tenantId: initiator.tenantId || "",
         });
       }
     }
@@ -328,6 +332,7 @@ async function fetchActualParticipantsFromChat(token, chatId) {
           participantMap.set(member.id, {
             userId: member.id,
             displayName: member.displayName || "",
+            tenantId: member.tenantId || "",
           });
         }
       }
@@ -474,6 +479,33 @@ function matchesMeetingFilter(subject) {
   }
 }
 
+/**
+ * Check if meeting has external participants (non-SSW)
+ * External = any participant with different tenantId
+ * @param {Array} participants - Array of {userId, displayName, tenantId}
+ * @returns {boolean} true if any external participant found
+ */
+function hasExternalParticipants(participants) {
+  if (!participants || participants.length === 0) {
+    return false; // No participants = can't determine, allow through
+  }
+
+  for (const p of participants) {
+    // Skip if no tenant info (can't determine)
+    if (!p.tenantId) continue;
+
+    // Different tenant = external participant
+    if (p.tenantId !== CONFIG.sswTenantId) {
+      log("info", "Found external participant", {
+        tenantId: p.tenantId,
+        displayName: p.displayName,
+      });
+      return true;
+    }
+  }
+  return false;
+}
+
 async function main() {
   try {
     // Validate configuration (checks mock mode or Graph API config)
@@ -531,7 +563,19 @@ async function main() {
     if (chatId) {
       participants = await fetchActualParticipantsFromChat(token, chatId);
     } else {
-      log("warn", "No chatId found in meeting, cannot fetch actual participants");
+      log(
+        "warn",
+        "No chatId found in meeting, cannot fetch actual participants",
+      );
+    }
+
+    // Filter: skip meetings with external participants (non-SSW tenantId)
+    if (hasExternalParticipants(participants)) {
+      outputResult({
+        skipped: true,
+        reason: `Meeting has external participants (non-SSW): "${subject}"`,
+      });
+      process.exit(0);
     }
 
     // Output result as JSON to stdout (includes notification info)
@@ -576,6 +620,7 @@ module.exports = {
   extractProjectName,
   generateFilename,
   matchesMeetingFilter,
+  hasExternalParticipants,
   validateConfig,
   runMockMode,
   CONFIG,
