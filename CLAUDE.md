@@ -56,7 +56,7 @@ You are a meeting transcript processor. Your job is to convert .vtt transcripts 
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │                      5. DEPLOY                                   │
-│  surge . {project}-{date}.surge.sh                              │
+│  surge . {project}-{meeting-id}.surge.sh                        │
 └─────────────────────────────────────────────────────────────────┘
 ```
 

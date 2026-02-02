@@ -274,9 +274,9 @@ async function fetchTranscriptMetadata(token) {
 }
 
 async function fetchActualParticipantsFromChat(token, chatId) {
-  // Fetch chat messages and extract actual participants (real users only, no bots)
-  // Sources: recording initiator + meeting starter + members joined
-  // Filter: userIdentityType === "aadUser" (excludes bots/applications)
+  // Fetch chat messages and extract actual participants
+  // Sources: recording initiator + meeting starter + members joined/left + call ended participants
+  // Merges displayName from multiple events (prefers non-empty values)
   // Deduped by userId
   const graphUrl = `https://graph.microsoft.com/v1.0/chats/${encodeURIComponent(chatId)}/messages?$top=50`;
 
@@ -301,6 +301,27 @@ async function fetchActualParticipantsFromChat(token, chatId) {
   // Collect unique participants from multiple event types
   const participantMap = new Map(); // Use Map to dedupe by ID
 
+  // Helper: add or update participant, prefer non-empty displayName
+  function addOrUpdateParticipant(map, id, data) {
+    const existing = map.get(id);
+    if (existing) {
+      // Prefer non-empty displayName
+      if (!existing.displayName && data.displayName) {
+        existing.displayName = data.displayName;
+      }
+      // Prefer non-empty tenantId
+      if (!existing.tenantId && data.tenantId) {
+        existing.tenantId = data.tenantId;
+      }
+      // Prefer non-empty userIdentityType
+      if (!existing.userIdentityType && data.userIdentityType) {
+        existing.userIdentityType = data.userIdentityType;
+      }
+    } else {
+      map.set(id, data);
+    }
+  }
+
   for (const msg of messages) {
     const eventType = msg.eventDetail?.["@odata.type"];
 
@@ -308,7 +329,7 @@ async function fetchActualParticipantsFromChat(token, chatId) {
     if (eventType === "#microsoft.graph.callRecordingEventMessageDetail") {
       const initiator = msg.eventDetail?.initiator?.user;
       if (initiator?.id) {
-        participantMap.set(initiator.id, {
+        addOrUpdateParticipant(participantMap, initiator.id, {
           userId: initiator.id,
           displayName: initiator.displayName || "",
           tenantId: initiator.tenantId || "",
@@ -321,7 +342,7 @@ async function fetchActualParticipantsFromChat(token, chatId) {
     if (eventType === "#microsoft.graph.callStartedEventMessageDetail") {
       const initiator = msg.eventDetail?.initiator?.user;
       if (initiator?.id) {
-        participantMap.set(initiator.id, {
+        addOrUpdateParticipant(participantMap, initiator.id, {
           userId: initiator.id,
           displayName: initiator.displayName || "",
           tenantId: initiator.tenantId || "",
@@ -335,11 +356,42 @@ async function fetchActualParticipantsFromChat(token, chatId) {
       const members = msg.eventDetail?.members || [];
       for (const member of members) {
         if (member.id) {
-          participantMap.set(member.id, {
+          addOrUpdateParticipant(participantMap, member.id, {
             userId: member.id,
             displayName: member.displayName || "",
             tenantId: member.tenantId || "",
             userIdentityType: member.userIdentityType || "",
+          });
+        }
+      }
+    }
+
+    // 4. membersLeftEventMessageDetail - people who left (still attended)
+    if (eventType === "#microsoft.graph.membersLeftEventMessageDetail") {
+      const members = msg.eventDetail?.members || [];
+      for (const member of members) {
+        if (member.id) {
+          addOrUpdateParticipant(participantMap, member.id, {
+            userId: member.id,
+            displayName: member.displayName || "",
+            tenantId: member.tenantId || "",
+            userIdentityType: member.userIdentityType || "",
+          });
+        }
+      }
+    }
+
+    // 5. callEndedEventMessageDetail - has callParticipants with full displayName
+    if (eventType === "#microsoft.graph.callEndedEventMessageDetail") {
+      const callParticipants = msg.eventDetail?.callParticipants || [];
+      for (const cp of callParticipants) {
+        const user = cp.participant?.user;
+        if (user?.id) {
+          addOrUpdateParticipant(participantMap, user.id, {
+            userId: user.id,
+            displayName: user.displayName || "",
+            tenantId: user.tenantId || "",
+            userIdentityType: user.userIdentityType || "",
           });
         }
       }
@@ -432,8 +484,13 @@ function extractProjectName(subject) {
 
 function generateFilename(meeting, transcriptDate) {
   // Use transcript createdDateTime (actual recording time)
-  const date =
-    transcriptDate?.split("T")[0] || new Date().toISOString().split("T")[0];
+  // Format: {date}-{time}-{slug}.vtt to avoid overwrites for same-day recordings
+  const now = new Date().toISOString();
+  const date = transcriptDate?.split("T")[0] || now.split("T")[0];
+
+  // Extract time as HHmmss (e.g., "094557" from "09:45:57.791Z")
+  const timePart = transcriptDate?.split("T")[1] || now.split("T")[1];
+  const time = timePart.replace(/[:\.]/g, "").substring(0, 6);
 
   const { title } = parseSubject(meeting.subject);
 
@@ -443,7 +500,7 @@ function generateFilename(meeting, transcriptDate) {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "") || "meeting";
 
-  return `${date}-${slug}.vtt`;
+  return `${date}-${time}-${slug}.vtt`;
 }
 
 async function saveTranscript(content, filename) {
@@ -489,8 +546,9 @@ function matchesMeetingFilter(subject) {
 /**
  * Check if meeting has external participants (non-SSW)
  * External = any participant with:
- *   - userIdentityType !== "aadUser" (e.g., anonymousGuest)
+ *   - userIdentityType !== "aadUser" (e.g., anonymousGuest, personalMicrosoftAccountUser)
  *   - OR different tenantId than SSW
+ *   - OR SSW AAD user but displayName missing "[SSW]" suffix (guest in SSW tenant)
  * @param {Array} participants - Array of {userId, displayName, tenantId, userIdentityType}
  * @returns {boolean} true if any external participant found
  */
@@ -513,6 +571,21 @@ function hasExternalParticipants(participants) {
     if (p.tenantId && p.tenantId !== CONFIG.sswTenantId) {
       log("info", "Found external participant (different tenant)", {
         tenantId: p.tenantId,
+        displayName: p.displayName,
+      });
+      return true;
+    }
+
+    // SSW tenant AAD user but without [SSW] suffix = guest in SSW tenant
+    // Only check if displayName is present (many events have null displayName for internal users)
+    if (
+      p.userIdentityType === "aadUser" &&
+      p.tenantId === CONFIG.sswTenantId &&
+      p.displayName &&
+      p.displayName.trim() !== "" &&
+      !p.displayName.includes("[SSW]")
+    ) {
+      log("info", "Found external participant (guest in SSW tenant)", {
         displayName: p.displayName,
       });
       return true;
