@@ -37,9 +37,12 @@ class MeetingProcessor {
   }
 
   log(level, message, data = null) {
-    const prefix = `[${level.toUpperCase()}]`;
-    const suffix = data ? ` ${JSON.stringify(data)}` : "";
-    const output = `${prefix} ${message}${suffix}`;
+    const logEntry = {
+      level: level.toLowerCase(),
+      message,
+      ...(data && { ...data }),
+    };
+    const output = JSON.stringify(logEntry);
 
     if (level === "error") {
       console.error(output);
@@ -518,13 +521,14 @@ async function main() {
 
   try {
     const result = await processor.process(transcriptPath, projectName);
-    console.log(`[OK] Processing completed: ${result.meetingId}`);
+    console.log(JSON.stringify({ level: "info", message: "Processing completed", meetingId: result.meetingId }));
     if (result.deployedUrl) {
+      // Keep DEPLOYED_URL= format for entrypoint.sh parsing
       console.log(`DEPLOYED_URL=${result.deployedUrl}`);
     }
     process.exit(0);
   } catch (error) {
-    console.error(`[ERROR] Processing failed: ${error.message}`);
+    console.error(JSON.stringify({ level: "error", message: "Processing failed", error: error.message }));
     process.exit(1);
   }
 }

@@ -79,10 +79,10 @@ app.timer("RenewSubscription", {
 
 /**
  * Structured logging helper for consistent log format
+ * Note: timestamp is added automatically by Azure runtime
  */
 function structuredLog(context, level, message, data) {
   const logEntry = {
-    timestamp: new Date().toISOString(),
     level,
     message: `${LOG_PREFIX} ${message}`,
     ...data,

@@ -12,6 +12,25 @@ const { ContainerAppsAPIClient } = require("@azure/arm-appcontainers");
 // Log prefix for easy filtering
 const LOG_PREFIX = "[TIGER]";
 
+/**
+ * Structured logging helper for consistent log format
+ */
+function structuredLog(context, level, message, data = {}) {
+  const logEntry = {
+    level,
+    message: `${LOG_PREFIX} ${message}`,
+    ...data,
+  };
+
+  if (level === "error") {
+    context.error(JSON.stringify(logEntry));
+  } else if (level === "warn") {
+    context.warn(JSON.stringify(logEntry));
+  } else {
+    context.log(JSON.stringify(logEntry));
+  }
+}
+
 // Module-level singletons for better performance
 let containerAppsClient = null;
 let azureCredential = null;
@@ -73,10 +92,7 @@ app.storageQueue("ProcessTranscriptQueue", {
   queueName: "transcript-notifications",
   connection: "AzureWebJobsStorage",
   handler: async (message, context) => {
-    context.log(
-      `${LOG_PREFIX} Processing queue message:`,
-      JSON.stringify(message),
-    );
+    structuredLog(context, "info", "Processing queue message", { message });
 
     // Parse message (handle both string and object)
     let data;
@@ -84,7 +100,7 @@ app.storageQueue("ProcessTranscriptQueue", {
       try {
         data = JSON.parse(message);
       } catch {
-        context.error(`${LOG_PREFIX} ERROR: Invalid JSON in queue message`);
+        structuredLog(context, "error", "Invalid JSON in queue message");
         throw new Error("Invalid JSON in queue message");
       }
     } else {
@@ -94,17 +110,13 @@ app.storageQueue("ProcessTranscriptQueue", {
     const { userId, meetingId, transcriptId } = data;
 
     if (!userId || !meetingId || !transcriptId) {
-      context.error(
-        `${LOG_PREFIX} ERROR: Missing IDs in queue message - userId=${userId}, meetingId=${meetingId}, transcriptId=${transcriptId}`,
-      );
+      structuredLog(context, "error", "Missing IDs in queue message", { userId, meetingId, transcriptId });
       throw new Error("Missing required IDs in queue message");
     }
 
     // Check for duplicate (Graph may send same notification multiple times)
     if (isDuplicate(meetingId, transcriptId)) {
-      context.log(
-        `${LOG_PREFIX} SKIP: Duplicate notification - meetingId=${meetingId}, transcriptId=${transcriptId}`,
-      );
+      structuredLog(context, "info", "SKIP: Duplicate notification", { meetingId, transcriptId });
       return; // Don't throw - this is expected behavior, not an error
     }
 
@@ -138,9 +150,7 @@ async function triggerContainerAppJob(params, context) {
   if (!containerImage) missingEnvVars.push("CONTAINER_APP_JOB_IMAGE");
 
   if (missingEnvVars.length > 0) {
-    context.error(
-      `${LOG_PREFIX} ERROR: Missing env vars: ${missingEnvVars.join(", ")}`,
-    );
+    structuredLog(context, "error", "Missing env vars", { missingEnvVars });
     throw new Error(
       `Missing required environment variables: ${missingEnvVars.join(", ")}`,
     );
@@ -149,9 +159,7 @@ async function triggerContainerAppJob(params, context) {
   // Use singleton client for better performance
   const client = getContainerAppsClient(subscriptionId);
 
-  context.log(
-    `${LOG_PREFIX} Starting Container App Job: ${jobName} (userId=${userId}, meetingId=${meetingId}, transcriptId=${transcriptId})`,
-  );
+  structuredLog(context, "info", "Starting Container App Job", { jobName, userId, meetingId, transcriptId });
 
   try {
     // beginStart() returns a poller for the LRO (Long Running Operation)
@@ -188,13 +196,21 @@ async function triggerContainerAppJob(params, context) {
     const initialResult = poller.getOperationState().result;
     const executionName = initialResult?.name || "unknown";
 
-    context.log(
-      `${LOG_PREFIX} SUCCESS: Container App Job started - ${jobName}, execution=${executionName} (userId=${userId}, meetingId=${meetingId}, transcriptId=${transcriptId})`,
-    );
+    structuredLog(context, "info", "Container App Job started", {
+      jobName,
+      executionName,
+      userId,
+      meetingId,
+      transcriptId,
+    });
   } catch (err) {
-    context.error(
-      `${LOG_PREFIX} ERROR: Container App Job failed - ${jobName} (userId=${userId}, meetingId=${meetingId}, transcriptId=${transcriptId}): ${err.message}`,
-    );
+    structuredLog(context, "error", "Container App Job failed", {
+      jobName,
+      userId,
+      meetingId,
+      transcriptId,
+      error: err.message,
+    });
     throw err; // Re-throw to trigger queue retry
   }
 }

@@ -4,9 +4,11 @@
 
 set -e
 
-# Simple logging function
+# JSON logging function (consistent with JS files)
 log() {
-    echo "[$1] $2"
+    local level=$(echo "$1" | tr '[:upper:]' '[:lower:]')
+    local message="$2"
+    echo "{\"level\":\"$level\",\"message\":\"$message\"}"
 }
 
 # Setup Claude CLI authentication
@@ -59,11 +61,19 @@ send_failure_notification() {
 # Main pipeline
 run_pipeline() {
     # Step 1: Download transcript
-    if ! DOWNLOAD_RESULT=$(node download-transcript.js 2>&1); then
+    # Note: stderr goes to console (logs), stdout captured (JSON result)
+    # Capture stderr separately for error reporting
+    DOWNLOAD_STDERR=$(mktemp)
+    if ! DOWNLOAD_RESULT=$(node download-transcript.js 2>"$DOWNLOAD_STDERR"); then
         log "ERROR" "Failed to download transcript"
+        cat "$DOWNLOAD_STDERR" >&2
         echo "$DOWNLOAD_RESULT"
+        rm -f "$DOWNLOAD_STDERR"
         exit 1
     fi
+    # Show logs from stderr (info messages)
+    cat "$DOWNLOAD_STDERR" >&2
+    rm -f "$DOWNLOAD_STDERR"
 
     # Check if skipped
     if echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).skipped" 2>/dev/null | grep -q "true"; then

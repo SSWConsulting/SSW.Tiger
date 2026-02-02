@@ -60,9 +60,12 @@ const CONFIG = {
 };
 
 function log(level, message, data = null) {
-  const prefix = `[${level.toUpperCase()}]`;
-  const suffix = data ? ` ${JSON.stringify(data)}` : "";
-  console.error(`${prefix} ${message}${suffix}`);
+  const logEntry = {
+    level: level.toLowerCase(),
+    message,
+    ...(data && { ...data }),
+  };
+  console.error(JSON.stringify(logEntry));
 }
 
 function validateConfig() {

@@ -11,6 +11,25 @@ const { app, output } = require("@azure/functions");
 // Log prefix for easy filtering
 const LOG_PREFIX = "[TIGER]";
 
+/**
+ * Structured logging helper for consistent log format
+ */
+function structuredLog(context, level, message, data = {}) {
+  const logEntry = {
+    level,
+    message: `${LOG_PREFIX} ${message}`,
+    ...data,
+  };
+
+  if (level === "error") {
+    context.error(JSON.stringify(logEntry));
+  } else if (level === "warn") {
+    context.warn(JSON.stringify(logEntry));
+  } else {
+    context.log(JSON.stringify(logEntry));
+  }
+}
+
 // Queue output binding
 const queueOutput = output.storageQueue({
   queueName: "transcript-notifications",
@@ -25,7 +44,7 @@ app.http("TranscriptWebhook", {
     // Handle Graph webhook validation
     const validationToken = request.query.get("validationToken");
     if (validationToken) {
-      context.log(`${LOG_PREFIX} Validation request - returning token`);
+      structuredLog(context, "info", "Validation request - returning token");
       return {
         status: 200,
         headers: { "Content-Type": "text/plain" },
@@ -39,10 +58,7 @@ app.http("TranscriptWebhook", {
       const rawBody = await request.text();
       body = JSON.parse(rawBody);
     } catch (error) {
-      context.error(
-        `${LOG_PREFIX} ERROR: Failed to parse request body:`,
-        error.message,
-      );
+      structuredLog(context, "error", "Failed to parse request body", { error: error.message });
       return { status: 400, body: "Invalid JSON payload" };
     }
 
@@ -51,9 +67,7 @@ app.http("TranscriptWebhook", {
 
     // WEBHOOK_CLIENT_STATE is required for security
     if (!expectedClientState) {
-      context.error(
-        `${LOG_PREFIX} ERROR: WEBHOOK_CLIENT_STATE environment variable is not configured`,
-      );
+      structuredLog(context, "error", "WEBHOOK_CLIENT_STATE environment variable is not configured");
       return {
         status: 500,
         body: "Server configuration error",
@@ -67,9 +81,10 @@ app.http("TranscriptWebhook", {
       // Validate clientState - skip notification if missing or mismatched
       // Continue processing other notifications in the batch
       if (notification.clientState !== expectedClientState) {
-        context.warn(
-          `${LOG_PREFIX} SKIP: Invalid clientState (expected=${expectedClientState?.substring(0, 4)}..., got=${notification.clientState?.substring(0, 4) || "none"}...)`,
-        );
+        structuredLog(context, "warn", "SKIP: Invalid clientState", {
+          expected: expectedClientState?.substring(0, 4) + "...",
+          got: (notification.clientState?.substring(0, 4) || "none") + "...",
+        });
         skippedCount++;
         continue;
       }
@@ -77,9 +92,7 @@ app.http("TranscriptWebhook", {
       // Filter: only process callTranscript notifications
       const odataType = notification.resourceData?.["@odata.type"];
       if (!odataType?.toLowerCase().includes("calltranscript")) {
-        context.log(
-          `${LOG_PREFIX} SKIP: Not a transcript - type: ${odataType}`,
-        );
+        structuredLog(context, "info", "SKIP: Not a transcript", { type: odataType });
         skippedCount++;
         continue;
       }
@@ -98,9 +111,7 @@ app.http("TranscriptWebhook", {
         transcriptMatch?.[1] || notification.resourceData?.id;
 
       if (!userId || !meetingId || !transcriptId) {
-        context.error(
-          `${LOG_PREFIX} ERROR: Missing IDs - userId=${userId}, meetingId=${meetingId}, transcriptId=${transcriptId}`,
-        );
+        structuredLog(context, "error", "Missing IDs", { userId, meetingId, transcriptId });
         skippedCount++;
         continue;
       }
@@ -112,9 +123,7 @@ app.http("TranscriptWebhook", {
         timestamp: new Date().toISOString(),
       });
 
-      context.log(
-        `${LOG_PREFIX} Queued: userId=${userId}, meetingId=${meetingId}, transcriptId=${transcriptId}`,
-      );
+      structuredLog(context, "info", "Queued", { userId, meetingId, transcriptId });
     }
 
     // Write all messages to queue (array is split into individual queue messages)
@@ -122,9 +131,11 @@ app.http("TranscriptWebhook", {
       context.extraOutputs.set(queueOutput, queueMessages);
     }
 
-    context.log(
-      `${LOG_PREFIX} Processed ${notifications.length} notification(s): ${queueMessages.length} queued, ${skippedCount} skipped`,
-    );
+    structuredLog(context, "info", "Processed notifications", {
+      total: notifications.length,
+      queued: queueMessages.length,
+      skipped: skippedCount,
+    });
 
     // Return immediately - Queue processing happens separately
     return {
