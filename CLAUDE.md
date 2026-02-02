@@ -84,6 +84,8 @@ The consolidator ensures:
 ## Dashboard Requirements
 
 The dashboard MUST have these tabs (all using consolidated data):
+DO NOT repeat contents in multiple tabs. If it's included in one tab, don't mention it in other tabs.
+Use round number for percentages
 
 ### Tab 1: Overview
 - Meeting summary

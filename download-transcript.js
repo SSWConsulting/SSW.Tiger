@@ -65,6 +65,7 @@ function log(level, message, data = null) {
     message,
     ...(data && { ...data }),
   };
+  // All logs to stderr (consistent with processor.js)
   console.error(JSON.stringify(logEntry));
 }
 

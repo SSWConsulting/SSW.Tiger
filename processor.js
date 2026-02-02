@@ -16,6 +16,7 @@
 const fs = require("fs").promises;
 const path = require("path");
 const { spawn } = require("child_process");
+const readline = require("readline");
 
 // Configuration
 const CONFIG = {
@@ -42,13 +43,9 @@ class MeetingProcessor {
       message,
       ...(data && { ...data }),
     };
-    const output = JSON.stringify(logEntry);
-
-    if (level === "error") {
-      console.error(output);
-    } else {
-      console.log(output);
-    }
+    // All logs to stderr (real-time streaming, separable from machine output)
+    // stdout reserved for machine output only (DEPLOYED_URL)
+    console.error(JSON.stringify(logEntry));
   }
 
   truncate(text, maxLength = 120) {
@@ -350,11 +347,10 @@ Follow all steps in CLAUDE.md including deployment. Output DEPLOYED_URL as speci
       claude.stdin.end();
       this.log("info", "Processing transcript with Claude CLI...");
 
-      let stdout = "";
+      let deployedUrl = null;
       let stderr = "";
       let firstOutputReceived = false;
       let lastOutputTime = Date.now();
-      let jsonBuffer = ""; // Buffer for incomplete JSON lines
 
       // Inactivity timeout: fail if no output received for 15 minutes
       const INACTIVITY_TIMEOUT = 900000;
@@ -367,35 +363,37 @@ Follow all steps in CLAUDE.md including deployment. Output DEPLOYED_URL as speci
         }
       }, 30000);
 
-      claude.stdout.on("data", (data) => {
+      const stdoutReader = readline.createInterface({
+        input: claude.stdout,
+        crlfDelay: Infinity,
+      });
+
+      stdoutReader.on("line", (line) => {
         lastOutputTime = Date.now(); // Reset inactivity timer
         firstOutputReceived = true;
 
-        const output = data.toString();
-        stdout += output;
+        if (!line || !line.trim()) return;
 
-        // Parse streaming JSON output for major events
-        // Claude Code CLI outputs newline-delimited JSON objects
-        jsonBuffer += output;
-        const lines = jsonBuffer.split("\n");
-        jsonBuffer = lines.pop() || ""; // Keep incomplete line in buffer
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
-
-          try {
-            const parsed = this.parseStreamJsonLine(line);
-            if (!parsed.ok) continue;
-
-            if (this.shouldSkipEvent(parsed.event)) continue;
-
-            const preview = this.extractEventPreview(parsed.event);
-            if (preview) {
-              this.log("info", preview);
-            }
-          } catch (parseError) {
-            // Ignore parse errors for non-JSON lines
+        // Fast-path: capture deployed URL if it appears in plain output
+        if (!deployedUrl) {
+          const match = line.match(/DEPLOYED_URL=(https?:\/\/[^\s"'\\]+)/);
+          if (match) {
+            deployedUrl = match[1].trim();
           }
+        }
+
+        try {
+          const parsed = this.parseStreamJsonLine(line);
+          if (!parsed.ok) return;
+
+          if (this.shouldSkipEvent(parsed.event)) return;
+
+          const preview = this.extractEventPreview(parsed.event);
+          if (preview) {
+            this.log("info", preview);
+          }
+        } catch (parseError) {
+          // Ignore parse errors for non-JSON lines
         }
       });
 
@@ -408,10 +406,7 @@ Follow all steps in CLAUDE.md including deployment. Output DEPLOYED_URL as speci
       claude.on("close", async (code) => {
         clearInterval(inactivityTimer);
         if (code === 0) {
-          // Extract deployed URL from stdout
-          const match = stdout.match(/DEPLOYED_URL=(https?:\/\/[^\s"'\\]+)/);
-          const deployedUrl = match ? match[1].trim() : null;
-          resolve({ stdout, stderr, deployedUrl });
+          resolve({ stdout: null, stderr, deployedUrl });
         } else {
           const error = `Claude CLI failed (exit ${code}): ${stderr.substring(0, 200)}`;
           reject(new Error(error));
@@ -521,14 +516,27 @@ async function main() {
 
   try {
     const result = await processor.process(transcriptPath, projectName);
-    console.log(JSON.stringify({ level: "info", message: "Processing completed", meetingId: result.meetingId }));
+    // Log to stderr (consistent with log() method)
+    console.error(
+      JSON.stringify({
+        level: "info",
+        message: "Processing completed",
+        meetingId: result.meetingId,
+      }),
+    );
     if (result.deployedUrl) {
-      // Keep DEPLOYED_URL= format for entrypoint.sh parsing
+      // Only DEPLOYED_URL goes to stdout (machine output)
       console.log(`DEPLOYED_URL=${result.deployedUrl}`);
     }
     process.exit(0);
   } catch (error) {
-    console.error(JSON.stringify({ level: "error", message: "Processing failed", error: error.message }));
+    console.error(
+      JSON.stringify({
+        level: "error",
+        message: "Processing failed",
+        error: error.message,
+      }),
+    );
     process.exit(1);
   }
 }

@@ -5,10 +5,11 @@
 set -e
 
 # JSON logging function (consistent with JS files)
+# All logs go to stderr to keep stdout clean
 log() {
     local level=$(echo "$1" | tr '[:upper:]' '[:lower:]')
     local message="$2"
-    echo "{\"level\":\"$level\",\"message\":\"$message\"}"
+    echo "{\"level\":\"$level\",\"message\":\"$message\"}" >&2
 }
 
 # Setup Claude CLI authentication
@@ -45,7 +46,7 @@ EOF
 EOF
 
     else
-        log "ERROR" "No Claude auth configured"
+        log "error" "No Claude auth configured"
         exit 1
     fi
 }
@@ -54,7 +55,7 @@ EOF
 send_failure_notification() {
     if [ -n "$LOGIC_APP_URL" ] && [ -n "$PARTICIPANTS_JSON" ]; then
         export NOTIFICATION_TYPE="failed"
-        node send-teams-notification.js || true
+        node send-teams-notification.js >/dev/null || true
     fi
 }
 
@@ -65,9 +66,8 @@ run_pipeline() {
     # Capture stderr separately for error reporting
     DOWNLOAD_STDERR=$(mktemp)
     if ! DOWNLOAD_RESULT=$(node download-transcript.js 2>"$DOWNLOAD_STDERR"); then
-        log "ERROR" "Failed to download transcript"
+        log "error" "Failed to download transcript"
         cat "$DOWNLOAD_STDERR" >&2
-        echo "$DOWNLOAD_RESULT"
         rm -f "$DOWNLOAD_STDERR"
         exit 1
     fi
@@ -78,7 +78,7 @@ run_pipeline() {
     # Check if skipped
     if echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).skipped" 2>/dev/null | grep -q "true"; then
         REASON=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).reason")
-        log "SKIP" "$REASON"
+        log "info" "Skipped: $REASON"
         exit 0
     fi
 
@@ -96,36 +96,43 @@ run_pipeline() {
     # Step 2: Send "started" notification (if configured)
     if [ -n "$LOGIC_APP_URL" ]; then
         export NOTIFICATION_TYPE="started"
-        node send-teams-notification.js || log "WARN" "Started notification failed"
+        node send-teams-notification.js >/dev/null || log "warn" "Started notification failed"
     fi
 
-    # Step 3: Process transcript (no trap, handle errors explicitly)
-    log "INFO" "Processing transcript with Claude..."
-    if ! PROCESSOR_OUTPUT=$(node processor.js "$TRANSCRIPT_PATH" "$PROJECT_NAME" 2>&1); then
-        echo "$PROCESSOR_OUTPUT"
-        log "ERROR" "Claude processing failed"
+    # Step 3: Process transcript
+    # stderr = logs (real-time), stdout = machine output (captured)
+    log "info" "Processing transcript with Claude..."
+
+    set +e
+    # stderr flows through for real-time display
+    # stdout (only DEPLOYED_URL) captured to variable
+    PROCESSOR_STDOUT=$(node processor.js "$TRANSCRIPT_PATH" "$PROJECT_NAME")
+    PROCESSOR_EXIT_CODE=$?
+    set -e
+
+    if [ "$PROCESSOR_EXIT_CODE" -ne 0 ]; then
+        log "error" "Claude processing failed"
         send_failure_notification
         exit 1
     fi
-    echo "$PROCESSOR_OUTPUT"
 
-    # Extract deployed URL
-    DEPLOYED_URL=$(echo "$PROCESSOR_OUTPUT" | grep -oP 'DEPLOYED_URL=\K[^\s"]+' | head -1)
+    # Extract deployed URL from stdout (minimal data)
+    DEPLOYED_URL=$(echo "$PROCESSOR_STDOUT" | grep -oP 'DEPLOYED_URL=\K[^\s"]+' | head -1)
 
     if [ -z "$DEPLOYED_URL" ]; then
-        log "ERROR" "Failed to extract deployed URL"
+        log "error" "Failed to extract deployed URL"
         send_failure_notification
         exit 1
     fi
 
-    log "OK" "Deployed: $DEPLOYED_URL"
+    log "info" "Deployed: $DEPLOYED_URL"
 
     # Step 4: Send "completed" notification (if configured)
     if [ -n "$LOGIC_APP_URL" ]; then
-        log "INFO" "Sending completed notification..."
+        log "info" "Sending completed notification..."
         export NOTIFICATION_TYPE="completed"
         export DASHBOARD_URL="$DEPLOYED_URL"
-        node send-teams-notification.js || log "WARN" "Completed notification failed"
+        node send-teams-notification.js >/dev/null || log "warn" "Completed notification failed"
     fi
 }
 

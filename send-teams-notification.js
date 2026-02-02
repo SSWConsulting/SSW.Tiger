@@ -39,6 +39,7 @@ function log(level, message, data = null) {
     message,
     ...(data && { ...data }),
   };
+  // All logs to stderr (consistent with processor.js)
   console.error(JSON.stringify(logEntry));
 }
 
@@ -84,10 +85,14 @@ async function sendViaLogicApp(participants) {
     throw new Error(`Logic App failed: ${response.status} - ${errorText}`);
   }
 
-  log("info", `Logic App notification (${CONFIG.notificationType}) sent successfully`, {
-    recipientCount: participants.length,
-    notificationType: CONFIG.notificationType,
-  });
+  log(
+    "info",
+    `Logic App notification (${CONFIG.notificationType}) sent successfully`,
+    {
+      recipientCount: participants.length,
+      notificationType: CONFIG.notificationType,
+    },
+  );
 }
 
 async function main() {
