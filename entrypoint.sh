@@ -62,18 +62,11 @@ send_failure_notification() {
 # Main pipeline
 run_pipeline() {
     # Step 1: Download transcript
-    # Note: stderr goes to console (logs), stdout captured (JSON result)
-    # Capture stderr separately for error reporting
-    DOWNLOAD_STDERR=$(mktemp)
-    if ! DOWNLOAD_RESULT=$(node download-transcript.js 2>"$DOWNLOAD_STDERR"); then
+    # stderr flows through for real-time logs, stdout captured (JSON result)
+    if ! DOWNLOAD_RESULT=$(node download-transcript.js); then
         log "error" "Failed to download transcript"
-        cat "$DOWNLOAD_STDERR" >&2
-        rm -f "$DOWNLOAD_STDERR"
         exit 1
     fi
-    # Show logs from stderr (info messages)
-    cat "$DOWNLOAD_STDERR" >&2
-    rm -f "$DOWNLOAD_STDERR"
 
     # Check if skipped
     if echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).skipped" 2>/dev/null | grep -q "true"; then
