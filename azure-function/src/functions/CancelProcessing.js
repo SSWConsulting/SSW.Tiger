@@ -346,10 +346,10 @@ app.http("CheckCancellation", {
 
     const cancelled = isCancelled(executionId);
 
-    structuredLog(context, "debug", "Cancellation check", {
-      executionId,
-      cancelled,
-    });
+    // Only log when actually cancelled (reduce log noise)
+    if (cancelled) {
+      structuredLog(context, "info", "Cancellation confirmed", { executionId });
+    }
 
     return {
       status: 200,

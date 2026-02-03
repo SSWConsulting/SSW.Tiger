@@ -23,7 +23,7 @@ start_cancel_checker() {
 
     (
         while true; do
-            sleep 5
+            sleep 15
             CANCEL_CHECK=$(curl -s --max-time 3 "$CHECK_CANCELLATION_URL" 2>/dev/null || echo '{"cancelled":false}')
             IS_CANCELLED=$(echo "$CANCEL_CHECK" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).cancelled" 2>/dev/null || echo "false")
             if [ "$IS_CANCELLED" = "true" ]; then
