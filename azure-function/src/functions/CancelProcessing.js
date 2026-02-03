@@ -159,7 +159,7 @@ app.http("CancelProcessing", {
         request,
         false,
         "Missing required parameters: executionId, jobName, resourceGroup, subscriptionId",
-        400
+        400,
       );
     }
 
@@ -173,20 +173,28 @@ app.http("CancelProcessing", {
 
       // If no mapping found, list running executions and find/stop them
       if (!executionName) {
-        structuredLog(context, "info", "Mapping not found, listing running executions", {
-          executionId,
-          jobName,
-        });
+        structuredLog(
+          context,
+          "info",
+          "Mapping not found, listing running executions",
+          {
+            executionId,
+            jobName,
+          },
+        );
 
         // List all executions for this job
         const executions = [];
-        for await (const execution of client.jobsExecutions.list(resourceGroup, jobName)) {
+        for await (const execution of client.jobsExecutions.list(
+          resourceGroup,
+          jobName,
+        )) {
           executions.push(execution);
         }
 
         // Find running executions
         const runningExecutions = executions.filter(
-          (e) => e.status === "Running" || e.status === "Processing"
+          (e) => e.status === "Running" || e.status === "Processing",
         );
 
         structuredLog(context, "info", "Found executions", {
@@ -199,29 +207,38 @@ app.http("CancelProcessing", {
             request,
             false,
             "No running job executions found. It may have already completed.",
-            404
+            404,
           );
         }
 
         // Safety check: only stop if exactly 1 running execution
         // If multiple running, we can't safely determine which one to stop
         if (runningExecutions.length > 1) {
-          structuredLog(context, "warn", "Multiple running executions found, cannot safely cancel", {
-            runningCount: runningExecutions.length,
-            executions: runningExecutions.map((e) => e.name),
-          });
+          structuredLog(
+            context,
+            "warn",
+            "Multiple running executions found, cannot safely cancel",
+            {
+              runningCount: runningExecutions.length,
+              executions: runningExecutions.map((e) => e.name),
+            },
+          );
           return createResponse(
             request,
             false,
             `Multiple jobs running (${runningExecutions.length}). Cannot safely determine which one to cancel. Please wait for them to complete or cancel manually.`,
-            409
+            409,
           );
         }
 
         // Stop the single running execution
         const targetExecution = runningExecutions[0];
         try {
-          await client.jobsExecutions.delete(resourceGroup, jobName, targetExecution.name);
+          await client.jobsExecutions.delete(
+            resourceGroup,
+            jobName,
+            targetExecution.name,
+          );
           structuredLog(context, "info", "Job execution stopped", {
             executionName: targetExecution.name,
             previousStatus: targetExecution.status,
@@ -236,7 +253,7 @@ app.http("CancelProcessing", {
             request,
             false,
             `Failed to stop execution: ${stopError.message}`,
-            500
+            500,
           );
         }
       } else {
@@ -254,8 +271,15 @@ app.http("CancelProcessing", {
             executionName,
           );
 
-          if (execution.status === "Running" || execution.status === "Processing") {
-            await client.jobsExecutions.delete(resourceGroup, jobName, executionName);
+          if (
+            execution.status === "Running" ||
+            execution.status === "Processing"
+          ) {
+            await client.jobsExecutions.delete(
+              resourceGroup,
+              jobName,
+              executionName,
+            );
             structuredLog(context, "info", "Job execution stopped", {
               executionName,
               previousStatus: execution.status,
@@ -280,16 +304,12 @@ app.http("CancelProcessing", {
       // Mark as cancelled (for job to check)
       markAsCancelled(executionId);
 
-      // Send cancelled notification to organizer
-      const participants = userId ? [{ userId }] : [];
-      await sendCancelledNotification(context, executionId, participants);
-
       return createResponse(
         request,
         true,
         "Processing has been cancelled successfully.",
         200,
-        { executionId, executionName }
+        { executionId, executionName },
       );
     } catch (err) {
       structuredLog(context, "error", "Failed to cancel processing", {
@@ -301,15 +321,12 @@ app.http("CancelProcessing", {
         request,
         false,
         `Failed to cancel: ${err.message}`,
-        500
+        500,
       );
     }
   },
 });
 
-/**
- * Send notification that processing was cancelled
- */
 /**
  * Check if an execution has been cancelled
  * Called by the job before starting expensive processing
@@ -340,37 +357,3 @@ app.http("CheckCancellation", {
     };
   },
 });
-
-async function sendCancelledNotification(context, executionId, participants = []) {
-  const logicAppUrl = process.env.LOGIC_APP_URL;
-
-  if (!logicAppUrl) {
-    structuredLog(context, "warn", "LOGIC_APP_URL not configured, skipping notification");
-    return;
-  }
-
-  try {
-    const payload = {
-      notificationType: "cancelled",
-      executionId,
-      participants,
-      message: "Meeting transcript processing was cancelled by user.",
-    };
-
-    const response = await fetch(logicAppUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Logic App returned ${response.status}`);
-    }
-
-    structuredLog(context, "info", "Cancelled notification sent", { executionId });
-  } catch (err) {
-    structuredLog(context, "warn", "Failed to send cancelled notification", {
-      error: err.message,
-    });
-  }
-}

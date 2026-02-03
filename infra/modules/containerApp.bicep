@@ -65,7 +65,7 @@ resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
     configuration: {
       triggerType: 'Manual'
       replicaTimeout: replicaTimeout
-      replicaRetryLimit: 1
+      replicaRetryLimit: 0
 
       // Secrets from Key Vault (using managed identity)
       secrets: [
