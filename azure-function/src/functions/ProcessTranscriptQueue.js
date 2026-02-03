@@ -200,8 +200,15 @@ async function triggerContainerAppJob(params, context) {
   const executionId = `${meetingId}-${transcriptId}-${Date.now()}`;
 
   // Build cancel URL if cancel function is configured
+  // Include subscriptionId so cancel can work without in-memory cache (cross-instance)
+  // Include userId so cancelled notification can be sent to the organizer
   const cancelUrl = cancelFunctionUrl
-    ? `${cancelFunctionUrl}?executionId=${encodeURIComponent(executionId)}&jobName=${encodeURIComponent(jobName)}&resourceGroup=${encodeURIComponent(resourceGroup)}`
+    ? `${cancelFunctionUrl}?executionId=${encodeURIComponent(executionId)}&jobName=${encodeURIComponent(jobName)}&resourceGroup=${encodeURIComponent(resourceGroup)}&subscriptionId=${encodeURIComponent(subscriptionId)}&userId=${encodeURIComponent(userId)}`
+    : "";
+
+  // Build check cancellation URL (same host, different endpoint)
+  const checkCancellationUrl = cancelFunctionUrl
+    ? cancelFunctionUrl.replace("/CancelProcessing", "/CheckCancellation") + `?executionId=${encodeURIComponent(executionId)}`
     : "";
 
   // Use singleton client for better performance
@@ -227,6 +234,7 @@ async function triggerContainerAppJob(params, context) {
               // Execution tracking for cancel functionality
               { name: "JOB_EXECUTION_ID", value: executionId },
               { name: "CANCEL_URL", value: cancelUrl },
+              { name: "CHECK_CANCELLATION_URL", value: checkCancellationUrl },
               // Static values - must be included as template override replaces the env array
               { name: "NODE_ENV", value: "production" },
               // Secrets from job configuration (defined in containerApp.bicep)

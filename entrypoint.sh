@@ -12,6 +12,40 @@ log() {
     echo "{\"level\":\"$level\",\"message\":\"$message\"}" >&2
 }
 
+# Background cancellation checker
+# Polls CHECK_CANCELLATION_URL every 5 seconds and exits if cancelled
+CANCEL_CHECKER_PID=""
+
+start_cancel_checker() {
+    if [ -z "$CHECK_CANCELLATION_URL" ]; then
+        return
+    fi
+
+    (
+        while true; do
+            sleep 5
+            CANCEL_CHECK=$(curl -s --max-time 3 "$CHECK_CANCELLATION_URL" 2>/dev/null || echo '{"cancelled":false}')
+            IS_CANCELLED=$(echo "$CANCEL_CHECK" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).cancelled" 2>/dev/null || echo "false")
+            if [ "$IS_CANCELLED" = "true" ]; then
+                log "info" "Job cancelled by user, terminating..."
+                # Kill the parent process group
+                kill -TERM -$$ 2>/dev/null || true
+                exit 0
+            fi
+        done
+    ) &
+    CANCEL_CHECKER_PID=$!
+}
+
+stop_cancel_checker() {
+    if [ -n "$CANCEL_CHECKER_PID" ]; then
+        kill $CANCEL_CHECKER_PID 2>/dev/null || true
+    fi
+}
+
+# Cleanup on exit
+trap stop_cancel_checker EXIT
+
 # Setup Claude CLI authentication
 setup_claude_auth() {
     mkdir -p ~/.claude ~/.config/claude
@@ -61,6 +95,9 @@ send_failure_notification() {
 
 # Main pipeline
 run_pipeline() {
+    # Start background cancellation checker (polls every 5s)
+    start_cancel_checker
+
     # Step 1: Download transcript
     # stderr flows through for real-time logs, stdout captured (JSON result)
     if ! DOWNLOAD_RESULT=$(node download-transcript.js); then
