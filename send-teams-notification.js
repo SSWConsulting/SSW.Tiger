@@ -30,7 +30,9 @@ const CONFIG = {
   meetingSubject: process.env.MEETING_SUBJECT || "Untitled Meeting",
   projectName: process.env.PROJECT_NAME || "General Project",
   participantsJson: process.env.PARTICIPANTS_JSON,
-  notificationType: process.env.NOTIFICATION_TYPE || "completed", // "started", "completed", or "failed"
+  notificationType: process.env.NOTIFICATION_TYPE || "completed", // "started", "completed", "failed", or "cancelled"
+  cancelUrl: process.env.CANCEL_URL, // URL to cancel processing (for "started" notifications)
+  executionId: process.env.JOB_EXECUTION_ID, // Execution ID for tracking
 };
 
 function log(level, message, data = null) {
@@ -74,6 +76,16 @@ async function sendViaLogicApp(participants) {
     participants: participants,
   };
 
+  // Include cancelUrl for "started" notifications (allows user to cancel processing)
+  if (CONFIG.notificationType === "started" && CONFIG.cancelUrl) {
+    payload.cancelUrl = CONFIG.cancelUrl;
+    payload.executionId = CONFIG.executionId;
+    log("debug", "Including cancel URL in notification", {
+      cancelUrl: CONFIG.cancelUrl,
+      executionId: CONFIG.executionId,
+    });
+  }
+
   const response = await fetch(CONFIG.logicAppUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -91,6 +103,7 @@ async function sendViaLogicApp(participants) {
     {
       recipientCount: participants.length,
       notificationType: CONFIG.notificationType,
+      hasCancelUrl: !!payload.cancelUrl,
     },
   );
 }

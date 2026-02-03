@@ -87,8 +87,11 @@ run_pipeline() {
     export PARTICIPANTS_JSON="$PARTICIPANTS_JSON"
 
     # Step 2: Send "started" notification (if configured)
+    # Includes cancel URL if available, allowing users to cancel processing
     if [ -n "$LOGIC_APP_URL" ]; then
         export NOTIFICATION_TYPE="started"
+        # CANCEL_URL and JOB_EXECUTION_ID are passed from Azure Function
+        # They will be included in the notification payload for the Cancel button
         node send-teams-notification.js >/dev/null || log "warn" "Started notification failed"
     fi
 

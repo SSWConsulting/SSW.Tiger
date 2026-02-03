@@ -2,3 +2,4 @@
 require("./TranscriptWebhook");
 require("./ProcessTranscriptQueue");
 require("./RenewSubscription");
+require("./CancelProcessing");

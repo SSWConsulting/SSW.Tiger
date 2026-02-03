@@ -77,6 +77,36 @@ function removeFromCache(meetingId, transcriptId) {
   processedCache.delete(key);
 }
 
+/**
+ * Execution mapping cache for cancel functionality.
+ * Maps executionId -> { executionName, jobName, resourceGroup, subscriptionId, startedAt }
+ * TTL: 2 hours (processing should complete within this time)
+ */
+const executionMappingCache = new Map();
+const EXECUTION_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+function storeExecutionMapping(executionId, data) {
+  executionMappingCache.set(executionId, data);
+
+  // Cleanup old entries
+  if (executionMappingCache.size > 100) {
+    const now = Date.now();
+    for (const [k, v] of executionMappingCache) {
+      if (now - v.startedAt > EXECUTION_CACHE_TTL_MS) {
+        executionMappingCache.delete(k);
+      }
+    }
+  }
+}
+
+function getExecutionMapping(executionId) {
+  return executionMappingCache.get(executionId);
+}
+
+function removeExecutionMapping(executionId) {
+  executionMappingCache.delete(executionId);
+}
+
 function getContainerAppsClient(subscriptionId) {
   if (!containerAppsClient) {
     azureCredential = new DefaultAzureCredential();
@@ -143,6 +173,16 @@ async function triggerContainerAppJob(params, context) {
   const jobName = process.env.CONTAINER_APP_JOB_NAME;
   const containerImage = process.env.CONTAINER_APP_JOB_IMAGE;
 
+  // Cancel function URL - can be explicitly set or auto-constructed from WEBSITE_HOSTNAME
+  // The CancelProcessing function uses anonymous auth, so no function key needed
+  // The executionId in the URL acts as a pseudo-authentication token
+  let cancelFunctionUrl = process.env.CANCEL_FUNCTION_URL;
+  if (!cancelFunctionUrl && process.env.WEBSITE_HOSTNAME) {
+    // Auto-construct URL from Azure Function environment
+    const hostname = process.env.WEBSITE_HOSTNAME;
+    cancelFunctionUrl = `https://${hostname}/api/CancelProcessing`;
+  }
+
   const missingEnvVars = [];
   if (!subscriptionId) missingEnvVars.push("SUBSCRIPTION_ID");
   if (!resourceGroup) missingEnvVars.push("CONTAINER_APP_JOB_RESOURCE_GROUP");
@@ -155,6 +195,14 @@ async function triggerContainerAppJob(params, context) {
       `Missing required environment variables: ${missingEnvVars.join(", ")}`,
     );
   }
+
+  // Generate a unique execution ID for this job run
+  const executionId = `${meetingId}-${transcriptId}-${Date.now()}`;
+
+  // Build cancel URL if cancel function is configured
+  const cancelUrl = cancelFunctionUrl
+    ? `${cancelFunctionUrl}?executionId=${encodeURIComponent(executionId)}&jobName=${encodeURIComponent(jobName)}&resourceGroup=${encodeURIComponent(resourceGroup)}`
+    : "";
 
   // Use singleton client for better performance
   const client = getContainerAppsClient(subscriptionId);
@@ -176,6 +224,9 @@ async function triggerContainerAppJob(params, context) {
               { name: "GRAPH_USER_ID", value: userId },
               { name: "GRAPH_MEETING_ID", value: meetingId },
               { name: "GRAPH_TRANSCRIPT_ID", value: transcriptId },
+              // Execution tracking for cancel functionality
+              { name: "JOB_EXECUTION_ID", value: executionId },
+              { name: "CANCEL_URL", value: cancelUrl },
               // Static values - must be included as template override replaces the env array
               { name: "NODE_ENV", value: "production" },
               // Secrets from job configuration (defined in containerApp.bicep)
@@ -196,9 +247,21 @@ async function triggerContainerAppJob(params, context) {
     const initialResult = poller.getOperationState().result;
     const executionName = initialResult?.name || "unknown";
 
+    // Store mapping of executionId -> executionName for cancel functionality
+    // This allows the cancel endpoint to find the actual job execution
+    storeExecutionMapping(executionId, {
+      executionName,
+      jobName,
+      resourceGroup,
+      subscriptionId,
+      startedAt: Date.now(),
+    });
+
     structuredLog(context, "info", "Container App Job started", {
       jobName,
       executionName,
+      executionId,
+      cancelUrl: cancelUrl || "(not configured)",
       userId,
       meetingId,
       transcriptId,
@@ -214,3 +277,12 @@ async function triggerContainerAppJob(params, context) {
     throw err; // Re-throw to trigger queue retry
   }
 }
+
+// Export shared utilities for CancelProcessing function
+module.exports = {
+  getContainerAppsClient,
+  getExecutionMapping,
+  removeExecutionMapping,
+  structuredLog,
+  LOG_PREFIX,
+};

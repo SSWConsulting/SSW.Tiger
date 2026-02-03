@@ -273,12 +273,14 @@ async function fetchTranscriptMetadata(token) {
   return await response.json();
 }
 
-async function fetchActualParticipantsFromChat(token, chatId) {
-  // Fetch chat messages and extract actual participants
+async function fetchActualParticipantsFromChat(token, chatId, callId) {
+  // Fetch chat messages and extract actual participants for a specific call session
   // Sources: recording initiator + meeting starter + members joined/left + call ended participants
-  // Merges displayName from multiple events (prefers non-empty values)
+  // Events with callId filtered directly; membersJoined/Left use time range (no callId in those events)
   // Deduped by userId
   const graphUrl = `https://graph.microsoft.com/v1.0/chats/${encodeURIComponent(chatId)}/messages?$top=50`;
+
+  log("debug", "Fetching participants for call session", { chatId, callId });
 
   const response = await fetch(graphUrl, {
     method: "GET",
@@ -322,11 +324,42 @@ async function fetchActualParticipantsFromChat(token, chatId) {
     }
   }
 
+  // First pass: find the time range for this call session (for membersJoined/Left filtering)
+  let callStartTime = null;
+  let callEndTime = null;
+
   for (const msg of messages) {
     const eventType = msg.eventDetail?.["@odata.type"];
+    const eventCallId = msg.eventDetail?.callId;
 
-    // 1. callRecordingEventMessageDetail - person who started/stopped recording
-    if (eventType === "#microsoft.graph.callRecordingEventMessageDetail") {
+    if (eventCallId === callId) {
+      if (eventType === "#microsoft.graph.callStartedEventMessageDetail") {
+        callStartTime = new Date(msg.createdDateTime);
+      }
+      if (eventType === "#microsoft.graph.callEndedEventMessageDetail") {
+        callEndTime = new Date(msg.createdDateTime);
+      }
+      // Use last recording event as fallback end time (recording may stop before call ends)
+      if (eventType === "#microsoft.graph.callRecordingEventMessageDetail") {
+        const recordingTime = new Date(msg.createdDateTime);
+        if (!callEndTime || recordingTime > callEndTime) {
+          callEndTime = recordingTime;
+        }
+      }
+    }
+  }
+
+  // Second pass: collect participants from events
+  for (const msg of messages) {
+    const eventType = msg.eventDetail?.["@odata.type"];
+    const eventCallId = msg.eventDetail?.callId;
+    const eventTime = new Date(msg.createdDateTime);
+
+    // 1. callRecordingEventMessageDetail - person who started/stopped recording (has callId)
+    if (
+      eventType === "#microsoft.graph.callRecordingEventMessageDetail" &&
+      eventCallId === callId
+    ) {
       const initiator = msg.eventDetail?.initiator?.user;
       if (initiator?.id) {
         addOrUpdateParticipant(participantMap, initiator.id, {
@@ -338,8 +371,11 @@ async function fetchActualParticipantsFromChat(token, chatId) {
       }
     }
 
-    // 2. callStartedEventMessageDetail - meeting initiator
-    if (eventType === "#microsoft.graph.callStartedEventMessageDetail") {
+    // 2. callStartedEventMessageDetail - meeting initiator (has callId)
+    if (
+      eventType === "#microsoft.graph.callStartedEventMessageDetail" &&
+      eventCallId === callId
+    ) {
       const initiator = msg.eventDetail?.initiator?.user;
       if (initiator?.id) {
         addOrUpdateParticipant(participantMap, initiator.id, {
@@ -351,38 +387,55 @@ async function fetchActualParticipantsFromChat(token, chatId) {
       }
     }
 
-    // 3. membersJoinedEventMessageDetail - people who joined
+    // 3. membersJoinedEventMessageDetail - people who joined (no callId, use time range)
     if (eventType === "#microsoft.graph.membersJoinedEventMessageDetail") {
-      const members = msg.eventDetail?.members || [];
-      for (const member of members) {
-        if (member.id) {
-          addOrUpdateParticipant(participantMap, member.id, {
-            userId: member.id,
-            displayName: member.displayName || "",
-            tenantId: member.tenantId || "",
-            userIdentityType: member.userIdentityType || "",
-          });
+      const isInTimeRange =
+        callStartTime &&
+        eventTime >= callStartTime &&
+        (!callEndTime || eventTime <= callEndTime);
+
+      if (isInTimeRange) {
+        const members = msg.eventDetail?.members || [];
+        for (const member of members) {
+          if (member.id) {
+            addOrUpdateParticipant(participantMap, member.id, {
+              userId: member.id,
+              displayName: member.displayName || "",
+              tenantId: member.tenantId || "",
+              userIdentityType: member.userIdentityType || "",
+            });
+          }
         }
       }
     }
 
-    // 4. membersLeftEventMessageDetail - people who left (still attended)
+    // 4. membersLeftEventMessageDetail - people who left (no callId, use time range)
     if (eventType === "#microsoft.graph.membersLeftEventMessageDetail") {
-      const members = msg.eventDetail?.members || [];
-      for (const member of members) {
-        if (member.id) {
-          addOrUpdateParticipant(participantMap, member.id, {
-            userId: member.id,
-            displayName: member.displayName || "",
-            tenantId: member.tenantId || "",
-            userIdentityType: member.userIdentityType || "",
-          });
+      const isInTimeRange =
+        callStartTime &&
+        eventTime >= callStartTime &&
+        (!callEndTime || eventTime <= callEndTime);
+
+      if (isInTimeRange) {
+        const members = msg.eventDetail?.members || [];
+        for (const member of members) {
+          if (member.id) {
+            addOrUpdateParticipant(participantMap, member.id, {
+              userId: member.id,
+              displayName: member.displayName || "",
+              tenantId: member.tenantId || "",
+              userIdentityType: member.userIdentityType || "",
+            });
+          }
         }
       }
     }
 
-    // 5. callEndedEventMessageDetail - has callParticipants with full displayName
-    if (eventType === "#microsoft.graph.callEndedEventMessageDetail") {
+    // 5. callEndedEventMessageDetail - has callParticipants with full displayName (has callId)
+    if (
+      eventType === "#microsoft.graph.callEndedEventMessageDetail" &&
+      eventCallId === callId
+    ) {
       const callParticipants = msg.eventDetail?.callParticipants || [];
       for (const cp of callParticipants) {
         const user = cp.participant?.user;
@@ -400,7 +453,8 @@ async function fetchActualParticipantsFromChat(token, chatId) {
 
   const participants = Array.from(participantMap.values());
 
-  log("info", `Found ${participants.length} actual participants from chat`, {
+  log("info", `Found ${participants.length} participants for call session`, {
+    callId,
     participants: participants.map((p) => p.displayName || p.userId),
   });
 
@@ -544,11 +598,107 @@ function matchesMeetingFilter(subject) {
 }
 
 /**
- * Check if meeting has external participants (non-SSW)
- * External = any participant with:
- *   - userIdentityType !== "aadUser" (e.g., anonymousGuest, personalMicrosoftAccountUser)
- *   - OR different tenantId than SSW
- *   - OR SSW AAD user but displayName missing "[SSW]" suffix (guest in SSW tenant)
+ * Check if a person is external (non-SSW)
+ * Unified check for both meeting invitees and call participants
+ * @param {Object} person - Person object with optional fields: upn, displayName, tenantId, userIdentityType, role
+ * @returns {{isExternal: boolean, reason: string}}
+ */
+function isExternalPerson(person) {
+  // Check 1: UPN contains "client" (case insensitive) - for invitees
+  if (person.upn && person.upn.toLowerCase().includes("client")) {
+    return {
+      isExternal: true,
+      reason: `UPN contains 'client': ${person.upn}`,
+    };
+  }
+
+  // Check 2: Non-AAD user type (anonymousGuest, personalMicrosoftAccountUser, etc.)
+  if (person.userIdentityType && person.userIdentityType !== "aadUser") {
+    return {
+      isExternal: true,
+      reason: `Non-AAD user type: ${person.userIdentityType}`,
+    };
+  }
+
+  // Check 3: Different tenant
+  if (person.tenantId && person.tenantId !== CONFIG.sswTenantId) {
+    return {
+      isExternal: true,
+      reason: `Different tenantId: ${person.displayName || person.upn || person.userId}`,
+    };
+  }
+
+  // Check 4: displayName doesn't include "SSW" (only if present and non-empty)
+  // Skip if displayName is null/undefined/empty to avoid false positives
+  if (
+    person.displayName &&
+    person.displayName.trim() !== "" &&
+    !person.displayName.toUpperCase().includes("SSW")
+  ) {
+    return {
+      isExternal: true,
+      reason: `displayName doesn't include 'SSW': ${person.displayName}`,
+    };
+  }
+
+  return { isExternal: false, reason: "" };
+}
+
+/**
+ * Check if meeting has external participants based on meeting invite list (organizer + attendees)
+ * @param {Object} meeting - Meeting object from Graph API
+ * @returns {{hasExternal: boolean, reason: string}} result with reason if external found
+ */
+function checkMeetingInviteesForExternal(meeting) {
+  const invitees = [];
+
+  // Add organizer
+  if (meeting.participants?.organizer) {
+    const org = meeting.participants.organizer;
+    invitees.push({
+      role: "organizer",
+      upn: org.upn || "",
+      displayName: org.identity?.user?.displayName || "",
+      tenantId: org.identity?.user?.tenantId || "",
+    });
+  }
+
+  // Add attendees
+  if (meeting.participants?.attendees) {
+    for (const att of meeting.participants.attendees) {
+      invitees.push({
+        role: "attendee",
+        upn: att.upn || "",
+        displayName: att.identity?.user?.displayName || "",
+        tenantId: att.identity?.user?.tenantId || "",
+      });
+    }
+  }
+
+  log("debug", "Checking meeting invitees for external users", {
+    inviteeCount: invitees.length,
+    invitees: invitees.map((i) => ({
+      role: i.role,
+      upn: i.upn,
+      displayName: i.displayName,
+    })),
+  });
+
+  for (const invitee of invitees) {
+    const check = isExternalPerson(invitee);
+    if (check.isExternal) {
+      log("info", `Found external invitee: ${check.reason}`, {
+        role: invitee.role,
+      });
+      return { hasExternal: true, reason: check.reason };
+    }
+  }
+
+  return { hasExternal: false, reason: "" };
+}
+
+/**
+ * Check if meeting has external participants from chat messages
  * @param {Array} participants - Array of {userId, displayName, tenantId, userIdentityType}
  * @returns {boolean} true if any external participant found
  */
@@ -558,39 +708,13 @@ function hasExternalParticipants(participants) {
   }
 
   for (const p of participants) {
-    // Non-AAD users are external (anonymousGuest, personalMicrosoftAccountUser, etc.)
-    if (p.userIdentityType && p.userIdentityType !== "aadUser") {
-      log("info", "Found external participant (non-AAD user)", {
-        userIdentityType: p.userIdentityType,
-        displayName: p.displayName,
-      });
-      return true;
-    }
-
-    // Different tenant = external participant
-    if (p.tenantId && p.tenantId !== CONFIG.sswTenantId) {
-      log("info", "Found external participant (different tenant)", {
-        tenantId: p.tenantId,
-        displayName: p.displayName,
-      });
-      return true;
-    }
-
-    // SSW tenant AAD user but without [SSW] suffix = guest in SSW tenant
-    // Only check if displayName is present (many events have null displayName for internal users)
-    if (
-      p.userIdentityType === "aadUser" &&
-      p.tenantId === CONFIG.sswTenantId &&
-      p.displayName &&
-      p.displayName.trim() !== "" &&
-      !p.displayName.includes("[SSW]")
-    ) {
-      log("info", "Found external participant (guest in SSW tenant)", {
-        displayName: p.displayName,
-      });
+    const check = isExternalPerson(p);
+    if (check.isExternal) {
+      log("info", `Found external participant: ${check.reason}`);
       return true;
     }
   }
+
   return false;
 }
 
@@ -620,9 +744,21 @@ async function main() {
       process.exit(0);
     }
 
-    // Fetch transcript metadata to get actual recording date
+    // Filter: check meeting invitees (organizer + attendees) for external users
+    // External = UPN contains "client" OR displayName doesn't include "SSW" OR different tenantId
+    const inviteeCheck = checkMeetingInviteesForExternal(meeting);
+    if (inviteeCheck.hasExternal) {
+      outputResult({
+        skipped: true,
+        reason: `Meeting has external invitees: ${inviteeCheck.reason}`,
+      });
+      process.exit(0);
+    }
+
+    // Fetch transcript metadata to get actual recording date and callId
     const transcriptMeta = await fetchTranscriptMetadata(token);
     const transcriptDate = transcriptMeta.createdDateTime;
+    const callId = transcriptMeta.callId;
 
     // Extract project name and generate filename using transcript date
     const projectName = extractProjectName(subject);
@@ -644,16 +780,21 @@ async function main() {
     // Save to file
     const transcriptPath = await saveTranscript(content, filename);
 
-    // Get actual participants from chat messages (not invitees)
-    // This uses Chat.Read.All permission to read callEndedEventMessageDetail
+    // Get actual participants from chat messages for this specific call session
+    // This uses Chat.Read.All permission to read chat messages
     let participants = [];
     const chatId = meeting.chatInfo?.threadId;
-    if (chatId) {
-      participants = await fetchActualParticipantsFromChat(token, chatId);
+    if (chatId && callId) {
+      participants = await fetchActualParticipantsFromChat(
+        token,
+        chatId,
+        callId,
+      );
     } else {
       log(
         "warn",
-        "No chatId found in meeting, cannot fetch actual participants",
+        "No chatId or callId found, cannot fetch actual participants",
+        { chatId, callId },
       );
     }
 
@@ -708,6 +849,8 @@ module.exports = {
   extractProjectName,
   generateFilename,
   matchesMeetingFilter,
+  isExternalPerson,
+  checkMeetingInviteesForExternal,
   hasExternalParticipants,
   validateConfig,
   runMockMode,
