@@ -84,8 +84,6 @@ The consolidator ensures:
 ## Dashboard Requirements
 
 The dashboard MUST have these tabs (all using consolidated data):
-DO NOT repeat contents in multiple tabs. If it's included in one tab, don't mention it in other tabs.
-Use round number for percentages
 
 ### Tab 1: Overview
 - Meeting summary
@@ -100,6 +98,7 @@ Use round number for percentages
 
 ### Tab 3: People & Roles
 - Card for each participant **(canonical name with role as subtitle)**
+- **Profile photo from SSW People** (with fallback for non-SSW participants)
 - Speaking time vs. value contribution
 - Strengths and constructive feedback
 
@@ -108,12 +107,7 @@ Use round number for percentages
 - Risk signals with who raised them **(canonical names!)**
 - Notable quotes **(attributed by canonical name!)**
 
-### Tab 5: Analytics
-- Charts with participant labels **(canonical names!)**
-- Key metrics (verified, consistent)
-- Efficiency scores
-
-### Tab 6: Trends
+### Tab 5: Trends
 - Comparison with previous meetings
 - Recurring themes
 - Improvement tracking
@@ -189,20 +183,6 @@ Use data from `consolidated.json -> speakerTimeline -> participants[]` to genera
 
 **Sort participants by total speaking time (descending)**
 
-## Deployment
-
-After generating the dashboard, deploy it to surge.sh:
-
-1. Navigate to the dashboard directory
-2. **Use the deploy URL specified in the prompt** (it's already truncated if needed for surge.sh limits)
-3. Run the exact command from the prompt: `surge . {deploy-url}`
-4. **CRITICAL**: After successful deployment, output EXACTLY this line (no markdown, no code blocks, no extra text):
-   ```
-   DEPLOYED_URL=https://xxxxx.surge.sh
-   ```
-
-The `DEPLOYED_URL=` line is parsed by the processor to extract the URL. Any extra text after the URL will break parsing.
-
 ## DO NOT
 
 - Create .md files
@@ -213,4 +193,3 @@ The `DEPLOYED_URL=` line is parsed by the processor to extract the URL. Any extr
 - Generate a simple single-tab page
 - Skip the deployment
 - Rush through the analysis - THIS IS IMPORTANT
-- Add extra text after DEPLOYED_URL (processor parses this line)
