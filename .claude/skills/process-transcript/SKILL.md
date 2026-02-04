@@ -108,7 +108,8 @@ Create `projects/{project}/dashboards/{date}/index.html` using the **consolidate
 - Energy level indicators
 
 #### Tab 3: People & Roles
-- Participant cards (canonical names with roles as subtitle)
+- Participant cards with **profile photos from SSW People** (with fallback initials for non-SSW)
+- Canonical names with roles as subtitle
 - Speaking time visualization
 - Value contribution ratings
 - Strengths and feedback for each person

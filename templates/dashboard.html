@@ -177,6 +177,35 @@
         .grade-c { background: #F59E0B; }
         .grade-d { background: #DC2626; }
         .grade-f { background: #7F1D1D; }
+
+        /* Profile image styles */
+        .profile-image-container {
+            width: 80px;
+            height: 100px;
+            overflow: hidden;
+            border-radius: 8px;
+            background: #E4E4E7;
+            flex-shrink: 0;
+        }
+
+        .profile-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: top center;
+        }
+
+        .profile-image-placeholder {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #E4E4E7 0%, #D4D4D8 100%);
+            color: #71717A;
+            font-size: 2rem;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body class="bg-ssw-gray-50 min-h-screen">
