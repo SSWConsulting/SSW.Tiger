@@ -85,7 +85,11 @@ The consolidator ensures:
 
 The dashboard MUST have these tabs (all using consolidated data):
 DO NOT repeat contents in multiple tabs. If it's included in one tab, don't mention it in other tabs.
-Use round number for percentages
+Use whole numbers for all stats
+Use the primary color: white, ONLY use red for critical issues, do not overuse it
+Use ✅ for good. Use ⚠️ for things to be mindful. ❌ for things that are bad.
+If any particular meeting is skipped, you do NOT have to mention it as a problem.
+Avoid average marks like 7/10, be more decisive in your marking, giving 6/10 or 8/10.
 
 ### Tab 1: Overview
 - Meeting summary
@@ -108,12 +112,7 @@ Use round number for percentages
 - Risk signals with who raised them **(canonical names!)**
 - Notable quotes **(attributed by canonical name!)**
 
-### Tab 5: Analytics
-- Charts with participant labels **(canonical names!)**
-- Key metrics (verified, consistent)
-- Efficiency scores
-
-### Tab 6: Trends
+### Tab 5: Trends
 - Comparison with previous meetings
 - Recurring themes
 - Improvement tracking
