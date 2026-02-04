@@ -216,7 +216,7 @@ https://raw.githubusercontent.com/SSWConsulting/SSW.People.Profiles/main/{Person
             <img src="https://raw.githubusercontent.com/SSWConsulting/SSW.People.Profiles/main/Bob-Northwind/Images/Bob-Northwind-Profile.jpg"
                  alt="Bob Northwind"
                  class="profile-image"
-                 onerror="var placeholder=document.createElement('div');placeholder.className='profile-image-placeholder';placeholder.textContent='BN';this.replaceWith(placeholder);">
+                 onerror="var placeholder=document.createElement('div');var name=this.getAttribute('aria-label')||this.alt;placeholder.className='profile-image-placeholder';placeholder.textContent='BN';if(name){placeholder.setAttribute('role','img');placeholder.setAttribute('aria-label',name);}this.replaceWith(placeholder);">
         </div>
 
         <!-- Info Section -->
