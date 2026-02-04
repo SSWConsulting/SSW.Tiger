@@ -502,7 +502,8 @@ function parseSubject(subject) {
   }
 
   // Format 2: ProjectName - Meeting Title (dash separator)
-  const dashMatch = subject.match(/^([^-]+)\s*-\s*(.+)$/);
+  // Support both hyphen (-), en dash (–), and em dash (—)
+  const dashMatch = subject.match(/^([^-–—]+)\s*[-–—]\s*(.+)$/);
   if (dashMatch) {
     const projectPart = dashMatch[1].trim();
     if (projectPart.length <= 30 && !projectPart.includes(" and ")) {
@@ -538,23 +539,15 @@ function extractProjectName(subject) {
 
 function generateFilename(meeting, transcriptDate) {
   // Use transcript createdDateTime (actual recording time)
-  // Format: {date}-{time}-{slug}.vtt to avoid overwrites for same-day recordings
+  // Format: {date}-{time}.vtt (date+time is sufficient for uniqueness)
+  // This becomes the deploy URL: {project}-{date}-{time}.surge.sh
   const now = new Date().toISOString();
   const date = transcriptDate?.split("T")[0] || now.split("T")[0];
 
   // Extract time as HHmmss (e.g., "094557" from "09:45:57.791Z")
   const timePart = transcriptDate?.split("T")[1] || now.split("T")[1];
   const time = timePart.replace(/[:\.]/g, "").substring(0, 6);
-
-  const { title } = parseSubject(meeting.subject);
-
-  const slug =
-    title
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "") || "meeting";
-
-  return `${date}-${time}-${slug}.vtt`;
+  return `${date}-${time}.vtt`;
 }
 
 async function saveTranscript(content, filename) {

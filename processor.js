@@ -183,15 +183,15 @@ class MeetingProcessor {
   validateTranscriptFilename(transcriptPath) {
     const filename = path.basename(transcriptPath, ".vtt");
 
-    // Validate filename starts with date pattern (YYYY-MM-DD)
-    const datePattern = /^(\d{4}-\d{2}-\d{2})/;
-    const match = filename.match(datePattern);
+    // Validate filename matches date-time pattern (YYYY-MM-DD-HHmmss)
+    const dateTimePattern = /^(\d{4}-\d{2}-\d{2})-(\d{6})$/;
+    const match = filename.match(dateTimePattern);
 
     if (!match) {
       throw new Error(
         `Invalid transcript filename: ${path.basename(transcriptPath)}\n` +
-          "Transcript files must be named with date prefix: YYYY-MM-DD.vtt or YYYY-MM-DD-<identifier>.vtt\n" +
-          "Examples: 2026-01-22.vtt, 2026-01-22-sprint-review.vtt",
+          "Transcript files must be named: YYYY-MM-DD-HHmmss.vtt\n" +
+          "Example: 2026-01-22-094557.vtt",
       );
     }
 
@@ -204,9 +204,54 @@ class MeetingProcessor {
     }
 
     return {
-      meetingId: filename, // e.g., "2026-01-22" or "2026-01-22-sprint-review"
+      meetingId: filename, // e.g., "2026-01-22-094557" (used for folder and deploy URL)
       meetingDate: match[1], // e.g., "2026-01-22"
+      meetingTime: match[2], // e.g., "094557"
     };
+  }
+
+  generateDeployUrl(projectName, meetingId) {
+    // Surge.sh domain limit: ~63 characters total (including .surge.sh suffix)
+    // Reserve 10 chars for ".surge.sh", leaving ~53 chars for project-meeting
+    // Format: {project}-{meeting-id}.surge.sh
+
+    const MAX_DOMAIN_LENGTH = 30; // Without .surge.sh suffix
+    const MEETING_ID_LENGTH = 17; // YYYY-MM-DD-HHmmss (fixed length)
+    const SEPARATOR_LENGTH = 1; // hyphen between project and meeting
+
+    // Calculate max project name length
+    const maxProjectLength =
+      MAX_DOMAIN_LENGTH - MEETING_ID_LENGTH - SEPARATOR_LENGTH;
+
+    // Truncate project name if too long
+    let truncatedProject = projectName;
+    if (projectName.length > maxProjectLength) {
+      // Truncate at word boundary (last hyphen before limit)
+      const truncated = projectName.substring(0, maxProjectLength);
+      const lastHyphen = truncated.lastIndexOf("-");
+      truncatedProject =
+        lastHyphen > 0 ? truncated.substring(0, lastHyphen) : truncated;
+
+      this.log("warn", "Project name truncated for deploy URL", {
+        original: projectName,
+        truncated: truncatedProject,
+        originalLength: projectName.length,
+        maxLength: maxProjectLength,
+      });
+    }
+
+    const deployDomain = `${truncatedProject}-${meetingId}`;
+
+    // Validate total length
+    if (deployDomain.length > MAX_DOMAIN_LENGTH) {
+      this.log("error", "Deploy domain too long even after truncation", {
+        domain: deployDomain,
+        length: deployDomain.length,
+        maxLength: MAX_DOMAIN_LENGTH,
+      });
+    }
+
+    return `${deployDomain}.surge.sh`;
   }
 
   async initialize(transcriptPath, projectName) {
@@ -218,17 +263,18 @@ class MeetingProcessor {
     }
 
     // Validate and extract meeting info from filename
-    const { meetingId, meetingDate } =
+    const { meetingId, meetingDate, meetingTime } =
       this.validateTranscriptFilename(transcriptPath);
 
     this.transcriptPath = path.resolve(transcriptPath);
     this.projectName = projectName;
-    this.meetingId = meetingId;
+    this.meetingId = meetingId; // Format: YYYY-MM-DD-HHmmss (used for folder and deploy URL)
     this.meetingDate = meetingDate;
+    this.meetingTime = meetingTime;
     this.projectPath = path.join(__dirname, "projects", projectName);
     this.meetingPath = path.join(this.projectPath, meetingId);
 
-    this.log("debug", "Initialized", { meetingId, meetingDate });
+    this.log("debug", "Initialized", { meetingId, meetingDate, meetingTime });
   }
 
   async setupProjectStructure() {
@@ -278,6 +324,9 @@ class MeetingProcessor {
     const outputFilename = `${this.projectName}-${this.meetingId}.html`;
     const outputPath = path.join(CONFIG.outputDir, outputFilename);
 
+    // Generate deploy URL with truncation if needed
+    const deployUrl = this.generateDeployUrl(this.projectName, this.meetingId);
+
     const prompt = `Read CLAUDE.md and process the meeting transcript following the complete workflow.
 
 Project: ${this.projectName}
@@ -287,7 +336,9 @@ Meeting folder: projects/${this.projectName}/${this.meetingId}/
 Transcript: projects/${this.projectName}/${this.meetingId}/transcript.vtt
 Dashboard template: templates/dashboard.html
 
-Follow all steps in CLAUDE.md including deployment. Output DEPLOYED_URL as specified.`;
+Follow all steps in CLAUDE.md including deployment.
+Deploy to: ${deployUrl}
+Output DEPLOYED_URL as specified.`;
 
     return new Promise((resolve, reject) => {
       // Spawn Claude Code CLI in print mode (non-interactive)
