@@ -56,7 +56,7 @@ You are a meeting transcript processor. Your job is to convert .vtt transcripts 
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │                      5. DEPLOY                                   │
-│  surge . {project}-{date}.surge.sh                              │
+│  surge . {project}-{meeting-id}.surge.sh                        │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -84,6 +84,12 @@ The consolidator ensures:
 ## Dashboard Requirements
 
 The dashboard MUST have these tabs (all using consolidated data):
+DO NOT repeat contents in multiple tabs. If it's included in one tab, don't mention it in other tabs.
+Use whole numbers for all stats
+Use the primary color: white, ONLY use red for critical issues, do not overuse it
+Use ✅ for good. Use ⚠️ for things to be mindful. ❌ for things that are bad.
+If any particular meeting is skipped, you do NOT have to mention it as a problem.
+Avoid average marks like 7/10, be more decisive in your marking, giving 6/10 or 8/10.
 
 ### Tab 1: Overview
 - Meeting summary
@@ -107,12 +113,7 @@ The dashboard MUST have these tabs (all using consolidated data):
 - Risk signals with who raised them **(canonical names!)**
 - Notable quotes **(attributed by canonical name!)**
 
-### Tab 5: Analytics
-- Charts with participant labels **(canonical names!)**
-- Key metrics (verified, consistent)
-- Efficiency scores
-
-### Tab 6: Trends
+### Tab 5: Trends
 - Comparison with previous meetings
 - Recurring themes
 - Improvement tracking
@@ -121,19 +122,42 @@ The dashboard MUST have these tabs (all using consolidated data):
 
 ```
 projects/{project-name}/
-├── transcripts/{date}.vtt
-├── analysis/
-│   ├── timeline.json        # Raw agent output
-│   ├── people.json          # Raw agent output
-│   ├── insights.json        # Raw agent output
-│   ├── analytics.json       # Raw agent output
-│   ├── longitudinal.json    # Raw agent output
-│   └── consolidated.json    # ← HARMONIZED - USE THIS FOR DASHBOARD
-└── dashboards/{date}/
-    └── index.html           # THE DELIVERABLE
+├── 2026-01-22/                       # Self-contained meeting folder
+│   ├── transcript.vtt                # Meeting transcript
+│   ├── analysis/                     # Meeting-specific analysis
+│   │   ├── timeline.json             # Raw agent output
+│   │   ├── people.json               # Raw agent output
+│   │   ├── insights.json             # Raw agent output
+│   │   ├── analytics.json            # Raw agent output
+│   │   ├── longitudinal.json         # Raw agent output
+│   │   └── consolidated.json         # ← HARMONIZED - USE THIS FOR DASHBOARD
+│   └── dashboard/                    # Meeting dashboard
+│       └── index.html                # THE DELIVERABLE
+└── 2026-01-22-sprint-review/         # Another meeting (same day, different ID)
+    ├── transcript.vtt
+    ├── analysis/
+    │   └── ...
+    └── dashboard/
+        └── index.html
 ```
 
 ## Dashboard Generation
+
+### IMPORTANT: Use the Template
+
+**You MUST use the template file at `templates/dashboard.html` as the base for generating the dashboard.**
+
+1. Read the template file first: `templates/dashboard.html`
+2. The template contains:
+   - SSW brand colors and styling
+   - Tab navigation (Overview, Timeline, People, Insights, Analytics, Trends)
+   - Placeholder variables like `{{PROJECT_NAME}}`, `{{DATE}}`, `{{SUMMARY}}`, etc.
+   - Chart.js setup with SSW colors
+   - Speaker timeline CSS styles
+3. Replace ALL placeholders with actual content from `consolidated.json`
+4. Save the final HTML to `projects/{project}/{meeting-id}/dashboard/index.html`
+
+**DO NOT create HTML from scratch - USE THE TEMPLATE!**
 
 ### Speaker Timeline Visualization
 
@@ -263,6 +287,20 @@ The `onerror` handler on the `<img>` tag automatically falls back to initials wh
 - "Alice Smith" → "AS"
 - Single name "Charlie" → "C"
 
+## Deployment
+
+After generating the dashboard, deploy it to surge.sh:
+
+1. Navigate to the dashboard directory
+2. **Use the deploy URL specified in the prompt** (it's already truncated if needed for surge.sh limits)
+3. Run the exact command from the prompt: `surge . {deploy-url}`
+4. **CRITICAL**: After successful deployment, output EXACTLY this line (no markdown, no code blocks, no extra text):
+   ```
+   DEPLOYED_URL=https://xxxxx.surge.sh
+   ```
+
+The `DEPLOYED_URL=` line is parsed by the processor to extract the URL. Any extra text after the URL will break parsing.
+
 ## DO NOT
 
 - Create .md files
@@ -273,3 +311,4 @@ The `onerror` handler on the `<img>` tag automatically falls back to initials wh
 - Generate a simple single-tab page
 - Skip the deployment
 - Rush through the analysis - THIS IS IMPORTANT
+- Add extra text after DEPLOYED_URL (processor parses this line)
