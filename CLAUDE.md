@@ -212,28 +212,13 @@ https://raw.githubusercontent.com/SSWConsulting/SSW.People.Profiles/main/{Person
 ```html
 <div class="bg-white rounded-xl shadow-sm ssw-card p-6">
     <div class="flex gap-4">
-        <!-- Profile Photo -->
+        <!-- Profile Photo (fallback to initials is handled by template script) -->
         <div class="profile-image-container">
             <img src="https://raw.githubusercontent.com/SSWConsulting/SSW.People.Profiles/main/Bob-Northwind/Images/Bob-Northwind-Profile.jpg"
                  alt="Bob Northwind"
                  class="profile-image js-profile-image"
                  data-initials="BN">
         </div>
-        <script>
-            // Handle profile image load failures without using inline JavaScript.
-            // The initials shown in the placeholder MUST come from trusted participant data.
-            document.addEventListener('DOMContentLoaded', function () {
-                document.querySelectorAll('.js-profile-image').forEach(function (img) {
-                    img.addEventListener('error', function () {
-                        var initials = img.getAttribute('data-initials') || '';
-                        var placeholder = document.createElement('div');
-                        placeholder.className = 'profile-image-placeholder';
-                        placeholder.textContent = initials;
-                        img.replaceWith(placeholder);
-                    });
-                });
-            });
-        </script>
 
         <!-- Info Section -->
         <div class="flex-1">
@@ -296,7 +281,7 @@ For participants who don't have SSW profiles, use their initials as a fallback:
 </div>
 ```
 
-The `onerror` handler on the `<img>` tag automatically falls back to initials when the image fails to load.
+The template includes a script that automatically falls back to initials (from `data-initials`) when images fail to load. **Security note:** The `data-initials` attribute MUST only contain values derived from trusted participant data (canonical names from the transcript), never from user-controllable input.
 
 **Initials Calculation:**
 - "John Doe" → "JD"

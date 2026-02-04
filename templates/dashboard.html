@@ -487,7 +487,19 @@
         
         Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
         Chart.defaults.color = '#333333';
-        
+
+        // Handle profile image load failures - falls back to initials
+        // The initials MUST come from trusted participant data (canonical names)
+        document.querySelectorAll('.js-profile-image').forEach(function (img) {
+            img.addEventListener('error', function () {
+                var initials = img.getAttribute('data-initials') || '';
+                var placeholder = document.createElement('div');
+                placeholder.className = 'profile-image-placeholder';
+                placeholder.textContent = initials;
+                img.replaceWith(placeholder);
+            });
+        });
+
         {{CHART_SCRIPTS}}
     </script>
 </body>
