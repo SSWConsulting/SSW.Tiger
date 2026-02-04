@@ -2,19 +2,23 @@ name: Build Container
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, preview]
     paths:
       - 'Dockerfile'
       - 'processor.js'
+      - 'download-transcript.js'
+      - 'send-teams-notification.js'
       - 'entrypoint.sh'
       - '.claude/**'
       - 'templates/**'
       - 'CLAUDE.md'
   pull_request:
-    branches: [main, master]
+    branches: [main, master, preview]
     paths:
       - 'Dockerfile'
       - 'processor.js'
+      - 'download-transcript.js'
+      - 'send-teams-notification.js'
       - 'entrypoint.sh'
       - '.claude/**'
       - 'templates/**'
