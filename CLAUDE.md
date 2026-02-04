@@ -87,7 +87,7 @@ The dashboard MUST have these tabs (all using consolidated data):
 DO NOT repeat contents in multiple tabs. If it's included in one tab, don't mention it in other tabs.
 Use whole numbers for all stats
 Use the primary color: white, ONLY use red for critical issues, do not overuse it
-Use ✅ for good. Use ⚠️ for things to be mindful. ❌ for things that are bad.
+MAKE SURE TO USE THE FOLLOWING EMOJIS. Use ✅ for good things. Use ⚠️ for things to be mindful of. Use ❌ for things that are bad.
 If any particular meeting is skipped, you do NOT have to mention it as a problem.
 Avoid average marks like 7/10, be more decisive in your marking, giving 6/10 or 8/10.
 
@@ -107,6 +107,7 @@ Avoid average marks like 7/10, be more decisive in your marking, giving 6/10 or 
 - **Profile photo from SSW People** (with fallback for non-SSW participants)
 - Speaking time vs. value contribution
 - Strengths and constructive feedback
+- When generating value scores, if the score ranges from 8 - 10, the bar should be GREEN, from 4 - 7, it should be YELLOW, 3 and below, it should be RED
 
 ### Tab 4: Insights
 - Ad-hoc observations
