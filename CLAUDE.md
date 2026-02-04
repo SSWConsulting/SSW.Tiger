@@ -215,9 +215,24 @@ https://raw.githubusercontent.com/SSWConsulting/SSW.People.Profiles/main/{Person
         <div class="profile-image-container">
             <img src="https://raw.githubusercontent.com/SSWConsulting/SSW.People.Profiles/main/Bob-Northwind/Images/Bob-Northwind-Profile.jpg"
                  alt="Bob Northwind"
-                 class="profile-image"
-                 onerror="var placeholder=document.createElement('div');var name=this.getAttribute('aria-label')||this.alt;placeholder.className='profile-image-placeholder';placeholder.textContent='BN';if(name){placeholder.setAttribute('role','img');placeholder.setAttribute('aria-label',name);}this.replaceWith(placeholder);">
+                 class="profile-image js-profile-image"
+                 data-initials="BN">
         </div>
+        <script>
+            // Handle profile image load failures without using inline JavaScript.
+            // The initials shown in the placeholder MUST come from trusted participant data.
+            document.addEventListener('DOMContentLoaded', function () {
+                document.querySelectorAll('.js-profile-image').forEach(function (img) {
+                    img.addEventListener('error', function () {
+                        var initials = img.getAttribute('data-initials') || '';
+                        var placeholder = document.createElement('div');
+                        placeholder.className = 'profile-image-placeholder';
+                        placeholder.textContent = initials;
+                        img.replaceWith(placeholder);
+                    });
+                });
+            });
+        </script>
 
         <!-- Info Section -->
         <div class="flex-1">
