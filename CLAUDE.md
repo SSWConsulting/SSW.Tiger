@@ -216,7 +216,7 @@ https://raw.githubusercontent.com/SSWConsulting/SSW.People.Profiles/main/{Person
             <img src="https://raw.githubusercontent.com/SSWConsulting/SSW.People.Profiles/main/Bob-Northwind/Images/Bob-Northwind-Profile.jpg"
                  alt="Bob Northwind"
                  class="profile-image"
-                 onerror="this.parentElement.innerHTML='<div class=\'profile-image-placeholder\'>BN</div>'">
+                 onerror="var placeholder=document.createElement('div');placeholder.className='profile-image-placeholder';placeholder.textContent='BN';this.replaceWith(placeholder);">
         </div>
 
         <!-- Info Section -->
