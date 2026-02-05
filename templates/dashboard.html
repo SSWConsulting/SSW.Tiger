@@ -177,6 +177,35 @@
         .grade-c { background: #F59E0B; }
         .grade-d { background: #DC2626; }
         .grade-f { background: #7F1D1D; }
+
+        /* Profile image styles */
+        .profile-image-container {
+            width: 80px;
+            height: 100px;
+            overflow: hidden;
+            border-radius: 8px;
+            background: #E4E4E7;
+            flex-shrink: 0;
+        }
+
+        .profile-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: top center;
+        }
+
+        .profile-image-placeholder {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #E4E4E7 0%, #D4D4D8 100%);
+            color: #71717A;
+            font-size: 2rem;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body class="bg-ssw-gray-50 min-h-screen">
@@ -233,11 +262,6 @@
                     :class="activeTab === 'insights' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
                     class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
                 💡 Insights
-            </button>
-            <button @click="activeTab = 'analytics'" 
-                    :class="activeTab === 'analytics' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
-                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
-                📊 Analytics
             </button>
             <button @click="activeTab = 'trends'" 
                     :class="activeTab === 'trends' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
@@ -385,66 +409,6 @@
                 </section>
             </div>
 
-            <!-- Analytics Tab -->
-            <div x-show="activeTab === 'analytics'" x-cloak>
-                <!-- Meeting Cost Banner -->
-                <section class="mb-6 bg-ssw-charcoal rounded-xl p-6 text-white">
-                    <div class="flex flex-wrap items-center justify-between gap-4">
-                        <div>
-                            <h2 class="text-lg font-bold">Meeting Cost Analysis</h2>
-                            <p class="text-ssw-gray-300 text-sm mt-1">Time = Money. Waste = Loss.</p>
-                        </div>
-                        <div class="flex gap-6 text-center">
-                            <div>
-                                <p class="text-3xl font-bold text-white">{{MEETING_COST}}</p>
-                                <p class="text-ssw-gray-400 text-xs uppercase tracking-wide">Total Cost</p>
-                            </div>
-                            <div>
-                                <p class="text-3xl font-bold text-ssw-red-300">{{WASTED_COST}}</p>
-                                <p class="text-ssw-gray-400 text-xs uppercase tracking-wide">Wasted</p>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-                
-                <div class="grid md:grid-cols-2 gap-6">
-                    <!-- Time Breakdown Chart -->
-                    <section class="bg-white rounded-xl shadow-sm ssw-card p-6">
-                        <h2 class="text-lg text-ssw-charcoal mb-4">Time Breakdown</h2>
-                        <canvas id="timeChart"></canvas>
-                    </section>
-
-                    <!-- Participation Chart -->
-                    <section class="bg-white rounded-xl shadow-sm ssw-card p-6">
-                        <h2 class="text-lg text-ssw-charcoal mb-4">Participation</h2>
-                        <canvas id="participationChart"></canvas>
-                    </section>
-                </div>
-
-                <!-- Metrics Grid -->
-                <section class="mt-6 bg-white rounded-xl shadow-sm ssw-card p-6">
-                    <h2 class="text-lg text-ssw-charcoal mb-4">Key Metrics</h2>
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        {{METRICS_CARDS}}
-                    </div>
-                </section>
-
-                <!-- Efficiency Score with Grade -->
-                <section class="mt-6 bg-white rounded-xl shadow-sm ssw-card p-6">
-                    <div class="flex items-center justify-between mb-4">
-                        <h2 class="text-lg text-ssw-charcoal">Meeting Effectiveness Score</h2>
-                        <span class="{{GRADE_CLASS}} text-white px-3 py-1 rounded-full font-bold text-lg">{{GRADE}}</span>
-                    </div>
-                    {{EFFICIENCY_SCORE}}
-                </section>
-                
-                <!-- Dysfunction Metrics -->
-                <section class="mt-6 bg-ssw-red-50 border-l-4 border-ssw-red rounded-r-xl p-6">
-                    <h2 class="text-lg text-ssw-red-700 mb-4 font-bold">📉 Dysfunction Metrics</h2>
-                    {{DYSFUNCTION_METRICS}}
-                </section>
-            </div>
-
             <!-- Trends Tab -->
             <div x-show="activeTab === 'trends'" x-cloak>
                 <!-- Trajectory Banner -->
@@ -498,7 +462,7 @@
             </div>
             <p class="text-ssw-gray-400">{{GENERATED_AT}}</p>
             <p class="mt-2">
-                <a href="https://github.com/calumjs/ClaudeCode.MeetingSummariser"
+                <a href="https://github.com/SSWConsulting/SSW.Tiger"
                    target="_blank"
                    class="text-ssw-gray-500 hover:text-ssw-red transition-colors">
                     View on GitHub
@@ -523,7 +487,19 @@
         
         Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
         Chart.defaults.color = '#333333';
-        
+
+        // Handle profile image load failures - falls back to initials
+        // The initials MUST come from trusted participant data (canonical names)
+        document.querySelectorAll('.js-profile-image').forEach(function (img) {
+            img.addEventListener('error', function () {
+                var initials = img.getAttribute('data-initials') || '';
+                var placeholder = document.createElement('div');
+                placeholder.className = 'profile-image-placeholder';
+                placeholder.textContent = initials;
+                img.replaceWith(placeholder);
+            });
+        });
+
         {{CHART_SCRIPTS}}
     </script>
 </body>

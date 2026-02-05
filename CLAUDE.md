@@ -56,7 +56,7 @@ You are a meeting transcript processor. Your job is to convert .vtt transcripts 
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │                      5. DEPLOY                                   │
-│  surge . {project}-{date}.surge.sh                              │
+│  surge . {project}-{meeting-id}.surge.sh                        │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -84,6 +84,12 @@ The consolidator ensures:
 ## Dashboard Requirements
 
 The dashboard MUST have these tabs (all using consolidated data):
+DO NOT repeat contents in multiple tabs. If it's included in one tab, don't mention it in other tabs.
+Use whole numbers for all stats
+Use the primary color: white, ONLY use red for critical issues, do not overuse it
+MAKE SURE TO USE THE FOLLOWING EMOJIS. Use ✅ for good things. Use ⚠️ for things to be mindful of. Use ❌ for things that are bad.
+If any particular meeting is skipped, you do NOT have to mention it as a problem.
+Avoid average marks like 7/10, be more decisive in your marking, giving 6/10 or 8/10.
 
 ### Tab 1: Overview
 - Meeting summary
@@ -98,20 +104,17 @@ The dashboard MUST have these tabs (all using consolidated data):
 
 ### Tab 3: People & Roles
 - Card for each participant **(canonical name with role as subtitle)**
+- **Profile photo from SSW People** (with fallback for non-SSW participants)
 - Speaking time vs. value contribution
 - Strengths and constructive feedback
+- When generating value scores, if the score ranges from 8 - 10, the bar should be GREEN, from 4 - 7, it should be YELLOW, 3 and below, it should be RED
 
 ### Tab 4: Insights
 - Ad-hoc observations
 - Risk signals with who raised them **(canonical names!)**
 - Notable quotes **(attributed by canonical name!)**
 
-### Tab 5: Analytics
-- Charts with participant labels **(canonical names!)**
-- Key metrics (verified, consistent)
-- Efficiency scores
-
-### Tab 6: Trends
+### Tab 5: Trends
 - Comparison with previous meetings
 - Recurring themes
 - Improvement tracking
@@ -140,6 +143,22 @@ projects/{project-name}/
 ```
 
 ## Dashboard Generation
+
+### IMPORTANT: Use the Template
+
+**You MUST use the template file at `templates/dashboard.html` as the base for generating the dashboard.**
+
+1. Read the template file first: `templates/dashboard.html`
+2. The template contains:
+   - SSW brand colors and styling
+   - Tab navigation (Overview, Timeline, People, Insights, Analytics, Trends)
+   - Placeholder variables like `{{PROJECT_NAME}}`, `{{DATE}}`, `{{SUMMARY}}`, etc.
+   - Chart.js setup with SSW colors
+   - Speaker timeline CSS styles
+3. Replace ALL placeholders with actual content from `consolidated.json`
+4. Save the final HTML to `projects/{project}/{meeting-id}/dashboard/index.html`
+
+**DO NOT create HTML from scratch - USE THE TEMPLATE!**
 
 ### Speaker Timeline Visualization
 
@@ -171,15 +190,114 @@ Use data from `consolidated.json -> speakerTimeline -> participants[]` to genera
 
 **Sort participants by total speaking time (descending)**
 
+### Participant Cards with Profile Photos
+
+The `{{PARTICIPANT_CARDS}}` placeholder must be populated with HTML cards for each participant, including their SSW profile photo.
+
+#### SSW Profile Photo URL Pattern
+
+Profile photos are stored in the SSW.People.Profiles GitHub repository:
+
+```
+https://raw.githubusercontent.com/SSWConsulting/SSW.People.Profiles/main/{Person-Name}/Images/{Person-Name}-Profile.jpg
+```
+
+**Name Conversion Rules:**
+- Convert spaces to hyphens: "Bob Northwind" → "Bob-Northwind"
+- Preserve capitalization: "Adam Cogan" → "Adam-Cogan"
+- Use full name as stored in SSW People
+
+#### Participant Card HTML Structure
+
+```html
+<div class="bg-white rounded-xl shadow-sm ssw-card p-6">
+    <div class="flex gap-4">
+        <!-- Profile Photo (fallback to initials is handled by template script) -->
+        <div class="profile-image-container">
+            <img src="https://raw.githubusercontent.com/SSWConsulting/SSW.People.Profiles/main/Bob-Northwind/Images/Bob-Northwind-Profile.jpg"
+                 alt="Bob Northwind"
+                 class="profile-image js-profile-image"
+                 data-initials="BN">
+        </div>
+
+        <!-- Info Section -->
+        <div class="flex-1">
+            <div class="flex items-start justify-between mb-2">
+                <div>
+                    <h3 class="font-bold text-ssw-charcoal text-lg">Bob Northwind</h3>
+                    <p class="text-ssw-gray-500 text-sm">Senior Developer</p>
+                </div>
+                <span class="bg-ssw-gray-100 text-ssw-gray-700 px-2 py-1 rounded text-sm font-medium">
+                    18% speaking time
+                </span>
+            </div>
+
+            <!-- Value Score -->
+            <div class="mb-3">
+                <div class="flex items-center gap-2">
+                    <span class="text-sm text-ssw-gray-600">Value Score:</span>
+                    <div class="flex-1 bg-ssw-gray-100 rounded-full h-2">
+                        <div class="bg-ssw-red h-2 rounded-full" style="width: 85%"></div>
+                    </div>
+                    <span class="text-sm font-semibold text-ssw-charcoal">8.5/10</span>
+                </div>
+            </div>
+
+            <!-- Key Finding -->
+            <p class="text-sm text-ssw-gray-600 mb-3">
+                <span class="font-medium text-ssw-charcoal">Key finding:</span>
+                Highest value-per-minute but systematically underutilized
+            </p>
+
+            <!-- Strengths -->
+            <div class="mb-2">
+                <p class="text-xs font-semibold text-green-700 uppercase tracking-wide mb-1">Strengths</p>
+                <ul class="text-sm text-ssw-gray-600 space-y-1">
+                    <li>• Efficient communication - every word counted</li>
+                    <li>• Technical expertise highly valuable when consulted</li>
+                </ul>
+            </div>
+
+            <!-- Feedback -->
+            <div>
+                <p class="text-xs font-semibold text-ssw-red uppercase tracking-wide mb-1">Feedback</p>
+                <ul class="text-sm text-ssw-gray-600 space-y-1">
+                    <li>• Push back when interrupted - your points are important</li>
+                    <li>• Don't wait for permission to contribute</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+```
+
+#### Fallback for Non-SSW Participants
+
+For participants who don't have SSW profiles, use their initials as a fallback:
+
+```html
+<div class="profile-image-container">
+    <div class="profile-image-placeholder">JD</div>
+</div>
+```
+
+The template includes a script that automatically falls back to initials (from `data-initials`) when images fail to load. **Security note:** The `data-initials` attribute MUST only contain values derived from trusted participant data (canonical names from the transcript), never from user-controllable input.
+
+**Initials Calculation:**
+- "John Doe" → "JD"
+- "Alice Smith" → "AS"
+- Single name "Charlie" → "C"
+
 ## Deployment
 
 After generating the dashboard, deploy it to surge.sh:
 
 1. Navigate to the dashboard directory
-2. Run: `surge . {project}-{meeting-id}.surge.sh`
-3. **CRITICAL**: After successful deployment, output EXACTLY this line (no markdown, no code blocks, no extra text):
+2. **Use the deploy URL specified in the prompt** (it's already truncated if needed for surge.sh limits)
+3. Run the exact command from the prompt: `surge . {deploy-url}`
+4. **CRITICAL**: After successful deployment, output EXACTLY this line (no markdown, no code blocks, no extra text):
    ```
-   DEPLOYED_URL=https://{project}-{meeting-id}.surge.sh
+   DEPLOYED_URL=https://xxxxx.surge.sh
    ```
 
 The `DEPLOYED_URL=` line is parsed by the processor to extract the URL. Any extra text after the URL will break parsing.

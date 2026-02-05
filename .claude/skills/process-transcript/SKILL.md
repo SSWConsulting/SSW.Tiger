@@ -108,7 +108,8 @@ Create `projects/{project}/dashboards/{date}/index.html` using the **consolidate
 - Energy level indicators
 
 #### Tab 3: People & Roles
-- Participant cards (canonical names with roles as subtitle)
+- Participant cards with **profile photos from SSW People** (with fallback initials for non-SSW)
+- Canonical names with roles as subtitle
 - Speaking time visualization
 - Value contribution ratings
 - Strengths and feedback for each person
@@ -121,14 +122,7 @@ Create `projects/{project}/dashboards/{date}/index.html` using the **consolidate
 - Team health indicators
 - Notable quotes (attributed to canonical names)
 
-#### Tab 5: Analytics
-- Charts and graphs (using Chart.js)
-- Time breakdown pie chart
-- Participation bar chart (canonical names)
-- Sentiment analysis
-- Efficiency scores
-
-#### Tab 6: Trends (if historical data exists)
+#### Tab 5: Trends (if historical data exists)
 - Week-over-week comparisons
 - Recurring themes
 - Improvement tracking
