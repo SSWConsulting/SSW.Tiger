@@ -312,7 +312,7 @@ After generating the dashboard, deploy it to surge.sh:
 3. Run the exact command from the prompt: `surge . {deploy-url}`
 4. **CRITICAL**: After successful deployment, output EXACTLY this line (no markdown, no code blocks, no extra text):
    ```
-   DEPLOYED_URL=https://xxxxx.surge.sh
+   DEPLOYED_URL={deploy-url}
    ```
 
 The `DEPLOYED_URL=` line is parsed by the processor to extract the URL. Any extra text after the URL will break parsing.
