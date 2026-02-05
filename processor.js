@@ -254,6 +254,80 @@ class MeetingProcessor {
     return `${deployDomain}.surge.sh`;
   }
 
+  extractDeployedUrl(text, expectedDomain) {
+    // Try multiple patterns to extract the deployed URL
+    // Pattern priority: most specific to most permissive
+
+    const patterns = [
+      // Pattern 1: DEPLOYED_URL= with expected domain (most specific)
+      new RegExp(
+        `DEPLOYED_URL=(https?:\\/\\/${expectedDomain.replace(/\./g, "\\.")})`,
+        "i",
+      ),
+
+      // Pattern 2: DEPLOYED_URL= with any surge.sh domain
+      /DEPLOYED_URL=(https?:\/\/[a-z0-9-]+\.surge\.sh)/i,
+
+      // Pattern 3: DEPLOYED_URL= with protocol and any domain
+      /DEPLOYED_URL=(https?:\/\/[^\s"'`<>\\]+)/i,
+
+      // Pattern 4: Just the expected domain with protocol (fallback)
+      new RegExp(`(https?:\\/\\/${expectedDomain.replace(/\./g, "\\.")})`, "i"),
+
+      // Pattern 5: Any surge.sh URL (last resort)
+      /(https?:\/\/[a-z0-9-]+\.surge\.sh)/i,
+    ];
+
+    for (let i = 0; i < patterns.length; i++) {
+      const match = text.match(patterns[i]);
+      if (match && match[1]) {
+        const url = match[1].trim();
+
+        // Validate URL format
+        if (this.validateDeployedUrl(url)) {
+          this.log("debug", `Extracted deployed URL (pattern ${i + 1})`, {
+            url,
+          });
+          return url;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  validateDeployedUrl(url) {
+    if (!url) return false;
+
+    // Must start with http:// or https://
+    if (!url.startsWith("http://") && !url.startsWith("https://")) {
+      return false;
+    }
+
+    // Must end with .surge.sh (case-insensitive)
+    if (!url.toLowerCase().endsWith(".surge.sh")) {
+      this.log("warn", "URL doesn't end with .surge.sh", { url });
+      return false;
+    }
+
+    // Extract domain part (without protocol and .surge.sh)
+    const domain = url.replace(/^https?:\/\//, "").replace(/\.surge\.sh$/i, "");
+
+    // Domain should only contain lowercase letters, numbers, and hyphens
+    if (!/^[a-z0-9-]+$/.test(domain)) {
+      this.log("warn", "Invalid domain format", { url, domain });
+      return false;
+    }
+
+    // Domain shouldn't start or end with hyphen
+    if (domain.startsWith("-") || domain.endsWith("-")) {
+      this.log("warn", "Domain starts or ends with hyphen", { url, domain });
+      return false;
+    }
+
+    return true;
+  }
+
   async initialize(transcriptPath, projectName) {
     // Validate transcript file exists
     try {
@@ -419,17 +493,24 @@ Output DEPLOYED_URL as specified.`;
         crlfDelay: Infinity,
       });
 
+      // Accumulate all output for fallback URL extraction
+      let allStdout = "";
+
       stdoutReader.on("line", (line) => {
         lastOutputTime = Date.now(); // Reset inactivity timer
         firstOutputReceived = true;
 
         if (!line || !line.trim()) return;
 
+        // Accumulate for fallback
+        allStdout += line + "\n";
+
         // Fast-path: capture deployed URL if it appears in plain output
         if (!deployedUrl) {
-          const match = line.match(/DEPLOYED_URL=(https?:\/\/[^\s"'\\]+)/);
-          if (match) {
-            deployedUrl = match[1].trim();
+          const extracted = this.extractDeployedUrl(line, deployUrl);
+          if (extracted) {
+            deployedUrl = extracted;
+            this.log("info", "✅ Deployed URL captured", { url: deployedUrl });
           }
         }
 
@@ -456,7 +537,36 @@ Output DEPLOYED_URL as specified.`;
 
       claude.on("close", async (code) => {
         clearInterval(inactivityTimer);
+
         if (code === 0) {
+          // If URL not found yet, try fallback extraction from all accumulated output
+          if (!deployedUrl) {
+            this.log(
+              "warn",
+              "Deployed URL not found in real-time, trying fallback extraction",
+            );
+
+            // Try extracting from accumulated stdout
+            deployedUrl = this.extractDeployedUrl(allStdout, deployUrl);
+
+            // If still not found, try stderr
+            if (!deployedUrl) {
+              deployedUrl = this.extractDeployedUrl(stderr, deployUrl);
+            }
+
+            if (deployedUrl) {
+              this.log("info", "✅ Deployed URL extracted via fallback", {
+                url: deployedUrl,
+              });
+            } else {
+              this.log("error", "❌ Failed to extract deployed URL", {
+                expectedDomain: deployUrl,
+                stdoutPreview: allStdout.substring(0, 500),
+                stderrPreview: stderr.substring(0, 500),
+              });
+            }
+          }
+
           resolve({ stdout: null, stderr, deployedUrl });
         } else {
           const error = `Claude CLI failed (exit ${code}): ${stderr.substring(0, 200)}`;

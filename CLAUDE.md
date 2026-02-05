@@ -310,12 +310,32 @@ After generating the dashboard, deploy it to surge.sh:
 1. Navigate to the dashboard directory
 2. **Use the deploy URL specified in the prompt** (it's already truncated if needed for surge.sh limits)
 3. Run the exact command from the prompt: `surge . {deploy-url}`
-4. **CRITICAL**: After successful deployment, output EXACTLY this line (no markdown, no code blocks, no extra text):
+4. **CRITICAL OUTPUT FORMAT**: After successful deployment, you MUST output this line in plain text (not in a code block, not in markdown):
+
    ```
-   DEPLOYED_URL={deploy-url}
+   DEPLOYED_URL=https://{deploy-url}
    ```
 
-The `DEPLOYED_URL=` line is parsed by the processor to extract the URL. Any extra text after the URL will break parsing.
+   **Requirements for the DEPLOYED_URL line:**
+   - Must be on its own line
+   - Must include the full URL with `https://` protocol
+   - Must NOT have any text before or after the URL on the same line
+   - Must use the exact domain you deployed to (e.g., `https://yakshaver-2026-01-22-094557.surge.sh`)
+   - Do NOT wrap in code blocks, quotes, or markdown formatting
+   - Do NOT add explanatory text like "Successfully deployed to..." on the same line
+
+   **Example of correct output:**
+   ```
+   DEPLOYED_URL=https://yakshaver-2026-01-22-094557.surge.sh
+   ```
+
+   **Examples of INCORRECT output (will fail parsing):**
+   - `Deployed to: https://...` ❌
+   - `` `DEPLOYED_URL=https://...` `` ❌
+   - `DEPLOYED_URL=yakshaver-2026-01-22-094557.surge.sh` ❌ (missing protocol)
+   - `Successfully deployed! DEPLOYED_URL=https://...` ❌
+
+The processor uses multiple pattern matching strategies to extract the URL, but following the exact format above ensures reliable extraction.
 
 ## DO NOT
 
