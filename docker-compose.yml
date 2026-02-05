@@ -23,7 +23,8 @@ services:
       # Set ONE in your .env file (OAuth token recommended for subscriptions)
 
       # Surge credentials (for Claude Code to use during deployment)
-      - SURGE_EMAIL=${SURGE_EMAIL}
+      # Note: Surge expects SURGE_LOGIN, not SURGE_EMAIL
+      - SURGE_LOGIN=${SURGE_LOGIN:-${SURGE_EMAIL}}
       - SURGE_TOKEN=${SURGE_TOKEN}
 
       # Output directory (defaults to ./output)

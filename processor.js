@@ -90,11 +90,13 @@ class MeetingProcessor {
     }
 
     // Validate Surge credentials (required for deployment)
-    if (!process.env.SURGE_EMAIL || !process.env.SURGE_TOKEN) {
+    // Accept either SURGE_LOGIN or SURGE_EMAIL (surge uses SURGE_LOGIN internally)
+    const surgeLogin = process.env.SURGE_LOGIN || process.env.SURGE_EMAIL;
+    if (!surgeLogin || !process.env.SURGE_TOKEN) {
       throw new Error(
         "Surge.sh credentials are required for deployment.\n" +
           "Please set the following environment variables:\n" +
-          "  SURGE_EMAIL=<your-email>\n" +
+          "  SURGE_LOGIN=<your-email> (or SURGE_EMAIL)\n" +
           "  SURGE_TOKEN=<your-token>\n" +
           "Get your token by running: surge token",
       );

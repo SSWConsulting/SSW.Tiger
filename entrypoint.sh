@@ -86,6 +86,35 @@ else
     exit 1
 fi
 
+# Configure Surge.sh authentication
+if [ -n "$SURGE_LOGIN" ] && [ -n "$SURGE_TOKEN" ]; then
+    # Create .netrc file for surge authentication (most reliable method)
+    cat > ~/.netrc <<EOF
+machine surge.surge.sh
+    login $SURGE_LOGIN
+    password $SURGE_TOKEN
+EOF
+    chmod 600 ~/.netrc
+    echo "✓ Configured Surge.sh credentials"
+    echo "  Login: $SURGE_LOGIN"
+    echo "  Token: ${SURGE_TOKEN:0:10}..."
+elif [ -n "$SURGE_EMAIL" ] && [ -n "$SURGE_TOKEN" ]; then
+    # Fallback: use SURGE_EMAIL if SURGE_LOGIN not set
+    cat > ~/.netrc <<EOF
+machine surge.surge.sh
+    login $SURGE_EMAIL
+    password $SURGE_TOKEN
+EOF
+    chmod 600 ~/.netrc
+    echo "✓ Configured Surge.sh credentials (using SURGE_EMAIL)"
+    echo "  Login: $SURGE_EMAIL"
+    echo "  Token: ${SURGE_TOKEN:0:10}..."
+else
+    echo "⚠ WARNING: Surge.sh credentials not configured"
+    echo "  Deployment to surge.sh will fail"
+    echo "  Set SURGE_LOGIN and SURGE_TOKEN environment variables"
+fi
+
 # Check for test mode
 if [ "$1" = "--test-auth" ]; then
     echo "=== Testing Claude Code Authentication ==="
