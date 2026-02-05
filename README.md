@@ -104,7 +104,7 @@ MeetingSummary/
 - [Claude Code CLI](https://docs.anthropic.com/claude/docs/claude-code)
 - [Node.js](https://nodejs.org/) + surge.sh: `npm install -g surge`
 
-### Usage
+### Option 1: Interactive Usage (Claude Code CLI)
 
 ```bash
 cd c:\DataCalumSimpson\MeetingSummary
@@ -122,6 +122,64 @@ Or process an existing transcript:
 ```
 "Process the yakshaver transcript from today"
 ```
+
+### Option 2: Automated Processing (Container)
+
+**Local Development**:
+
+```bash
+# 1. Configure authentication (.env file)
+cp .env.example .env
+# Edit .env and set ANTHROPIC_API_KEY or CLAUDE_SUBSCRIPTION_TOKEN
+
+# 2. Build container
+docker-compose build
+
+# 3. Process transcript
+docker-compose run --rm meeting-processor /app/dropzone/meeting.vtt projectname
+```
+
+**Production (Azure)**:
+
+See [TIGER.md](TIGER.md) for full Azure deployment guide with Key Vault integration.
+
+## 🔐 Authentication
+
+The processor supports two authentication methods:
+
+### Option A: API Key (Pay-as-you-go)
+Best for testing, low volume, variable usage.
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-api03-...
+# or
+export CLAUDE_API_KEY=sk-ant-api03-...
+```
+
+### Option B: Subscription Token (Fixed monthly cost)
+Best for production, high volume, predictable usage.
+
+```bash
+export CLAUDE_SUBSCRIPTION_TOKEN=your-subscription-token
+```
+
+**Priority**: If both are set, subscription is used (lower per-request cost).
+
+### Azure Key Vault (Production)
+
+For production deployments, store credentials in Azure Key Vault:
+
+```bash
+# Store secrets
+az keyvault secret set --vault-name kv-tiger --name claude-api-key --value "..."
+az keyvault secret set --vault-name kv-tiger --name claude-subscription-token --value "..."
+
+# Reference in Container App
+az containerapp job secret set --name job-tiger-processor --resource-group rg-tiger \
+  --secrets "claude-api-key=keyvaultref:https://kv-tiger.vault.azure.net/secrets/claude-api-key"
+```
+
+See [TIGER.md](TIGER.md) for complete setup instructions.
 
 ## 📥 Getting Transcripts from Teams
 

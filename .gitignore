@@ -1,6 +1,9 @@
 # Project data (transcripts, analysis, dashboards)
 projects/
 
+# Output data
+output/
+
 # Input transcripts
 dropzone/
 
@@ -8,6 +11,13 @@ dropzone/
 .env
 .env.local
 .env.*.local
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
 
 # Python
 __pycache__/
@@ -38,3 +48,17 @@ tmpclaude-*
 
 # Local Claude settings (user-specific permissions)
 .claude/settings.local.json
+
+# Azure Functions
+azure-function/local.settings.json
+azure-function/node_modules/
+azure-function/.python_packages/
+
+# Azurite (local Azure Storage emulator) - can be in root or azure-function/
+__azurite_db*.json
+__blobstorage__/
+__queuestorage__/
+AzuriteConfig
+
+# Bicep outputs
+infra/main.json
