@@ -712,22 +712,7 @@ SSW.Tiger/
 └── README-AUTOMATION.md       # This file
 ```
 
----
+## Application access policy issue
+"No application access policy found for this app." According to Microsoft documentation, for security reasons, an Application Access Policy is also needed other than API permission.  A Teams administrator needs to create an Application Access Policy to grant this app permission to access meeting transcripts for all users.
 
-## 🎥 Demo Script
-
-See [VIDEO-SCRIPT.md](VIDEO-SCRIPT.md) for a complete demo walkthrough.
-
----
-
-## 📞 Support
-
-**Issues**: GitHub Issues  
-**Documentation**: See [README.md](README.md) for manual usage  
-**Infrastructure**: See [plan.md](plan.md) for detailed architecture
-
----
-
-## 📄 License
-
-MIT
+Documentation: https://learn.microsoft.com/en-us/graph/cloud-communication-online-meeting-application-access-policy
