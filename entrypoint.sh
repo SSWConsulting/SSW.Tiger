@@ -100,8 +100,16 @@ run_pipeline() {
 
     # Step 1: Download transcript
     # stderr flows through for real-time logs, stdout captured (JSON result)
-    if ! DOWNLOAD_RESULT=$(node download-transcript.js); then
-        log "error" "Failed to download transcript"
+    set +e
+    DOWNLOAD_RESULT=$(node download-transcript.js)
+    DOWNLOAD_EXIT_CODE=$?
+    set -e
+
+    if [ "$DOWNLOAD_EXIT_CODE" -ne 0 ]; then
+        # Try to extract error message from JSON output
+        ERROR_MSG=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).message" 2>/dev/null || echo "Unknown error")
+        # Log with meeting identifiers for debugging
+        log "error" "Failed to download transcript [user=$GRAPH_USER_ID, meeting=$GRAPH_MEETING_ID]: $ERROR_MSG"
         exit 1
     fi
 
@@ -144,7 +152,12 @@ run_pipeline() {
     set -e
 
     if [ "$PROCESSOR_EXIT_CODE" -ne 0 ]; then
-        log "error" "Claude processing failed"
+        # Include project/meeting info and any output from processor in error log
+        if [ -n "$PROCESSOR_STDOUT" ]; then
+            log "error" "Claude processing failed [project=$PROJECT_NAME, meeting=$MEETING_SUBJECT]: $PROCESSOR_STDOUT"
+        else
+            log "error" "Claude processing failed [project=$PROJECT_NAME, meeting=$MEETING_SUBJECT] (no output)"
+        fi
         send_failure_notification
         exit 1
     fi

@@ -712,6 +712,9 @@ function hasExternalParticipants(participants) {
 }
 
 async function main() {
+  // Track meeting context for error reporting
+  let meetingSubject = null;
+
   try {
     // Validate configuration (checks mock mode or Graph API config)
     validateConfig();
@@ -727,8 +730,14 @@ async function main() {
     // Fetch meeting details
     const meeting = await fetchMeeting(token);
 
-    // Filter: only process meetings matching the filter pattern
+    // Log meeting context early so we know which meeting failed if errors occur later
     const subject = meeting.subject || "";
+    meetingSubject = subject; // Store for error reporting
+    log("info", "Processing meeting", {
+      subject,
+      userId: CONFIG.userId,
+      meetingId: CONFIG.meetingId,
+    });
     if (!matchesMeetingFilter(subject)) {
       outputResult({
         skipped: true,
@@ -813,14 +822,26 @@ async function main() {
 
     process.exit(0);
   } catch (error) {
-    log("error", error.message, {
+    // Include meeting context in error log if available
+    const errorContext = {
       name: error.name,
       stack: error.stack,
-    });
-    outputResult({
+      userId: CONFIG.userId,
+      meetingId: CONFIG.meetingId,
+    };
+    if (meetingSubject) {
+      errorContext.meetingSubject = meetingSubject;
+    }
+    log("error", error.message, errorContext);
+
+    // Include meeting subject in output for entrypoint.sh to capture
+    const errorOutput = {
       error: true,
-      message: error.message,
-    });
+      message: meetingSubject
+        ? `[${meetingSubject}] ${error.message}`
+        : error.message,
+    };
+    outputResult(errorOutput);
     process.exit(1);
   }
 }
