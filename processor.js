@@ -215,7 +215,7 @@ class MeetingProcessor {
     // Reserve 10 chars for ".surge.sh", leaving ~53 chars for project-meeting
     // Format: {project}-{meeting-id}.surge.sh
 
-    const MAX_DOMAIN_LENGTH = 30; // Without .surge.sh suffix
+    const MAX_DOMAIN_LENGTH = 35; // Without .surge.sh suffix
     const MEETING_ID_LENGTH = 17; // YYYY-MM-DD-HHmmss (fixed length)
     const SEPARATOR_LENGTH = 1; // hyphen between project and meeting
 
@@ -223,8 +223,8 @@ class MeetingProcessor {
     const maxProjectLength =
       MAX_DOMAIN_LENGTH - MEETING_ID_LENGTH - SEPARATOR_LENGTH;
 
-    // Truncate project name if too long
-    let truncatedProject = projectName;
+    // Sanitize project name: replace dots with hyphens (dots create subdomains in surge.sh)
+    let truncatedProject = projectName.replace(/\./g, "-");
     if (projectName.length > maxProjectLength) {
       // Truncate at word boundary (last hyphen before limit)
       const truncated = projectName.substring(0, maxProjectLength);
@@ -423,6 +423,8 @@ Output DEPLOYED_URL as specified.`;
       const args = [
         "-p",
         "--verbose",
+        "--model",
+        "claude-opus-4-5-20250514",
         "--output-format",
         "stream-json",
         "--dangerously-skip-permissions",
