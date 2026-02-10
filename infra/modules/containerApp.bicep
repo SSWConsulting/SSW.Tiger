@@ -22,7 +22,7 @@ param memory string = '4Gi'
 param replicaTimeout int = 3600
 
 @description('Claude model ID for the processor (e.g. claude-opus-4-5-20251101)')
-param claudeModel string
+param claudeModel string = 'claude-opus-4-5-20251101'
 
 var envName = toLower('ce-${project}-${environment}')
 var jobName = toLower('job-${project}-${environment}')
