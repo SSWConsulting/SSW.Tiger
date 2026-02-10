@@ -19,7 +19,10 @@ param logAnalyticsPrimaryKey string
 // Parameters for container resources
 param cpu string = '2.0'
 param memory string = '4Gi'
-param replicaTimeout int = 3600 
+param replicaTimeout int = 3600
+
+@description('Claude model ID for the processor (e.g. claude-opus-4-5-20251101)')
+param claudeModel string
 
 var envName = toLower('ce-${project}-${environment}')
 var jobName = toLower('job-${project}-${environment}')
@@ -136,7 +139,7 @@ resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
             { name: 'CLAUDE_CODE_OAUTH_TOKEN', secretRef: 'anthropic-oauth-token' }
             { name: 'SURGE_EMAIL', secretRef: 'surge-email' }
             { name: 'SURGE_TOKEN', secretRef: 'surge-token' }
-            { name: 'CLAUDE_MODEL', value: 'claude-opus-4-5-20251101' }
+            { name: 'CLAUDE_MODEL', value: claudeModel }
             { name: 'NODE_ENV', value: environment == 'prod' ? 'production' : 'development' }
             { name: 'GRAPH_CLIENT_ID', secretRef: 'graph-client-id' }
             { name: 'GRAPH_CLIENT_SECRET', secretRef: 'graph-client-secret' }
