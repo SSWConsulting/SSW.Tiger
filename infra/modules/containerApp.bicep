@@ -136,6 +136,7 @@ resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
             { name: 'CLAUDE_CODE_OAUTH_TOKEN', secretRef: 'anthropic-oauth-token' }
             { name: 'SURGE_EMAIL', secretRef: 'surge-email' }
             { name: 'SURGE_TOKEN', secretRef: 'surge-token' }
+            { name: 'CLAUDE_MODEL', value: 'claude-opus-4-5-20251101' }
             { name: 'NODE_ENV', value: environment == 'prod' ? 'production' : 'development' }
             { name: 'GRAPH_CLIENT_ID', secretRef: 'graph-client-id' }
             { name: 'GRAPH_CLIENT_SECRET', secretRef: 'graph-client-secret' }
