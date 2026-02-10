@@ -230,7 +230,7 @@ class MeetingProcessor {
         .toLowerCase()
         .replace(/[^a-z0-9-]/g, "-") // Replace any non-alphanumeric char with hyphen
         .replace(/-+/g, "-") // Collapse consecutive hyphens
-        .replace(/^-|-$/g, "") || // Trim leading/trailing hyphens
+        .replace(/^-+|-+$/g, "") || // Trim all leading/trailing hyphens
       "general"; // Fallback if sanitization yields empty string
     if (truncatedProject.length > maxProjectLength) {
       // Truncate at word boundary (last hyphen before limit)
