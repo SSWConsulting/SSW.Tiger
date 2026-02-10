@@ -28,6 +28,9 @@ param githubOrg string
 @description('Container image tag')
 param imageTag string = 'latest'
 
+@description('Claude model ID for the processor')
+param claudeModel string = 'claude-opus-4-5-20251101'
+
 @description('Unique suffix for deployment names')
 param suffix string = take(uniqueString(utcNow()), 6)
 
@@ -103,6 +106,7 @@ module containerApp 'modules/containerApp.bicep' = {
     managedIdentityClientId: id.outputs.clientId
     logAnalyticsCustomerId: monitoring.outputs.logAnalyticsCustomerId
     logAnalyticsPrimaryKey: monitoring.outputs.logAnalyticsPrimaryKey
+    claudeModel: claudeModel
   }
 }
 

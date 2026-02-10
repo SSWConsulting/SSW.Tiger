@@ -25,6 +25,7 @@ const CONFIG = {
   // Auth configuration - supports both API key and OAuth token
   claudeApiKey: process.env.ANTHROPIC_API_KEY,
   claudeOAuthToken: process.env.CLAUDE_CODE_OAUTH_TOKEN,
+  model: process.env.CLAUDE_MODEL || "claude-opus-4-5-20251101",
 };
 
 class MeetingProcessor {
@@ -223,11 +224,17 @@ class MeetingProcessor {
     const maxProjectLength =
       MAX_DOMAIN_LENGTH - MEETING_ID_LENGTH - SEPARATOR_LENGTH;
 
-    // Sanitize project name: replace dots with hyphens (dots create subdomains in surge.sh)
-    let truncatedProject = projectName.replace(/\./g, "-");
-    if (projectName.length > maxProjectLength) {
+    // Sanitize project name for valid surge.sh domain (only a-z, 0-9, hyphens allowed)
+    let truncatedProject =
+      projectName
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, "-") // Replace any non-alphanumeric char with hyphen
+        .replace(/-+/g, "-") // Collapse consecutive hyphens
+        .replace(/^-+|-+$/g, "") || // Trim all leading/trailing hyphens
+      "general"; // Fallback if sanitization yields empty string
+    if (truncatedProject.length > maxProjectLength) {
       // Truncate at word boundary (last hyphen before limit)
-      const truncated = projectName.substring(0, maxProjectLength);
+      const truncated = truncatedProject.substring(0, maxProjectLength);
       const lastHyphen = truncated.lastIndexOf("-");
       truncatedProject =
         lastHyphen > 0 ? truncated.substring(0, lastHyphen) : truncated;
@@ -424,7 +431,7 @@ Output DEPLOYED_URL as specified.`;
         "-p",
         "--verbose",
         "--model",
-        "claude-opus-4-5-20251101",
+        CONFIG.model,
         "--output-format",
         "stream-json",
         "--dangerously-skip-permissions",
