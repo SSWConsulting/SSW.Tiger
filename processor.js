@@ -424,7 +424,7 @@ Output DEPLOYED_URL as specified.`;
         "-p",
         "--verbose",
         "--model",
-        "claude-opus-4-5-20250514",
+        "claude-opus-4-5-20251101",
         "--output-format",
         "stream-json",
         "--dangerously-skip-permissions",
