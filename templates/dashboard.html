@@ -70,6 +70,9 @@
         [x-cloak] { display: none !important; }
         
         /* SSW Brand Typography */
+        html {
+            font-size: 18px;
+        }
         body {
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
             font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
@@ -353,8 +356,8 @@
 
             <!-- People & Roles Tab -->
             <div x-show="activeTab === 'people'" x-cloak>
-                <!-- Team Dynamics Summary - SSW Red Gradient -->
-                <section class="bg-gradient-to-r from-ssw-red to-ssw-red-600 rounded-xl shadow-lg p-6 text-white mb-6">
+                <!-- Team Dynamics Summary -->
+                <section class="bg-gradient-to-r from-ssw-gray-600 to-ssw-gray-700 rounded-xl shadow-lg p-6 text-white mb-6">
                     <h2 class="text-lg font-bold mb-2">Team Dynamics</h2>
                     {{TEAM_DYNAMICS}}
                 </section>

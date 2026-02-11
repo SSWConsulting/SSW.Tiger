@@ -84,12 +84,21 @@ The consolidator ensures:
 ## Dashboard Requirements
 
 The dashboard MUST have these tabs (all using consolidated data):
-DO NOT repeat contents in multiple tabs. If it's included in one tab, don't mention it in other tabs.
-Use whole numbers for all stats
-Use the primary color: white, ONLY use red for critical issues, do not overuse it
-MAKE SURE TO USE THE FOLLOWING EMOJIS. Use ✅ for good things. Use ⚠️ for things to be mindful of. Use ❌ for things that are bad.
-If any particular meeting is skipped, you do NOT have to mention it as a problem.
-Avoid average marks like 7/10, be more decisive in your marking, giving 6/10 or 8/10.
+
+**Content rules:**
+- DO NOT repeat the same point across multiple tabs. Each piece of information should appear in exactly one tab.
+- Use whole numbers for all stats
+- Avoid average marks like 7/10, be more decisive in your marking, giving 6/10 or 8/10
+- If any particular meeting is skipped, you do NOT have to mention it as a problem
+- Use Australian date format (DD/MM/YYYY) for all dates
+
+**Privacy rules:**
+- **Client anonymization**: If client or company names are mentioned in the transcript, do NOT display them in the dashboard. Replace with "Client A", "Client B", "Client C", etc. SSW staff names are fine to show.
+
+**Styling rules:**
+- Primary color is white. ONLY use red for critical issues - do not overuse it
+- In warning/alert sections (e.g. Hard Truths, Time Waste Analysis), keep the body text black (`text-ssw-charcoal`). Only the section heading and border should use accent colors.
+- Use ✅ for good things, ⚠️ for things to be mindful of, ❌ for things that are bad
 
 ### Tab 1: Overview
 - Meeting summary
