@@ -89,7 +89,7 @@ The dashboard MUST have these tabs (all using consolidated data):
 - DO NOT repeat the same point across multiple tabs. Each piece of information should appear in exactly one tab.
 - Use whole numbers for all stats
 - Avoid average marks like 7/10, be more decisive in your marking, giving 6/10 or 8/10
-- If any particular meeting is skipped, you do NOT have to mention it as a problem
+- If any particular meeting is skipped, you do NOT have to mention it
 - Use Australian date format (DD/MM/YYYY) for all dates
 
 **Privacy rules:**
