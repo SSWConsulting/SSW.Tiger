@@ -211,7 +211,7 @@ async function fetchMeeting(token) {
       Authorization: `Bearer ${token}`,
       // Cache-busting headers to ensure we get the latest meeting data
       "Cache-Control": "no-cache, no-store, must-revalidate",
-      Pragma: "no-cache",
+      "Pragma": "no-cache",
     },
   });
 
