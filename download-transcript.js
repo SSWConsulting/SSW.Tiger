@@ -209,6 +209,9 @@ async function fetchMeeting(token) {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
+      // Cache-busting headers to ensure we get the latest meeting data
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      Pragma: "no-cache",
     },
   });
 
@@ -220,6 +223,12 @@ async function fetchMeeting(token) {
   }
 
   const meeting = await response.json();
+
+  // Log meeting title to verify we're getting the latest data
+  log("info", "Fetched meeting from Graph API", {
+    meetingId: CONFIG.meetingId,
+    subject: meeting.subject || "(no subject)",
+  });
 
   // Extract participant user IDs for Teams notification via Logic App
   // Format: [{userId}] as expected by send-teams-notification.js
