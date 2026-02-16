@@ -747,7 +747,11 @@ async function main() {
     } else if (!matchesMeetingFilter(subject)) {
       outputResult({
         skipped: true,
+        skipReason: "subjectFilter",
         reason: `Subject does not match filter pattern '${CONFIG.meetingFilterPattern}': "${subject}"`,
+        meetingSubject: subject,
+        joinWebUrl: meeting.joinWebUrl || "",
+        participants: meeting.participants || [],
       });
       process.exit(0);
     }

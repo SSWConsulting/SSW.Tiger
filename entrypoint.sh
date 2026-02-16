@@ -116,7 +116,32 @@ run_pipeline() {
     # Check if skipped
     if echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).skipped" 2>/dev/null | grep -q "true"; then
         REASON=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).reason")
+        SKIP_REASON=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).skipReason || ''" 2>/dev/null || echo "")
         log "info" "Skipped: $REASON"
+
+        # If skipped due to subject filter, send a "skipped" notification so users can trigger manually
+        if [ "$SKIP_REASON" = "subjectFilter" ] && [ -n "$LOGIC_APP_URL" ]; then
+            MEETING_SUBJECT=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).meetingSubject || ''" 2>/dev/null)
+            PARTICIPANTS_JSON=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.stringify(JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).participants || [])" 2>/dev/null)
+            JOIN_WEB_URL=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).joinWebUrl || ''" 2>/dev/null)
+
+            # Build trigger URL from the cancel URL base (same Azure Function host)
+            TRIGGER_URL=""
+            if [ -n "$CANCEL_URL" ] && [ -n "$JOIN_WEB_URL" ]; then
+                FUNCTION_HOST=$(echo "$CANCEL_URL" | sed 's|/api/.*||')
+                ENCODED_JOIN_URL=$(node -pe "encodeURIComponent('$JOIN_WEB_URL')" 2>/dev/null || echo "")
+                if [ -n "$ENCODED_JOIN_URL" ]; then
+                    TRIGGER_URL="${FUNCTION_HOST}/api/TriggerProcessing?joinUrl=${ENCODED_JOIN_URL}"
+                fi
+            fi
+
+            export MEETING_SUBJECT="$MEETING_SUBJECT"
+            export PARTICIPANTS_JSON="$PARTICIPANTS_JSON"
+            export NOTIFICATION_TYPE="skipped"
+            export TRIGGER_URL="$TRIGGER_URL"
+            node send-teams-notification.js >/dev/null || log "warn" "Skipped notification failed"
+        fi
+
         exit 0
     fi
 
