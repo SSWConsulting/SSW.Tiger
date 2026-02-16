@@ -486,14 +486,14 @@ Output DEPLOYED_URL as specified.`;
       let firstOutputReceived = false;
       let lastOutputTime = Date.now();
 
-      // Inactivity timeout: fail if no output received for 15 minutes
-      const INACTIVITY_TIMEOUT = 900000;
+      // Inactivity timeout: fail if no output received for 20 minutes
+      const INACTIVITY_TIMEOUT = 1200000;
       const inactivityTimer = setInterval(() => {
         const timeSinceLastOutput = Date.now() - lastOutputTime;
         if (timeSinceLastOutput > INACTIVITY_TIMEOUT) {
           clearInterval(inactivityTimer);
           claude.kill();
-          reject(new Error("Claude CLI timeout: no output for 15 minutes"));
+          reject(new Error("Claude CLI timeout: no output for 20 minutes"));
         }
       }, 30000);
 
