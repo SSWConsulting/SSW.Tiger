@@ -30,9 +30,10 @@ const CONFIG = {
   meetingSubject: process.env.MEETING_SUBJECT || "Untitled Meeting",
   projectName: process.env.PROJECT_NAME || "General Project",
   participantsJson: process.env.PARTICIPANTS_JSON,
-  notificationType: process.env.NOTIFICATION_TYPE || "completed", // "started", "completed", "failed", or "cancelled"
+  notificationType: process.env.NOTIFICATION_TYPE || "completed", // "started", "completed", "failed", "cancelled", or "skipped"
   cancelUrl: process.env.CANCEL_URL, // URL to cancel processing (for "started" notifications)
   executionId: process.env.JOB_EXECUTION_ID, // Execution ID for tracking
+  triggerUrl: process.env.TRIGGER_URL, // URL to manually trigger processing (for "skipped" notifications)
 };
 
 function log(level, message, data = null) {
@@ -83,6 +84,14 @@ async function sendViaLogicApp(participants) {
     log("debug", "Including cancel URL in notification", {
       cancelUrl: CONFIG.cancelUrl,
       executionId: CONFIG.executionId,
+    });
+  }
+
+  // Include triggerUrl for "skipped" notifications (allows user to process anyway)
+  if (CONFIG.notificationType === "skipped" && CONFIG.triggerUrl) {
+    payload.triggerUrl = CONFIG.triggerUrl;
+    log("debug", "Including trigger URL in notification", {
+      triggerUrl: CONFIG.triggerUrl,
     });
   }
 
