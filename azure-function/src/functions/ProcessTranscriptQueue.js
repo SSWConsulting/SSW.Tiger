@@ -137,11 +137,15 @@ app.storageQueue("ProcessTranscriptQueue", {
       data = message;
     }
 
-    const { userId, meetingId, transcriptId } = data;
+    const { userId, meetingId, transcriptId, skipSubjectFilter, manualTrigger } = data;
 
     if (!userId || !meetingId || !transcriptId) {
       structuredLog(context, "error", "Missing IDs in queue message", { userId, meetingId, transcriptId });
       throw new Error("Missing required IDs in queue message");
+    }
+
+    if (manualTrigger) {
+      structuredLog(context, "info", "Manual trigger - subject filter will be skipped", { meetingId });
     }
 
     // Check for duplicate (Graph may send same notification multiple times)
@@ -155,7 +159,7 @@ app.storageQueue("ProcessTranscriptQueue", {
     markAsProcessed(meetingId, transcriptId);
 
     try {
-      await triggerContainerAppJob({ userId, meetingId, transcriptId }, context);
+      await triggerContainerAppJob({ userId, meetingId, transcriptId, skipSubjectFilter }, context);
     } catch (err) {
       // Remove from cache on failure to allow retry
       removeFromCache(meetingId, transcriptId);
@@ -165,7 +169,7 @@ app.storageQueue("ProcessTranscriptQueue", {
 });
 
 async function triggerContainerAppJob(params, context) {
-  const { userId, meetingId, transcriptId } = params;
+  const { userId, meetingId, transcriptId, skipSubjectFilter } = params;
 
   // Validate all required environment variables
   const subscriptionId = process.env.SUBSCRIPTION_ID;
@@ -235,6 +239,10 @@ async function triggerContainerAppJob(params, context) {
               { name: "JOB_EXECUTION_ID", value: executionId },
               { name: "CANCEL_URL", value: cancelUrl },
               { name: "CHECK_CANCELLATION_URL", value: checkCancellationUrl },
+              // Manual trigger: skip subject filter when explicitly requested
+              ...(skipSubjectFilter
+                ? [{ name: "SKIP_SUBJECT_FILTER", value: "true" }]
+                : []),
               // Static values - must be included as template override replaces the env array
               { name: "NODE_ENV", value: "production" },
               // Secrets from job configuration (defined in containerApp.bicep)

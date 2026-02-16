@@ -55,6 +55,8 @@ const CONFIG = {
   // Meeting filter: regex pattern to match meeting subjects (default: "sprint")
   // Set to empty string or ".*" to process all meetings
   meetingFilterPattern: process.env.MEETING_FILTER_PATTERN || "sprint",
+  // Skip subject filter when manually triggered (set by TriggerProcessing function)
+  skipSubjectFilter: process.env.SKIP_SUBJECT_FILTER === "true",
   // SSW tenant ID for filtering external meetings
   sswTenantId: "ac2f7c34-b935-48e9-abdc-11e5d4fcb2b0",
 };
@@ -124,7 +126,9 @@ async function runMockMode() {
 
   // Filter: only process meetings matching the filter pattern
   const subject = mockMeeting.subject || "";
-  if (!matchesMeetingFilter(subject)) {
+  if (CONFIG.skipSubjectFilter) {
+    log("info", "Subject filter skipped (manual trigger)", { subject });
+  } else if (!matchesMeetingFilter(subject)) {
     outputResult({
       skipped: true,
       reason: `Subject does not match filter pattern '${CONFIG.meetingFilterPattern}': "${subject}"`,
@@ -738,7 +742,9 @@ async function main() {
       userId: CONFIG.userId,
       meetingId: CONFIG.meetingId,
     });
-    if (!matchesMeetingFilter(subject)) {
+    if (CONFIG.skipSubjectFilter) {
+      log("info", "Subject filter skipped (manual trigger)", { subject });
+    } else if (!matchesMeetingFilter(subject)) {
       outputResult({
         skipped: true,
         reason: `Subject does not match filter pattern '${CONFIG.meetingFilterPattern}': "${subject}"`,
