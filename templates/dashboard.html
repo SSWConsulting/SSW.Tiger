@@ -290,23 +290,34 @@
                     <!-- Key Decisions -->
                     <section class="bg-white rounded-xl shadow-sm ssw-card p-6">
                         <h2 class="text-lg text-ssw-charcoal mb-3 flex items-center">
-                            <span class="w-3 h-3 bg-ssw-charcoal rounded-full mr-2"></span>
-                            Key Decisions
+                            <span class="w-3 h-3 bg-green-600 rounded-full mr-2"></span>
+                            🔑 Key Decisions
                         </h2>
                         <ul class="space-y-2">
-                            {{DECISIONS}}
+                            {{KEY_DECISIONS}}
                         </ul>
                     </section>
                 </div>
 
-                <!-- Action Items -->
+                <!-- Done This Sprint -->
+                <section class="mt-6 bg-white rounded-xl shadow-sm ssw-card p-6">
+                    <h2 class="text-lg text-ssw-charcoal mb-4 flex items-center">
+                        <span class="w-3 h-3 bg-green-600 rounded-full mr-2"></span>
+                        ✅ Done This Sprint
+                    </h2>
+                    <div class="grid md:grid-cols-2 gap-4">
+                        {{DONE_THIS_SPRINT}}
+                    </div>
+                </section>
+
+                <!-- Next Steps -->
                 <section class="mt-6 bg-white rounded-xl shadow-sm ssw-card p-6">
                     <h2 class="text-lg text-ssw-charcoal mb-4 flex items-center">
                         <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
-                        Action Items
+                        ➡️ Next Steps
                     </h2>
                     <div class="grid md:grid-cols-2 gap-4">
-                        {{ACTION_ITEMS}}
+                        {{NEXT_STEPS}}
                     </div>
                 </section>
                 

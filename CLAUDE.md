@@ -92,6 +92,32 @@ The dashboard MUST have these tabs (all using consolidated data):
 - If any particular meeting is skipped, you do NOT have to mention it
 - Use Australian date format (DD/MM/YYYY) for all dates
 
+**Content deduplication (CRITICAL — allowlist approach):**
+
+Each tab answers ONE question. Before writing content for any section, ask: "Which tab's question does this answer?" Put it there and NOWHERE else.
+
+| Tab | The ONE Question It Answers | Owns exclusively |
+|---|---|---|
+| **Overview** | "What happened, what's done, and what's next?" | Factual summary, done items, next steps |
+| **Timeline** | "When did things happen and how was time spent?" | Chronological flow, time allocation, pacing |
+| **People** | "How did each individual contribute?" | Individual performance, feedback, person-specific issues |
+| **Insights** | "What's hidden beneath the surface?" | Risks, elephants, patterns, opportunities, hard truths |
+| **Trends** | "How does this compare to history and where is this heading?" | Historical comparison, trajectories, predictions |
+
+For every piece of content, find the ONE tab whose question it answers best. If it could fit two tabs, pick the MORE SPECIFIC one (e.g., a person issue → People, not Overview). If you need to reference content from another tab, write "(See People tab)" instead of repeating it.
+
+**Duplication anti-patterns (MUST AVOID):**
+
+A single topic (e.g., "Lewis Toh departing") must NOT appear as:
+- Overview summary bullet: "Lewis announced departure" ← OK (factual)
+- Overview hard truth: "No transition plan for Lewis" ← DUPLICATE — this is an insight
+- Insights risk radar: "Leadership vacuum" ← DUPLICATE of the same topic
+- Insights elephants: "Nobody discussed succession" ← DUPLICATE of the same topic
+
+**Correct approach:** The factual event goes in Overview summary ("Lewis Toh announced departure to SSW AI team"). The analysis/commentary goes in Insights as ONE unified entry that combines the risk, elephant, and opportunity angles into a single paragraph. It does NOT appear in Overview hard truths, AND it does not appear in multiple Insights sub-sections.
+
+**The "same topic" test:** If two items are about the same person + same event/issue, they are the SAME TOPIC regardless of the angle (risk vs. opportunity vs. elephant). Merge them.
+
 **Privacy rules:**
 - **Client anonymization**: If client or company names are mentioned in the transcript, do NOT display them in the dashboard. Replace with "Client A", "Client B", "Client C", etc. SSW staff names are fine to show.
 
@@ -101,9 +127,11 @@ The dashboard MUST have these tabs (all using consolidated data):
 - Use ✅ for good things, ⚠️ for things to be mindful of, ❌ for things that are bad
 
 ### Tab 1: Overview
-- Meeting summary
-- Key decisions (with who proposed/decided)
-- Action items with owners **(canonical names!)**
+- Meeting summary in **factual** bullet points (what happened — no commentary or analysis)
+- **Key Decisions** — the most important decisions made during this meeting, **max 3 bullet points** (e.g., "Decided to proceed with custom auth", "Agreed to defer migration to next quarter")
+- **Done This Sprint** — outcomes, features completed/demoed, issues resolved (backward-looking: what was accomplished). Do NOT repeat decisions already listed in Key Decisions.
+- **Next Steps** — action items with owners and deadlines for next sprint **(canonical names!)** (forward-looking: what's planned)
+- Hard truths — **MAX 3 items, ONLY if they are high-level synthesis that genuinely doesn't fit in Insights, People, or Trends**. If a hard truth is about a specific risk → Insights tab. If it's about a person → People tab. If it's about a recurring pattern → Trends tab. When in doubt, it goes in the other tab, NOT here.
 
 ### Tab 2: Timeline
 - **Speaker Timeline Visualization** - Horizontal bars showing exactly when each person spoke (like Teams interface)
@@ -119,8 +147,11 @@ The dashboard MUST have these tabs (all using consolidated data):
 - When generating value scores, if the score ranges from 8 - 10, the bar should be GREEN, from 4 - 7, it should be YELLOW, 3 and below, it should be RED
 
 ### Tab 4: Insights
-- Ad-hoc observations
+- **This tab OWNS all analysis, risks, elephants, and hard truths.** If something is uncomfortable or hidden, it goes HERE, not in Overview.
+- Each finding appears in ONE sub-section only (a topic is either a risk OR an elephant OR an opportunity — never all three)
 - Risk signals with who raised them **(canonical names!)**
+- Elephants in the room (things avoided in the meeting)
+- Buried opportunities
 - Notable quotes **(attributed by canonical name!)**
 
 ### Tab 5: Trends

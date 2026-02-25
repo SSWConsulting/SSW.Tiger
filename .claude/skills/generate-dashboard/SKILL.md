@@ -26,10 +26,18 @@ Create a beautiful HTML dashboard from meeting analysis.
    - `{{SUMMARY}}` → Meeting summary paragraph
    - `{{ATTENDEES}}` → HTML list items for each attendee
    - `{{KEY_TOPICS}}` → HTML list items for topics
-   - `{{ACTION_ITEMS}}` → HTML cards for each action item with owner/deadline
-   - `{{DECISIONS}}` → HTML list items for decisions
+   - `{{KEY_DECISIONS}}` → HTML list items for top 1-3 decisions made (do not repeat in Done This Sprint)
+   - `{{DONE_THIS_SPRINT}}` → HTML list items for outcomes, features completed (excluding decisions)
+   - `{{NEXT_STEPS}}` → HTML cards for each action item with owner/deadline
    - `{{QUESTIONS}}` → HTML list items for open questions
-   - `{{NEXT_STEPS}}` → HTML list items for next steps
+
+5. **DEDUPLICATION CHECK** before saving:
+   - For each piece of content, verify it appears in ONLY ONE tab
+   - Overview summary = factual bullets only (no analysis/commentary)
+   - Overview hard truths = max 2 items, only cross-cutting synthesis not in other tabs
+   - Insights = ALL risks, elephants, hard truths, patterns (each topic appears ONCE)
+   - If the same topic appears in both Overview hard truths AND Insights, REMOVE it from Overview
+   - Use "(See Insights tab)" cross-references instead of repeating content
 
 5. Save the dashboard to `projects/{project}/dashboards/{date}/index.html`
 

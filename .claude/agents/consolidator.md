@@ -63,7 +63,77 @@ Check for inconsistencies between agent outputs:
 2. **Assessments** - Reconcile by examining evidence (can both be true?)
 3. **Contradictions** - Call them out explicitly; don't paper over
 
-### 3. Insight Amplification
+### 3. Topic Fingerprinting (Critical First Step)
+
+Before assigning ANY content, scan ALL agent outputs and create a **topic fingerprint map**. This prevents the same topic from appearing in multiple sections.
+
+#### How to Fingerprint
+
+1. Read through every finding from every agent
+2. Identify the **core topic** of each finding (e.g., "John Doe departure", "auth system tech debt", "meeting overrun")
+3. Group all findings that share the same core topic — even if they're phrased differently
+4. For each topic group, pick the **ONE best version** (most specific, most evidence-backed) and assign it to exactly ONE output section
+5. Discard all other versions of that topic
+
+#### Anti-pattern Example (MUST AVOID)
+
+Topic: "John Doe leaving the team"
+- insights-generator `riskRadar`: "CRITICAL: Leadership vacuum with no succession plan"
+- insights-generator `elephantsInTheRoom`: "No one asked who runs the next sprint review"
+- insights-generator `buriedOpportunities`: "John Doe's move creates a bridge to SSW AI"
+- people-analyzer `hardTruths`: "Losing most active contributor with no transition plan"
+- longitudinal-analyzer: "Facilitator departure risk"
+
+These are ALL the same core topic. **Pick ONE.** The best version might be a merged synthesis:
+→ Goes in `consolidatedInsights` as: "John Doe's departure creates an immediate leadership vacuum — no succession plan for facilitation, stakeholder liaison, or architecture decisions. However, this also creates a potential bridge to the new team."
+
+The opportunity angle and the risk angle are combined into ONE entry. They do NOT appear separately.
+
+### 4. Content Deduplication (Critical — Allowlist Approach)
+
+Multiple agents produce overlapping findings. Your job is to **merge, not compile**. Each piece of information MUST appear in exactly ONE section of the output.
+
+#### The Principle: Each Section Answers ONE Question
+
+Each output section has a **single question it answers**. Content goes in whichever section answers its primary question. If a finding doesn't clearly answer any section's question, it is cut.
+
+| Output Section | The ONE Question It Answers |
+|---|---|
+| `executiveSummary` | "In bullet points, what happened and what matters most?" |
+| `keyDecisions` | "What were the top 1-3 decisions made in this meeting?" |
+| `doneThisSprint` | "What was accomplished or resolved THIS sprint? (excluding decisions)" |
+| `nextSteps` | "What specific tasks must be done NEXT, by whom, by when?" |
+| `consolidatedTimeline` | "What happened chronologically and how was time spent?" |
+| `participants` | "How did each individual contribute?" |
+| `consolidatedInsights` | "What hidden patterns, risks, or elephants exist beneath the surface?" |
+| `consolidatedAnalytics` | "What do the numbers say about meeting effectiveness?" |
+| `consolidatedTrends` | "How does this compare to previous meetings and where is this heading?" |
+| `hardTruths` | "What uncomfortable synthesis doesn't fit anywhere above?" |
+
+#### How to Assign Content
+
+For each finding from any agent, ask: **"Which ONE question above does this primarily answer?"** Put it there and NOWHERE else.
+
+Examples:
+- "Team decided to use custom auth" → `keyDecisions` (it's a decision)
+- "Bob to fix demo bug by Friday" → `nextSteps` (it's a future task)
+- "Auth system discussed 5 meetings in a row with no progress" → `consolidatedTrends` (it's historical comparison)
+- "Auth system is a single point of failure" → `consolidatedInsights` (it's a hidden risk)
+- "Alice spoke 28%, value score 6/10" → `participants` (it's about a person)
+- "15 min wasted on live debugging" → `consolidatedTimeline` (it's about what happened when)
+- "Meeting effectiveness: D+" → `consolidatedAnalytics` (it's a metric)
+- "This team is slowly degrading" → `hardTruths` ONLY IF it's not already stated as a trend, risk, or insight
+
+#### Merging Rules
+
+1. **Same core topic from multiple agents or sections** — After topic fingerprinting, keep ONLY the single best version. "Best" = most specific + most evidence-backed + combines multiple angles into one coherent paragraph.
+2. **Within `consolidatedInsights`** — A topic can appear as EITHER a risk OR an elephant OR a pattern — NEVER in multiple sub-sections. Merge the risk angle, the elephant angle, and the opportunity angle into ONE unified entry.
+3. **hardTruths is the RESIDUAL section** — It contains ONLY high-level synthesis that doesn't fit in any other section. Before adding anything to hardTruths, check: is this already a risk (→ insights), a trend (→ trends), a person issue (→ participants), or a metric (→ analytics)? If yes, it does NOT go in hardTruths. **Max 2-3 items total** and each must be a genuinely novel synthesis.
+4. **Psychological safety / morale** — When multiple agents provide scores, pick the one with stronger evidence. Output ONE score, in ONE section.
+5. **executiveSummary references, not repeats** — The executive summary may MENTION a topic briefly but must NOT provide full analysis. Full analysis lives in the relevant section only.
+6. **Final self-check (MANDATORY)** — Before finalizing, do a full-text scan: for each item, search the entire output for the same core topic. If it appears more than once, DELETE all but the best version. This is not optional.
+
+### 5. Insight Amplification
 
 Not all findings are equal. Rank and prioritize:
 
@@ -82,7 +152,7 @@ Not all findings are equal. Rank and prioritize:
 - Positive developments
 - Context that helps understanding
 
-### 4. Narrative Construction
+### 6. Narrative Construction
 
 Create a coherent story from the data:
 
@@ -105,26 +175,26 @@ Don't bury the hard truths. Create an explicit section for:
 - What the team is avoiding
 - What will go wrong if nothing changes
 
-### 5. Data Enrichment
+### 7. Data Enrichment
 
 Connect related findings across agents:
 
-#### Action Items Enhancement
+#### Done This Sprint Enhancement
+- Link each outcome to the timeline segment where it was discussed/decided
+- Link to participants involved
+- Note any dissent or concerns raised
+
+#### Next Steps Enhancement
 - Link each to owner (canonical name)
 - Link to timeline segment where created
 - Link to insights about why this matters
-
-#### Decision Enhancement
-- Link to timeline segment
-- Link to participants involved
-- Link to any concerns raised
 
 #### Risk Enhancement
 - Connect people risks to participation data
 - Connect technical risks to timeline discussions
 - Connect process risks to historical patterns
 
-### 6. Quality Scoring
+### 8. Quality Scoring
 
 Score the overall analysis quality:
 
@@ -141,7 +211,7 @@ Score the overall analysis quality:
 }
 ```
 
-### 7. Gap Identification
+### 9. Gap Identification
 
 Note what's missing:
 
@@ -240,31 +310,28 @@ Note what's missing:
   },
   
   "consolidatedInsights": {
-    "critical": [
+    "NOTE": "Each insight is a UNIQUE topic. If insights-generator produced riskRadar + elephantsInTheRoom + hardTruths about the same topic, MERGE them into ONE entry here. The risk angle, elephant angle, and opportunity angle are combined.",
+    "items": [
       {
         "id": "i1",
         "category": "Chronic Problem",
         "title": "Auth System: 5 Weeks of Discussion, 0 Progress",
-        "finding": "The auth system has been discussed in every meeting for 5 weeks with no substantive action taken",
-        "evidence": ["Mentioned 5 of 5 meetings", "No owner assigned", "Same concerns repeated"],
-        "implication": "Team has normalized this dysfunction; production incident likely within 8 weeks",
+        "finding": "The auth system has been discussed in every meeting for 5 weeks with no substantive action taken. Nobody wants to own it (elephant), Charlie's expertise is being ignored (opportunity), and production incident is likely within 8 weeks (risk). All three angles of the same problem.",
+        "evidence": ["Mentioned 5 of 5 meetings", "No owner assigned", "Same concerns repeated", "Charlie's suggestion dismissed at 34:00"],
         "recommendation": "Dedicate next sprint to fixing this, or explicitly decide to accept the risk",
         "linkedParticipants": ["Charlie (expert)", "Alice (blocker?)"],
         "importance": "Critical"
-      }
-    ],
-    "high": [
+      },
       {
         "id": "i2",
         "category": "Team Health",
         "title": "Morale in Steady Decline",
-        "finding": "Morale has dropped from 7.2 to 5.5 over 5 meetings",
+        "finding": "Morale has dropped from 7.2 to 5.5 over 5 meetings. This is causing lower engagement and increasing attrition risk.",
         "evidence": ["Sentiment analysis", "Energy levels", "Contribution patterns"],
-        "implication": "Attrition risk increasing; productivity declining",
-        "recommendation": "Address root causes - likely the recurring unresolved issues creating frustration"
+        "recommendation": "Address root causes - likely the recurring unresolved issues creating frustration",
+        "importance": "High"
       }
-    ],
-    "notable": []
+    ]
   },
   
   "consolidatedAnalytics": {
@@ -311,71 +378,67 @@ Note what's missing:
     "prediction": "Without intervention, expect significant negative event within 6-8 weeks"
   },
   
-  "actionItems": {
-    "consolidated": [
+  "keyDecisions": {
+    "NOTE": "Max 3 items. Only the most important decisions made during this meeting.",
+    "items": [
       {
-        "id": "ai1",
+        "id": "kd1",
+        "decision": "Decided to proceed with custom auth implementation",
+        "segment": 3,
+        "participants": ["Alice", "Bob"],
+        "notes": "Charlie's alternative approach was not properly considered"
+      },
+      {
+        "id": "kd2",
+        "decision": "Agreed to defer API migration to next quarter",
+        "segment": 4,
+        "participants": ["Alice", "Frank"]
+      }
+    ]
+  },
+
+  "doneThisSprint": {
+    "NOTE": "Outcomes, completed work, resolved issues. Do NOT repeat decisions already in keyDecisions.",
+    "items": [
+      {
+        "id": "done1",
+        "item": "Completed user profile feature demo",
+        "type": "completed",
+        "segment": 1,
+        "participants": ["Alice"]
+      },
+      {
+        "id": "done2",
+        "item": "Completed 4 of 8 action items from last sprint",
+        "type": "progress",
+        "notes": "50% completion rate — below 70% threshold"
+      }
+    ]
+  },
+
+  "nextSteps": {
+    "items": [
+      {
+        "id": "next1",
         "item": "Fix demo bug in auth flow",
         "owner": "Bob",
-        "ownerId": "p2",
         "deadline": "Before next demo",
-        "createdInSegment": 1,
         "priority": "High",
         "confidence": "Low - Bob has 3 items rolled over already"
       }
     ],
-    "fromPreviousMeeting": {
-      "completed": 4,
-      "rolledOver": 3,
-      "dropped": 1,
-      "completionRate": "50%"
-    },
     "concerns": [
-      "2 action items have no clear owner",
+      "2 items have no clear owner",
       "Bob is overcommitted - 5 items total",
-      "Previous completion rate suggests 4-5 of these will fail"
+      "Previous completion rate suggests 4-5 of these will not get done"
     ]
   },
   
-  "decisions": {
-    "made": [
-      {
-        "id": "d1",
-        "decision": "Proceed with custom auth implementation",
-        "madeInSegment": 3,
-        "participants": ["Alice", "Bob"],
-        "confidence": "Medium",
-        "dissent": "Charlie's alternative approach was not properly considered",
-        "riskFlag": "May be reversed when Charlie's concerns prove valid"
-      }
-    ],
-    "deferred": [
-      {
-        "topic": "Timeline adjustment discussion",
-        "deferredTo": "Next meeting",
-        "timesDeferred": 2,
-        "risk": "Delay making reality worse; stakeholder surprise"
-      }
-    ]
-  },
-  
-  "hardTruths": {
-    "forLeadership": [
-      "This team is slowly degrading - metrics are worse than 5 weeks ago across the board",
-      "The auth system is a ticking bomb that nobody wants to own",
-      "Morale decline will become attrition if not addressed"
-    ],
-    "forTheTeam": [
-      "You're discussing problems instead of solving them - 5 weeks on auth, 0 progress",
-      "Your retro action items are wishes, not commitments - 67% never happen",
-      "Participation is increasingly unequal - some voices are being lost"
-    ],
-    "whatWillGoWrong": [
-      "Auth incident within 8 weeks if nothing changes",
-      "Charlie disengagement/departure if expertise continues to be ignored",
-      "Meeting effectiveness will continue to decline without format change"
-    ]
-  },
+  "hardTruths": [
+    "NOTE: This section is RESIDUAL ONLY. Max 2-3 items total.",
+    "Each item here MUST be a high-level synthesis that does NOT duplicate any finding in consolidatedInsights, consolidatedTrends, or participants.",
+    "Example: 'The combination of declining morale, increasing meeting bloat, and unresolved tech debt suggests this team is 6-8 weeks from a crisis' — this is synthesis across multiple findings, not a repeat of any single one."
+  ],
   
   "recommendations": {
     "immediate": [
