@@ -139,7 +139,6 @@ For each participant, provide:
       },
       "contributionCount": 34,
       "valueDensityScore": 6,
-      "NOTE_valueDensityScore": "Whole numbers out of 10, no decimals. Avoid 7 (too average) — use 6 or 8 instead.",
       "signalToNoise": "65% signal, 35% filler",
       
       "actualRole": "Dominator-Facilitator hybrid",

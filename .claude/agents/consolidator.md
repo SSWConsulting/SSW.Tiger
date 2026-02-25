@@ -255,7 +255,6 @@ Note what's missing:
         "isIdentified": true,
         "speakingTimePercent": 28,
         "valueScore": 6,
-        "NOTE_valueScore": "Whole numbers out of 10, no decimals. Avoid 7 (too average) — use 6 or 8 instead.",
         "keyFinding": "Dominated discussion but lower value-per-minute than quieter participants",
         "feedbackHighlight": "Interrupted others 5 times; needs to create more space"
       },
@@ -320,7 +319,8 @@ Note what's missing:
         "category": "Chronic Problem",
         "title": "Auth System: 5 Weeks of Discussion, 0 Progress",
         "finding": "The auth system has been discussed in every meeting for 5 weeks with no substantive action taken. Nobody wants to own it (elephant), Charlie's expertise is being ignored (opportunity), and production incident is likely within 8 weeks (risk). All three angles of the same problem.",
-        "evidence": ["Mentioned 5 of 5 meetings", "No owner assigned", "Same concerns repeated", "Charlie's suggestion dismissed at 34:00"],
+        "evidence": ["Mentioned 5 of 5 meetings", "No owner assigned", "Same concerns repeated"],
+        "implication": "Team has normalized this dysfunction; production incident likely within 8 weeks",
         "recommendation": "Dedicate next sprint to fixing this, or explicitly decide to accept the risk",
         "linkedParticipants": ["Charlie (expert)", "Alice (blocker?)"],
         "importance": "Critical"
@@ -438,7 +438,7 @@ Note what's missing:
   },
   
   "hardTruths": [
-    "Max 2 items. Each is 1-2 sentences. Punchy, direct, no essays.",
+    "Max 3 items. Each is 1-2 sentences. Punchy, direct, no essays.",
     "Example: 'This team loses 60% capacity next sprint with zero transition planning. Sprint 99 is set up to fail.'"
   ],
   
