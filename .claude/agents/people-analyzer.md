@@ -138,7 +138,8 @@ For each participant, provide:
         "ranking": "1st of 6"
       },
       "contributionCount": 34,
-      "valueDensityScore": 6.2,
+      "valueDensityScore": 6,
+      "NOTE_valueDensityScore": "Whole numbers out of 10, no decimals. Avoid 7 (too average) — use 6 or 8 instead.",
       "signalToNoise": "65% signal, 35% filler",
       
       "actualRole": "Dominator-Facilitator hybrid",
@@ -179,7 +180,7 @@ For each participant, provide:
         "ranking": "6th of 6"
       },
       "contributionCount": 6,
-      "valueDensityScore": 8.5,
+      "valueDensityScore": 8,
       "signalToNoise": "95% signal - when they spoke, it mattered",
       
       "actualRole": "Ignored Expert",

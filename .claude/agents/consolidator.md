@@ -123,12 +123,14 @@ Examples:
 - "15 min wasted on live debugging" → `consolidatedTimeline` (it's about what happened when)
 - "Meeting effectiveness: D+" → `consolidatedAnalytics` (it's a metric)
 - "This team is slowly degrading" → `hardTruths` ONLY IF it's not already stated as a trend, risk, or insight
+- "Leadership succession not discussed" → `consolidatedInsights` ONLY. Do NOT put missing agenda items in the timeline — they belong in Insights (elephants).
+- "Nobody wanted to make the departure awkward" (why avoided) → `consolidatedInsights` ONLY
 
 #### Merging Rules
 
 1. **Same core topic from multiple agents or sections** — After topic fingerprinting, keep ONLY the single best version. "Best" = most specific + most evidence-backed + combines multiple angles into one coherent paragraph.
 2. **Within `consolidatedInsights`** — A topic can appear as EITHER a risk OR an elephant OR a pattern — NEVER in multiple sub-sections. Merge the risk angle, the elephant angle, and the opportunity angle into ONE unified entry.
-3. **hardTruths is the RESIDUAL section** — It contains ONLY high-level synthesis that doesn't fit in any other section. Before adding anything to hardTruths, check: is this already a risk (→ insights), a trend (→ trends), a person issue (→ participants), or a metric (→ analytics)? If yes, it does NOT go in hardTruths. **Max 2-3 items total** and each must be a genuinely novel synthesis.
+3. **hardTruths is the RESIDUAL section** — It contains ONLY high-level synthesis that doesn't fit in any other section. Before adding anything to hardTruths, check: is this already a risk (→ insights), a trend (→ trends), a person issue (→ participants), or a metric (→ analytics)? If yes, it does NOT go in hardTruths. **Max 2 items, each max 2 sentences.** Punchy and direct, not paragraph-length essays.
 4. **Psychological safety / morale** — When multiple agents provide scores, pick the one with stronger evidence. Output ONE score, in ONE section.
 5. **executiveSummary references, not repeats** — The executive summary may MENTION a topic briefly but must NOT provide full analysis. Full analysis lives in the relevant section only.
 6. **Final self-check (MANDATORY)** — Before finalizing, do a full-text scan: for each item, search the entire output for the same core topic. If it appears more than once, DELETE all but the best version. This is not optional.
@@ -252,7 +254,8 @@ Note what's missing:
         "role": "Product Owner",
         "isIdentified": true,
         "speakingTimePercent": 28,
-        "valueScore": 6.5,
+        "valueScore": 6,
+        "NOTE_valueScore": "Whole numbers out of 10, no decimals. Avoid 7 (too average) — use 6 or 8 instead.",
         "keyFinding": "Dominated discussion but lower value-per-minute than quieter participants",
         "feedbackHighlight": "Interrupted others 5 times; needs to create more space"
       },
@@ -264,7 +267,7 @@ Note what's missing:
         "role": "Senior Developer",
         "isIdentified": true,
         "speakingTimePercent": 18,
-        "valueScore": 8.5,
+        "valueScore": 8,
         "keyFinding": "Highest value-per-minute but systematically underutilized",
         "feedbackHighlight": "Auth expertise was ignored while team spent 15 minutes on auth bug"
       }
@@ -310,7 +313,7 @@ Note what's missing:
   },
   
   "consolidatedInsights": {
-    "NOTE": "Each insight is a UNIQUE topic. If insights-generator produced riskRadar + elephantsInTheRoom + hardTruths about the same topic, MERGE them into ONE entry here. The risk angle, elephant angle, and opportunity angle are combined.",
+    "NOTE": "Each insight is a UNIQUE topic. MERGE same-topic findings into ONE entry. Keep each entry CONCISE: title + 2-3 sentence finding + 1-sentence recommendation. No paragraph-length essays.",
     "items": [
       {
         "id": "i1",
@@ -435,9 +438,8 @@ Note what's missing:
   },
   
   "hardTruths": [
-    "NOTE: This section is RESIDUAL ONLY. Max 2-3 items total.",
-    "Each item here MUST be a high-level synthesis that does NOT duplicate any finding in consolidatedInsights, consolidatedTrends, or participants.",
-    "Example: 'The combination of declining morale, increasing meeting bloat, and unresolved tech debt suggests this team is 6-8 weeks from a crisis' — this is synthesis across multiple findings, not a repeat of any single one."
+    "Max 2 items. Each is 1-2 sentences. Punchy, direct, no essays.",
+    "Example: 'This team loses 60% capacity next sprint with zero transition planning. Sprint 99 is set up to fail.'"
   ],
   
   "recommendations": {
