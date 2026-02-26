@@ -35,6 +35,8 @@ COPY processor.js ./
 COPY download-transcript.js ./
 COPY send-teams-notification.js ./
 COPY CLAUDE.md ./
+COPY .claude/agents/ ./.claude/agents/
+COPY .claude/skills/ ./.claude/skills/
 COPY templates/ ./templates/
 COPY entrypoint.sh ./
 

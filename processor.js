@@ -544,7 +544,7 @@ Output DEPLOYED_URL as specified.`;
         stderr += data.toString();
       });
 
-      claude.on("close", async (code) => {
+      claude.on("close", async (code, signal) => {
         clearInterval(inactivityTimer);
 
         if (code === 0) {
@@ -577,6 +577,19 @@ Output DEPLOYED_URL as specified.`;
           }
 
           resolve({ stdout: null, stderr, deployedUrl });
+        } else if (code === null && signal) {
+          // Process was killed by a signal (not a normal exit)
+          const signalHints = {
+            SIGKILL:
+              "Process was forcefully killed (likely out of memory - consider increasing container memory limit)",
+            SIGTERM:
+              "Process was terminated (likely container timeout or user cancellation)",
+            SIGINT: "Process was interrupted",
+          };
+          const hint =
+            signalHints[signal] || `Process received signal ${signal}`;
+          const error = `Claude CLI killed by ${signal}: ${hint}. stderr: ${stderr.substring(0, 200)}`;
+          reject(new Error(error));
         } else {
           const error = `Claude CLI failed (exit ${code}): ${stderr.substring(0, 200)}`;
           reject(new Error(error));
