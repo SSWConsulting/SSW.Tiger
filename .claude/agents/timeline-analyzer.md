@@ -46,15 +46,7 @@ Diagnose pacing problems:
 - **Agenda hijacking** - When someone derailed the intended flow
 - **Energy crashes** - When and why momentum died
 
-### 4. The Missing Agenda
-
-What SHOULD have been on the agenda but wasn't?
-- Elephants in the room that got polite avoidance
-- Follow-ups from previous meetings that were conveniently forgotten
-- Hard conversations that nobody wanted to have
-- Decisions that should have been made but were punted
-
-### 5. Transition Forensics
+### 4. Transition Forensics
 
 How did the meeting move between topics?
 - **Clean transitions** - Clear wrap-up, explicit topic change
@@ -174,19 +166,6 @@ Create a detailed timeline showing EXACTLY when each person spoke:
       {"type": "Tangent about unrelated feature", "minutes": 13, "severity": "high"}
     ]
   },
-  
-  "missingAgenda": [
-    {
-      "topic": "The API dependency that's been blocking progress for 2 weeks",
-      "why_avoided": "Nobody wants to admit they haven't escalated it",
-      "cost_of_avoidance": "Another week of blocked work"
-    },
-    {
-      "topic": "Charlie's workload - they've been quiet and overloaded",
-      "why_avoided": "Uncomfortable to address directly",
-      "cost_of_avoidance": "Burnout risk, potential quality issues"
-    }
-  ],
   
   "criticalMoments": [
     {

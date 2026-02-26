@@ -95,10 +95,11 @@ Output: `analysis/consolidated.json`
 Create `projects/{project}/dashboards/{date}/index.html` using the **consolidated** data:
 
 #### Tab 1: Overview
-- Meeting summary
-- Key decisions (with timeline refs)
-- Action items with owners (canonical names)
-- Quick stats
+- Meeting summary (factual bullets)
+- Key decisions (max 3 bullet points)
+- Done This Sprint (outcomes, completed work — excluding decisions)
+- Next Steps / action items with owners (canonical names)
+- Hard truths (max 2, residual only)
 
 #### Tab 2: Timeline
 - Visual timeline of meeting segments

@@ -89,38 +89,96 @@ The dashboard MUST have these tabs (all using consolidated data):
 - DO NOT repeat the same point across multiple tabs. Each piece of information should appear in exactly one tab.
 - Use whole numbers for all stats
 - Avoid average marks like 7/10, be more decisive in your marking, giving 6/10 or 8/10
-- If any particular meeting is skipped, you do NOT have to mention it
+- If any particular ceremony is skipped (e.g., retro was deferred or not held), there is no need to mention or analyse it — just omit it
 - Use Australian date format (DD/MM/YYYY) for all dates
+
+**Content deduplication (CRITICAL — allowlist approach):**
+
+Each tab answers ONE question. Before writing content for any section, ask: "Which tab's question does this answer?" Put it there and NOWHERE else.
+
+| Tab | The ONE Question It Answers | Owns exclusively |
+|---|---|---|
+| **Overview** | "What happened, what's done, and what's next?" | Factual summary, done items, next steps |
+| **Timeline** | "When did things happen and how was time spent?" | Chronological flow, time allocation, pacing |
+| **People** | "How did each individual contribute?" | Individual performance, feedback, person-specific issues |
+| **Insights** | "What's hidden beneath the surface?" | Risks, elephants, patterns, opportunities, hard truths |
+| **Trends** | "How does this compare to history and where is this heading?" | Historical comparison, trajectories, predictions |
+
+For every piece of content, find the ONE tab whose question it answers best. If it could fit two tabs, pick the MORE SPECIFIC one (e.g., a person issue → People, not Overview). If you need to reference content from another tab, write "(See People tab)" instead of repeating it.
+
+**Duplication anti-patterns (MUST AVOID):**
+
+A single topic (e.g., "John departing") must NOT appear as:
+- Overview summary bullet: "John announced departure" ← OK (factual)
+- Overview hard truth: "No transition plan for John" ← DUPLICATE — this is an insight
+- Timeline flow analysis: "John's transition plan missing from agenda" ← DUPLICATE of the same topic
+- Insights risk radar: "Leadership vacuum" ← DUPLICATE of the same topic
+- Insights elephants: "Nobody discussed succession" ← DUPLICATE of the same topic
+
+**That's FIVE places for ONE topic — completely unacceptable.**
+
+**Correct approach:** The factual event goes in Overview summary ("John announced departure to SSW AI team"). The analysis/commentary goes in Insights as ONE unified entry that combines the risk, elephant, and opportunity angles into a single paragraph. Timeline may note it briefly as a skipped topic in flow analysis but with NO analysis — just "(See Insights tab)". It does NOT appear in Overview hard truths.
+
+**The "same topic" test:** If two items are about the same person + same event/issue, they are the SAME TOPIC regardless of the angle (risk vs. opportunity vs. elephant vs. missing agenda item). Merge them.
+
+**Cross-tab duplication between Timeline and Insights (CRITICAL):**
+"Missing agenda items" / "things not discussed" belong EXCLUSIVELY in the Insights tab (Elephants in the Room). The Timeline tab must NOT have a "Missing from Agenda" section at all. Timeline only covers what DID happen chronologically.
 
 **Privacy rules:**
 - **Client anonymization**: If client or company names are mentioned in the transcript, do NOT display them in the dashboard. Replace with "Client A", "Client B", "Client C", etc. SSW staff names are fine to show.
 
 **Styling rules:**
-- Primary color is white. ONLY use red for critical issues - do not overuse it
 - In warning/alert sections (e.g. Hard Truths, Time Waste Analysis), keep the body text black (`text-ssw-charcoal`). Only the section heading and border should use accent colors.
-- Use ✅ for good things, ⚠️ for things to be mindful of, ❌ for things that are bad
+- Icon usage by context:
+  - ✅ for completed/positive items (Done This Sprint, Key Decisions)
+  - ⚠️ for warnings, risks, caution items
+  - ❌ for things that went wrong or failed — NEVER use ❌ in Next Steps (these are future plans, not failures)
+  - ➡️ for all Next Steps items (they are forward-looking actions)
+- **All Overview sections use the same format:** `<li>` bullet points inside `<ul>`. This applies to Summary, Key Decisions, Done This Sprint, and Next Steps. Do NOT use `<div>` card grids or colored background cards for these — keep them as clean bullet lists.
+
+**Color allowlist (STRICT — no other background colors permitted):**
+
+| Color | Usage | Tailwind classes |
+|---|---|---|
+| **White** | Primary background, default for all cards and items | `bg-white` |
+| **Green-50** | Positive indicators (outside Overview tab only) | `bg-green-50` |
+| **Amber-50** | Warnings, caution items | `bg-amber-50` |
+| **Red-50** | Critical issues only (Hard Truths section, critical risks) | `bg-ssw-red-50` or `bg-red-50` |
+| **SSW Gray** | Neutral info, headers, team dynamics cards | `bg-ssw-gray-50` to `bg-ssw-gray-700` |
+
+Any color NOT in this table is **forbidden** as a background. This means no `bg-blue-*`, no `bg-purple-*`, no `bg-indigo-*`, no `bg-teal-*`, etc. `border-l-4` accent colors may use `border-ssw-red`, `border-amber-400/500`, or `border-ssw-gray-300` for priority indicators.
 
 ### Tab 1: Overview
-- Meeting summary
-- Key decisions (with who proposed/decided)
-- Action items with owners **(canonical names!)**
+
+All sections below use `<li>` bullet points inside `<ul>` — consistent style throughout.
+
+- **Meeting Summary** — **brief** factual bullet points, max 5 bullets. Each bullet is one short sentence. No commentary or analysis. Example: `<li>Sprint 98 delivered 35 points across 12 PBIs</li>`
+- **Key Decisions** — choices between alternatives, **max 3 bullets** (e.g., "Use SSW Identity Server instead of building from scratch"). Sprint goal setting is NOT a key decision — it belongs in the summary.
+- **Done This Sprint** — outcomes, features completed/demoed, issues resolved. Each item as a plain `<li>` with owner in parentheses. No emoji icons. Do NOT repeat decisions already in Key Decisions.
+- **Next Steps** — work items for next sprint and other follow-up actions, as plain `<li>` bullets with owner **(canonical names!)**. No emoji icons.
+- **Hard truths** — **MAX 2 items, each max 2 sentences.** Keep them punchy and direct, not paragraph-length essays. ONLY high-level synthesis that genuinely doesn't fit in Insights, People, or Trends.
 
 ### Tab 2: Timeline
 - **Speaker Timeline Visualization** - Horizontal bars showing exactly when each person spoke (like Teams interface)
 - Visual timeline with participants **(canonical names!)**
 - Duration and energy level for each
 - Key moments highlighted
+- Flow Analysis: transition quality, agenda adherence, time waste inventory
+- **Do NOT include "Missing from Agenda" section** — that content belongs exclusively in the Insights tab (Elephants in the Room)
 
 ### Tab 3: People & Roles
 - Card for each participant **(canonical name with role as subtitle)**
 - **Profile photo from SSW People** (with fallback for non-SSW participants)
 - Speaking time vs. value contribution
 - Strengths and constructive feedback
-- When generating value scores, if the score ranges from 8 - 10, the bar should be GREEN, from 4 - 7, it should be YELLOW, 3 and below, it should be RED
+- Value scores are whole numbers out of 10 — no decimals. Avoid 7/10 (too average/non-committal); be more decisive with 6 or 8. Bar color: 8-10 = GREEN, 4-6 = YELLOW, 3 and below = RED
 
 ### Tab 4: Insights
-- Ad-hoc observations
+- **This tab OWNS all analysis, risks, elephants, and hard truths.** If something is uncomfortable or hidden, it goes HERE, not in Overview.
+- Each finding appears in ONE sub-section only (a topic is either a risk OR an elephant OR an opportunity — never all three)
 - Risk signals with who raised them **(canonical names!)**
+- Elephants in the room — **each elephant is max 2-3 sentences**: what it is, why it matters, one-line recommendation. Do NOT write full paragraphs with background context.
+- Buried opportunities
 - Notable quotes **(attributed by canonical name!)**
 
 ### Tab 5: Trends
