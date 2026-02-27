@@ -33,6 +33,8 @@ Thumbs.db
 README.md
 *.md
 !CLAUDE.md
+!.claude/agents/*.md
+!.claude/skills/**/*.md
 
 # Docker
 Dockerfile

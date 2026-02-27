@@ -485,6 +485,8 @@ Output DEPLOYED_URL as specified.`;
       let stderr = "";
       let firstOutputReceived = false;
       let lastOutputTime = Date.now();
+      let lastLoggedMessage = "";
+      const startTime = Date.now();
 
       // Inactivity timeout: fail if no output received for 20 minutes
       const INACTIVITY_TIMEOUT = 1200000;
@@ -531,6 +533,7 @@ Output DEPLOYED_URL as specified.`;
 
           const preview = this.extractEventPreview(parsed.event);
           if (preview) {
+            lastLoggedMessage = preview;
             this.log("info", preview);
           }
         } catch (parseError) {
@@ -544,7 +547,7 @@ Output DEPLOYED_URL as specified.`;
         stderr += data.toString();
       });
 
-      claude.on("close", async (code) => {
+      claude.on("close", async (code, signal) => {
         clearInterval(inactivityTimer);
 
         if (code === 0) {
@@ -578,8 +581,41 @@ Output DEPLOYED_URL as specified.`;
 
           resolve({ stdout: null, stderr, deployedUrl });
         } else {
-          const error = `Claude CLI failed (exit ${code}): ${stderr.substring(0, 200)}`;
-          reject(new Error(error));
+          const runtimeSeconds = Math.round((Date.now() - startTime) / 1000);
+          const memUsage = process.memoryUsage();
+          const diagnostics = {
+            runtimeSeconds,
+            firstOutputReceived,
+            lastLoggedMessage: lastLoggedMessage || "(none)",
+            memoryMB: Math.round(memUsage.rss / 1024 / 1024),
+            stderrPreview: stderr.substring(0, 300) || "(empty)",
+          };
+
+          if (code === null && signal) {
+            // Process was killed by a signal (not a normal exit)
+            // Common causes: OOM kill (SIGKILL), container timeout (SIGTERM), user cancellation (SIGTERM)
+            const signalHints = {
+              SIGKILL:
+                "Process was forcefully killed (likely out of memory - consider increasing container memory limit)",
+              SIGTERM:
+                "Process was terminated (likely container timeout or user cancellation)",
+              SIGINT: "Process was interrupted",
+            };
+            const hint =
+              signalHints[signal] || `Process received signal ${signal}`;
+            this.log("error", `Claude CLI killed by ${signal}`, {
+              hint,
+              ...diagnostics,
+            });
+            reject(new Error(`Claude CLI killed by ${signal}: ${hint}`));
+          } else {
+            this.log("error", `Claude CLI failed (exit ${code})`, diagnostics);
+            reject(
+              new Error(
+                `Claude CLI failed (exit ${code}): ${stderr.substring(0, 200)}`,
+              ),
+            );
+          }
         }
       });
 
