@@ -1,8 +1,4 @@
 // Logic App for Teams Adaptive Card notifications (Consumption)
-// All card operations go through a single Logic App with operationType switch:
-//   - "sendCard"   → Post new card to organizer DM, return { messageId }
-//   - "updateCard"  → Update existing card by messageId
-//   - "ask"         → Post [Process][Skip] card, wait for response, call ManualTrigger
 
 param project string
 param environment string
