@@ -59,6 +59,40 @@ const CONFIG = {
   sswTenantId: "ac2f7c34-b935-48e9-abdc-11e5d4fcb2b0",
 };
 
+/**
+ * Convert UTC timestamp to Australian Eastern Time date (YYYY-MM-DD)
+ * Handles AEDT/AEST automatically based on the date
+ */
+function convertToAustralianDate(utcTimestamp) {
+  if (!utcTimestamp) {
+    return new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' });
+  }
+  return new Date(utcTimestamp).toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' });
+}
+
+/**
+ * Convert UTC timestamp to Australian Eastern Time (HHmmss format)
+ * Handles AEDT/AEST automatically based on the date
+ */
+function convertToAustralianTime(utcTimestamp) {
+  if (!utcTimestamp) {
+    return new Date().toLocaleTimeString('en-GB', {
+      timeZone: 'Australia/Sydney',
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    }).replace(/:/g, '');
+  }
+  return new Date(utcTimestamp).toLocaleTimeString('en-GB', {
+    timeZone: 'Australia/Sydney',
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  }).replace(/:/g, '');
+}
+
 function log(level, message, data = null) {
   const logEntry = {
     level: level.toLowerCase(),
@@ -135,10 +169,11 @@ async function runMockMode() {
   // Extract project name and generate filename
   const projectName = extractProjectName(subject);
   // In mock mode, use the mock date directly
+  // Convert to Australian Eastern Time for consistency with real mode
   const mockTranscriptDate = CONFIG.mockMeetingDate
     ? `${CONFIG.mockMeetingDate}T10:00:00Z`
     : new Date().toISOString();
-  const meetingDate = mockTranscriptDate.split("T")[0];
+  const meetingDate = convertToAustralianDate(mockTranscriptDate);
   const filename = generateFilename(mockMeeting, mockTranscriptDate);
 
   // Read local VTT content
@@ -541,12 +576,9 @@ function generateFilename(meeting, transcriptDate) {
   // Use transcript createdDateTime (actual recording time)
   // Format: {date}-{time}.vtt (date+time is sufficient for uniqueness)
   // This becomes the deploy URL: {project}-{date}-{time}.surge.sh
-  const now = new Date().toISOString();
-  const date = transcriptDate?.split("T")[0] || now.split("T")[0];
-
-  // Extract time as HHmmss (e.g., "094557" from "09:45:57.791Z")
-  const timePart = transcriptDate?.split("T")[1] || now.split("T")[1];
-  const time = timePart.replace(/[:\.]/g, "").substring(0, 6);
+  // Convert to Australian Eastern Time for correct local date
+  const date = convertToAustralianDate(transcriptDate);
+  const time = convertToAustralianTime(transcriptDate);
   return `${date}-${time}.vtt`;
 }
 
@@ -763,10 +795,9 @@ async function main() {
     const callId = transcriptMeta.callId;
 
     // Extract project name and generate filename using transcript date
+    // Convert to Australian Eastern Time for correct local date
     const projectName = extractProjectName(subject);
-    const meetingDate = transcriptDate
-      ? transcriptDate.split("T")[0]
-      : new Date().toISOString().split("T")[0];
+    const meetingDate = convertToAustralianDate(transcriptDate);
     const filename = generateFilename(meeting, transcriptDate);
 
     // Download transcript content
@@ -868,5 +899,7 @@ module.exports = {
   hasExternalParticipants,
   validateConfig,
   runMockMode,
+  convertToAustralianDate,
+  convertToAustralianTime,
   CONFIG,
 };
