@@ -149,20 +149,23 @@ app.storageQueue("ProcessTranscriptQueue", {
     }
 
     // Check for duplicate (Graph may send same notification multiple times)
-    if (isDuplicate(meetingId, transcriptId)) {
-      structuredLog(context, "info", "SKIP: Duplicate notification", { meetingId, transcriptId });
-      return; // Don't throw - this is expected behavior, not an error
+    // Manual triggers use a separate dedup key so they aren't blocked by webhook entries,
+    // but still dedup against each other (prevents double-click spawning two containers)
+    const dedupKey = manualTrigger ? `manual-${meetingId}-${transcriptId}` : `${meetingId}-${transcriptId}`;
+    if (processedCache.has(dedupKey) && Date.now() - processedCache.get(dedupKey) < CACHE_TTL_MS) {
+      structuredLog(context, "info", "SKIP: Duplicate notification", { meetingId, transcriptId, manualTrigger: !!manualTrigger });
+      return;
     }
 
     // Mark as processed BEFORE triggering to prevent race conditions
     // If two messages arrive simultaneously, only the first will proceed
-    markAsProcessed(meetingId, transcriptId);
+    processedCache.set(dedupKey, Date.now());
 
     try {
       await triggerContainerAppJob({ userId, meetingId, transcriptId, skipSubjectFilter }, context);
     } catch (err) {
       // Remove from cache on failure to allow retry
-      removeFromCache(meetingId, transcriptId);
+      processedCache.delete(dedupKey);
       throw err;
     }
   },
