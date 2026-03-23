@@ -18,6 +18,97 @@ const { app, output } = require("@azure/functions");
 
 const LOG_PREFIX = "[TIGER]";
 
+/**
+ * Generate HTML response page for browser requests
+ */
+function generateHtmlResponse(success, message, details = {}) {
+  const icon = success ? "🐯" : "❌";
+  const title = success ? "Processing Queued" : "Trigger Failed";
+  const bgColor = success ? "#d4edda" : "#f8d7da";
+  const textColor = success ? "#155724" : "#721c24";
+  const borderColor = success ? "#c3e6cb" : "#f5c6cb";
+
+  const detailsHtml = details.subject
+    ? `<div class="details">
+        <p><strong>Meeting:</strong> ${details.subject}</p>
+        ${details.transcriptCreated ? `<p><strong>Transcript:</strong> ${new Date(details.transcriptCreated).toLocaleString()}</p>` : ""}
+      </div>`
+    : "";
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${title} - SSW Tiger</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      background: #f5f5f5;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      padding: 40px;
+      text-align: center;
+      max-width: 400px;
+    }
+    .icon { font-size: 64px; margin-bottom: 20px; }
+    .title { font-size: 24px; font-weight: 600; margin-bottom: 12px; color: #333; }
+    .message {
+      padding: 16px;
+      border-radius: 8px;
+      background: ${bgColor};
+      color: ${textColor};
+      border: 1px solid ${borderColor};
+      margin-bottom: 20px;
+    }
+    .details { font-size: 14px; color: #555; text-align: left; margin-bottom: 16px; }
+    .details p { margin: 4px 0; }
+    .close-hint { margin-top: 20px; color: #999; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">${icon}</div>
+    <div class="title">${title}</div>
+    <div class="message">${message}</div>
+    ${detailsHtml}
+    <div class="close-hint">You can close this window now.</div>
+  </div>
+</body>
+</html>`;
+}
+
+/**
+ * Return response based on request type (HTML for browser, JSON for API)
+ */
+function createResponse(request, success, message, statusCode, details = {}) {
+  const acceptHeader = request.headers.get("accept") || "";
+  const isJsonRequest = acceptHeader.includes("application/json");
+
+  if (isJsonRequest) {
+    return {
+      status: statusCode,
+      jsonBody: success
+        ? { success: true, message, ...details }
+        : { error: true, message, ...details },
+    };
+  }
+
+  return {
+    status: statusCode,
+    headers: { "Content-Type": "text/html" },
+    body: generateHtmlResponse(success, message, details),
+  };
+}
+
 function structuredLog(context, level, message, data = {}) {
   const logEntry = {
     level,
@@ -186,18 +277,12 @@ app.http("TriggerProcessing", {
     }
 
     if (!joinUrl) {
-      return {
-        status: 400,
-        jsonBody: {
-          error: true,
-          message:
-            "Missing 'joinUrl' parameter. Provide a Teams meeting join URL.",
-          usage: {
-            GET: "/api/TriggerProcessing?joinUrl=<teams-join-url>",
-            POST: "{ \"joinUrl\": \"<teams-join-url>\" }",
-          },
-        },
-      };
+      return createResponse(
+        request,
+        false,
+        "Missing 'joinUrl' parameter. Provide a Teams meeting join URL.",
+        400,
+      );
     }
 
     structuredLog(context, "info", "Manual trigger requested", {
@@ -210,10 +295,7 @@ app.http("TriggerProcessing", {
       structuredLog(context, "error", "Failed to parse join URL", {
         error: parsed.error,
       });
-      return {
-        status: 400,
-        jsonBody: { error: true, message: parsed.error },
-      };
+      return createResponse(request, false, parsed.error, 400);
     }
 
     const { userId } = parsed;
@@ -231,14 +313,12 @@ app.http("TriggerProcessing", {
         structuredLog(context, "warn", "No meeting found for join URL", {
           userId,
         });
-        return {
-          status: 404,
-          jsonBody: {
-            error: true,
-            message:
-              "No meeting found for this join URL. The meeting may have been deleted or the URL may be incorrect.",
-          },
-        };
+        return createResponse(
+          request,
+          false,
+          "No meeting found for this join URL. The meeting may have been deleted or the URL may be incorrect.",
+          404,
+        );
       }
 
       const meetingId = meeting.id;
@@ -255,13 +335,13 @@ app.http("TriggerProcessing", {
           meetingId,
           subject,
         });
-        return {
-          status: 404,
-          jsonBody: {
-            error: true,
-            message: `No transcripts found for meeting "${subject}". Ensure recording/transcription was enabled.`,
-          },
-        };
+        return createResponse(
+          request,
+          false,
+          `No transcripts found for meeting "${subject}". Ensure recording/transcription was enabled.`,
+          404,
+          { subject },
+        );
       }
 
       // Step 5: Queue the latest transcript for processing
@@ -293,32 +373,24 @@ app.http("TriggerProcessing", {
 
       context.extraOutputs.set(queueOutput, [queueMessage]);
 
-      return {
-        status: 202,
-        jsonBody: {
-          success: true,
-          message: `Processing queued for "${subject}"`,
-          meeting: {
-            subject,
-            meetingId,
-            transcriptId,
-            transcriptCreated: latestTranscript.createdDateTime,
-            totalTranscripts: transcripts.length,
-          },
-        },
-      };
+      return createResponse(
+        request,
+        true,
+        `Processing has been queued for "${subject}". You'll receive a Teams notification when the dashboard is ready.`,
+        202,
+        { subject, transcriptCreated: latestTranscript.createdDateTime },
+      );
     } catch (err) {
       structuredLog(context, "error", "Manual trigger failed", {
         error: err.message,
         stack: err.stack,
       });
-      return {
-        status: 500,
-        jsonBody: {
-          error: true,
-          message: `Failed to process: ${err.message}`,
-        },
-      };
+      return createResponse(
+        request,
+        false,
+        `Failed to process: ${err.message}`,
+        500,
+      );
     }
   },
 });
