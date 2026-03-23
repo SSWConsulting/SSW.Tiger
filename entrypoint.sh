@@ -51,27 +51,18 @@ setup_claude_auth() {
     mkdir -p ~/.claude ~/.config/claude
 
     if [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
-        # OAuth token authentication
+        # OAuth token authentication - the CLI reads CLAUDE_CODE_OAUTH_TOKEN env var directly
+        log "info" "Using OAuth token authentication"
         cat > ~/.claude.json <<EOF
 {
   "hasCompletedOnboarding": true,
   "defaultModel": "claude-opus-4-5-20251101"
 }
 EOF
-        cat > ~/.claude/.credentials.json <<EOF
-{
-  "claudeAiOauth": {
-    "accessToken": "$CLAUDE_CODE_OAUTH_TOKEN",
-    "refreshToken": "$CLAUDE_CODE_OAUTH_TOKEN",
-    "expiresAt": 9999999999999,
-    "scopes": ["user:inference", "user:profile"]
-  }
-}
-EOF
-        cp ~/.claude/.credentials.json ~/.config/claude/.credentials.json 2>/dev/null || true
 
     elif [ -n "$ANTHROPIC_API_KEY" ]; then
-        # API key authentication
+        # API key authentication - the CLI reads ANTHROPIC_API_KEY env var directly
+        log "info" "Using API key authentication"
         cat > ~/.claude.json <<EOF
 {
   "hasCompletedOnboarding": true,
