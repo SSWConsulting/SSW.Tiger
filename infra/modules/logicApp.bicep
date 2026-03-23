@@ -1,12 +1,16 @@
-// Logic App for Teams Notification (Consumption)
+// Logic App for Teams Adaptive Card notifications (Consumption)
 
 param project string
+param environment string
 param location string
 param costCategoryTag object
 
-var logicAppName = toLower('${project}Notify')
+// Capitalize first letter of project for PascalCase naming (Bicep has no capitalize())
+var projectPascal = '${toUpper(substring(project, 0, 1))}${substring(project, 1)}'
+// Match existing production name: TigerTeams (staging), TigerTeams-test (other envs)
+var logicAppName = environment == 'staging' ? '${projectPascal}Teams' : '${projectPascal}Teams-${environment}'
 
-// Logic App (Consumption) - Empty, ready for Portal configuration
+// Logic App (Consumption) - Empty shell, configured in Portal
 resource logicApp 'Microsoft.Logic/workflows@2019-05-01' = {
   name: logicAppName
   location: location

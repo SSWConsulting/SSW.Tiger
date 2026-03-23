@@ -115,6 +115,7 @@ module logicApp 'modules/logicApp.bicep' = {
   name: 'provision-logic-app-${suffix}'
   params: {
     project: project
+    environment: environment
     costCategoryTag: costCategoryTag
     location: location
   }
