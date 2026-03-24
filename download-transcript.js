@@ -497,7 +497,14 @@ async function fetchActualParticipantsFromChat(token, chatId, callId) {
     participants: participants.map((p) => p.displayName || p.userId),
   });
 
-  return participants;
+  return { participants, callStartTime, callEndTime };
+}
+
+function calculateDurationMinutes(startTime, endTime) {
+  if (!startTime || !endTime) return null;
+  const durationMs = endTime.getTime() - startTime.getTime();
+  if (durationMs <= 0) return null;
+  return Math.round(durationMs / 60000);
 }
 
 async function downloadTranscriptContent(token) {
@@ -774,6 +781,38 @@ async function main() {
       userId: CONFIG.userId,
       meetingId: CONFIG.meetingId,
     });
+
+    // Fetch transcript metadata to get actual recording date and callId
+    // Moved before subject filter so duration is available for skipped notifications
+    const transcriptMeta = await fetchTranscriptMetadata(token);
+    const transcriptDate = transcriptMeta.createdDateTime;
+    const callId = transcriptMeta.callId;
+
+    // Get actual participants and call timing from chat messages
+    // Moved before subject filter so meeting duration is available for all notification types
+    let chatParticipants = [];
+    let callStartTime = null;
+    let callEndTime = null;
+    const chatId = meeting.chatInfo?.threadId;
+    if (chatId && callId) {
+      const chatResult = await fetchActualParticipantsFromChat(
+        token,
+        chatId,
+        callId,
+      );
+      chatParticipants = chatResult.participants;
+      callStartTime = chatResult.callStartTime;
+      callEndTime = chatResult.callEndTime;
+    } else {
+      log(
+        "warn",
+        "No chatId or callId found, cannot fetch actual participants",
+        { chatId, callId },
+      );
+    }
+
+    const meetingDurationMinutes = calculateDurationMinutes(callStartTime, callEndTime);
+
     if (CONFIG.skipSubjectFilter) {
       log("info", "Subject filter skipped (manual trigger)", { subject });
     } else if (!matchesMeetingFilter(subject)) {
@@ -784,6 +823,7 @@ async function main() {
         meetingSubject: subject,
         joinWebUrl: meeting.joinWebUrl || "",
         participants: meeting.participants || [],
+        meetingDurationMinutes,
       });
       process.exit(0);
     }
@@ -795,14 +835,10 @@ async function main() {
       outputResult({
         skipped: true,
         reason: `Meeting has external invitees: ${inviteeCheck.reason}`,
+        meetingDurationMinutes,
       });
       process.exit(0);
     }
-
-    // Fetch transcript metadata to get actual recording date and callId
-    const transcriptMeta = await fetchTranscriptMetadata(token);
-    const transcriptDate = transcriptMeta.createdDateTime;
-    const callId = transcriptMeta.callId;
 
     // Extract project name and generate filename using transcript date
     // Convert to Australian Eastern Time for correct local date
@@ -823,29 +859,13 @@ async function main() {
     // Save to file
     const transcriptPath = await saveTranscript(content, filename);
 
-    // Get actual participants from chat messages for this specific call session
-    // This uses Chat.Read.All permission to read chat messages
-    let participants = [];
-    const chatId = meeting.chatInfo?.threadId;
-    if (chatId && callId) {
-      participants = await fetchActualParticipantsFromChat(
-        token,
-        chatId,
-        callId,
-      );
-    } else {
-      log(
-        "warn",
-        "No chatId or callId found, cannot fetch actual participants",
-        { chatId, callId },
-      );
-    }
-
     // Filter: skip meetings with external participants (non-SSW tenantId)
-    if (hasExternalParticipants(participants)) {
+    // Uses chatParticipants already fetched above
+    if (hasExternalParticipants(chatParticipants)) {
       outputResult({
         skipped: true,
         reason: `Meeting has external participants (non-SSW): "${subject}"`,
+        meetingDurationMinutes,
       });
       process.exit(0);
     }
@@ -858,7 +878,8 @@ async function main() {
       meetingDate,
       filename,
       meetingSubject: subject,
-      participants,
+      participants: chatParticipants,
+      meetingDurationMinutes,
     });
 
     process.exit(0);

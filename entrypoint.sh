@@ -115,6 +115,7 @@ run_pipeline() {
             MEETING_SUBJECT=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).meetingSubject || ''" 2>/dev/null)
             PARTICIPANTS_JSON=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.stringify(JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).participants || [])" 2>/dev/null)
             JOIN_WEB_URL=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).joinWebUrl || ''" 2>/dev/null)
+            MEETING_DURATION_MINUTES=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).meetingDurationMinutes || ''" 2>/dev/null)
 
             # Build trigger URL from the cancel URL base (same Azure Function host)
             TRIGGER_URL=""
@@ -130,6 +131,7 @@ run_pipeline() {
             export PARTICIPANTS_JSON="$PARTICIPANTS_JSON"
             export NOTIFICATION_TYPE="skipped"
             export TRIGGER_URL="$TRIGGER_URL"
+            export MEETING_DURATION_MINUTES="$MEETING_DURATION_MINUTES"
             node send-teams-notification.js >/dev/null || log "warn" "Skipped notification failed"
         fi
 
@@ -141,11 +143,13 @@ run_pipeline() {
     PROJECT_NAME=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).projectName")
     MEETING_SUBJECT=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).meetingSubject")
     PARTICIPANTS_JSON=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.stringify(JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).participants || [])")
+    MEETING_DURATION_MINUTES=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).meetingDurationMinutes || ''")
 
     # Export variables for notifications
     export PROJECT_NAME="$PROJECT_NAME"
     export MEETING_SUBJECT="$MEETING_SUBJECT"
     export PARTICIPANTS_JSON="$PARTICIPANTS_JSON"
+    export MEETING_DURATION_MINUTES="$MEETING_DURATION_MINUTES"
 
     # Step 2: Send "started" notification (if configured)
     # Includes cancel URL if available, allowing users to cancel processing
