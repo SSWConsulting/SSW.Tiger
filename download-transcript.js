@@ -512,13 +512,30 @@ function parseVttTimestamp(ts) {
 }
 
 function parseDurationFromVtt(content) {
-  if (!content) return null;
+  if (!content) {
+    log("debug", "parseDurationFromVtt: no content");
+    return null;
+  }
   const timestamps = content.match(/\d+:\d+:\d+\.\d+/g);
-  if (!timestamps || timestamps.length < 2) return null;
+  if (!timestamps || timestamps.length < 2) {
+    log("debug", "parseDurationFromVtt: insufficient timestamps", {
+      found: timestamps ? timestamps.length : 0,
+      contentPreview: content.substring(0, 200),
+    });
+    return null;
+  }
   const first = parseVttTimestamp(timestamps[0]);
   const last = parseVttTimestamp(timestamps[timestamps.length - 1]);
-  if (first === null || last === null) return null;
   const durationSec = Math.round(last - first);
+  log("debug", "parseDurationFromVtt: calculated", {
+    firstTs: timestamps[0],
+    lastTs: timestamps[timestamps.length - 1],
+    firstSec: first,
+    lastSec: last,
+    durationSec,
+    totalTimestamps: timestamps.length,
+  });
+  if (first === null || last === null) return null;
   return durationSec > 0 ? durationSec : null;
 }
 
@@ -845,6 +862,10 @@ async function main() {
     // Calculate duration from VTT timestamps (actual recording duration, not call session)
     const meetingDurationSeconds = parseDurationFromVtt(content);
     const meetingDuration = formatDuration(meetingDurationSeconds);
+    log("info", "Meeting duration from VTT", {
+      durationSeconds: meetingDurationSeconds,
+      formatted: meetingDuration,
+    });
 
     if (CONFIG.skipSubjectFilter) {
       log("info", "Subject filter skipped (manual trigger)", { subject });
