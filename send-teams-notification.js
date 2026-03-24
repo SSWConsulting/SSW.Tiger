@@ -34,7 +34,7 @@ const CONFIG = {
   cancelUrl: process.env.CANCEL_URL, // URL to cancel processing (for "started" notifications)
   executionId: process.env.JOB_EXECUTION_ID, // Execution ID for tracking
   triggerUrl: process.env.TRIGGER_URL, // URL to manually trigger processing (for "skipped" notifications)
-  meetingDurationMinutes: process.env.MEETING_DURATION_MINUTES || null, // Meeting duration in minutes
+  meetingDuration: process.env.MEETING_DURATION || null, // Pre-formatted duration string (e.g. "23 min", "1 hr 32 min")
 };
 
 function log(level, message, data = null) {
@@ -76,7 +76,7 @@ async function sendViaLogicApp(participants) {
     projectName: CONFIG.projectName,
     meetingSubject: CONFIG.meetingSubject,
     participants: participants,
-    meetingDurationMinutes: CONFIG.meetingDurationMinutes,
+    meetingDuration: CONFIG.meetingDuration,
   };
 
   // Include cancelUrl for "started" notifications (allows user to cancel processing)

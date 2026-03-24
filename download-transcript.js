@@ -500,11 +500,37 @@ async function fetchActualParticipantsFromChat(token, chatId, callId) {
   return { participants, callStartTime, callEndTime };
 }
 
-function calculateDurationMinutes(startTime, endTime) {
-  if (!startTime || !endTime) return null;
-  const durationMs = endTime.getTime() - startTime.getTime();
-  if (durationMs <= 0) return null;
-  return Math.round(durationMs / 60000);
+function parseVttTimestamp(ts) {
+  const match = ts.match(/(\d+):(\d+):(\d+)\.(\d+)/);
+  if (!match) return null;
+  return (
+    parseInt(match[1]) * 3600 +
+    parseInt(match[2]) * 60 +
+    parseInt(match[3]) +
+    parseInt(match[4]) / 1000
+  );
+}
+
+function parseDurationFromVtt(content) {
+  if (!content) return null;
+  const timestamps = content.match(/\d+:\d+:\d+\.\d+/g);
+  if (!timestamps || timestamps.length < 2) return null;
+  const first = parseVttTimestamp(timestamps[0]);
+  const last = parseVttTimestamp(timestamps[timestamps.length - 1]);
+  if (first === null || last === null) return null;
+  const durationSec = Math.round(last - first);
+  return durationSec > 0 ? durationSec : null;
+}
+
+function formatDuration(seconds) {
+  if (!seconds || seconds <= 0) return null;
+  if (seconds < 60) return `${seconds} sec`;
+  const mins = Math.round(seconds / 60);
+  if (mins < 60) return `${mins} min`;
+  const hrs = Math.floor(mins / 60);
+  const remainMins = mins % 60;
+  if (remainMins === 0) return `${hrs} hr`;
+  return `${hrs} hr ${remainMins} min`;
 }
 
 async function downloadTranscriptContent(token) {
@@ -788,11 +814,8 @@ async function main() {
     const transcriptDate = transcriptMeta.createdDateTime;
     const callId = transcriptMeta.callId;
 
-    // Get actual participants and call timing from chat messages
-    // Moved before subject filter so meeting duration is available for all notification types
+    // Get actual participants from chat messages
     let chatParticipants = [];
-    let callStartTime = null;
-    let callEndTime = null;
     const chatId = meeting.chatInfo?.threadId;
     if (chatId && callId) {
       const chatResult = await fetchActualParticipantsFromChat(
@@ -801,8 +824,6 @@ async function main() {
         callId,
       );
       chatParticipants = chatResult.participants;
-      callStartTime = chatResult.callStartTime;
-      callEndTime = chatResult.callEndTime;
     } else {
       log(
         "warn",
@@ -811,7 +832,19 @@ async function main() {
       );
     }
 
-    const meetingDurationMinutes = calculateDurationMinutes(callStartTime, callEndTime);
+    // Download transcript content early so VTT duration is available for all notification types
+    const content = await downloadTranscriptContent(token);
+
+    // Validate VTT content
+    if (!content.startsWith("WEBVTT")) {
+      log("warn", "Downloaded content may not be valid VTT format", {
+        preview: content.substring(0, 100),
+      });
+    }
+
+    // Calculate duration from VTT timestamps (actual recording duration, not call session)
+    const meetingDurationSeconds = parseDurationFromVtt(content);
+    const meetingDuration = formatDuration(meetingDurationSeconds);
 
     if (CONFIG.skipSubjectFilter) {
       log("info", "Subject filter skipped (manual trigger)", { subject });
@@ -823,7 +856,7 @@ async function main() {
         meetingSubject: subject,
         joinWebUrl: meeting.joinWebUrl || "",
         participants: meeting.participants || [],
-        meetingDurationMinutes,
+        meetingDuration,
       });
       process.exit(0);
     }
@@ -835,7 +868,7 @@ async function main() {
       outputResult({
         skipped: true,
         reason: `Meeting has external invitees: ${inviteeCheck.reason}`,
-        meetingDurationMinutes,
+        meetingDuration,
       });
       process.exit(0);
     }
@@ -846,17 +879,7 @@ async function main() {
     const meetingDate = convertToAustralianDate(transcriptDate);
     const filename = generateFilename(meeting, transcriptDate);
 
-    // Download transcript content
-    const content = await downloadTranscriptContent(token);
-
-    // Validate VTT content
-    if (!content.startsWith("WEBVTT")) {
-      log("warn", "Downloaded content may not be valid VTT format", {
-        preview: content.substring(0, 100),
-      });
-    }
-
-    // Save to file
+    // Save transcript to file (only reached if meeting passes all filters)
     const transcriptPath = await saveTranscript(content, filename);
 
     // Filter: skip meetings with external participants (non-SSW tenantId)
@@ -865,7 +888,7 @@ async function main() {
       outputResult({
         skipped: true,
         reason: `Meeting has external participants (non-SSW): "${subject}"`,
-        meetingDurationMinutes,
+        meetingDuration,
       });
       process.exit(0);
     }
@@ -879,7 +902,7 @@ async function main() {
       filename,
       meetingSubject: subject,
       participants: chatParticipants,
-      meetingDurationMinutes,
+      meetingDuration,
     });
 
     process.exit(0);
