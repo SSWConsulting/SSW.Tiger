@@ -234,7 +234,7 @@ app.http("CancelProcessing", {
         // Stop the single running execution
         const targetExecution = runningExecutions[0];
         try {
-          await client.jobsExecutions.delete(
+          await client.jobs.beginStopExecution(
             resourceGroup,
             jobName,
             targetExecution.name,
@@ -265,17 +265,24 @@ app.http("CancelProcessing", {
         });
 
         try {
-          const execution = await client.jobsExecutions.get(
+          // List executions and find the one matching our executionName
+          const executions = [];
+          for await (const execution of client.jobsExecutions.list(
             resourceGroup,
             jobName,
-            executionName,
-          );
+          )) {
+            if (execution.name === executionName) {
+              executions.push(execution);
+            }
+          }
+          const execution = executions[0];
 
           if (
-            execution.status === "Running" ||
-            execution.status === "Processing"
+            execution &&
+            (execution.status === "Running" ||
+              execution.status === "Processing")
           ) {
-            await client.jobsExecutions.delete(
+            await client.jobs.beginStopExecution(
               resourceGroup,
               jobName,
               executionName,

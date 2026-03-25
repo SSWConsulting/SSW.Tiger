@@ -834,7 +834,23 @@ async function main() {
 
     // Get actual participants from chat messages
     let chatParticipants = [];
-    const chatId = meeting.chatInfo?.threadId;
+    let chatId = meeting.chatInfo?.threadId;
+
+    // Fallback: extract chatId from meetingId (base64-encoded format: "1*{userId}*0**{chatId}")
+    if (!chatId && CONFIG.meetingId) {
+      try {
+        const decoded = Buffer.from(CONFIG.meetingId, "base64").toString("utf8");
+        const match = decoded.match(/\*\*(19:.+@thread\.v2)/);
+        if (match) {
+          chatId = match[1];
+          log("info", "Extracted chatId from meetingId", { chatId });
+        }
+      } catch (err) {
+        log("debug", "Could not decode meetingId for chatId extraction", {
+          error: err.message,
+        });
+      }
+    }
     if (chatId && callId) {
       const chatResult = await fetchActualParticipantsFromChat(
         token,

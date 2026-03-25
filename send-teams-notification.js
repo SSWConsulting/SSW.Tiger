@@ -99,6 +99,7 @@ function getOperationType(notificationType) {
   }
 }
 
+
 /**
  * Try to retrieve the stored messageId for this execution.
  * Returns { messageId, chatId } or null.
