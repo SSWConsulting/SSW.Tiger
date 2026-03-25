@@ -30,10 +30,15 @@ RUN if [ -f /root/.local/bin/claude ]; then \
 # Set working directory
 WORKDIR /app
 
+# Install Node.js dependencies first (layer caching)
+COPY package.json package-lock.json* ./
+RUN npm install --omit=dev
+
 # Copy application code
 COPY processor.js ./
 COPY download-transcript.js ./
 COPY send-teams-notification.js ./
+COPY lib/ ./lib/
 COPY CLAUDE.md ./
 COPY .claude/agents/ ./.claude/agents/
 COPY .claude/skills/ ./.claude/skills/

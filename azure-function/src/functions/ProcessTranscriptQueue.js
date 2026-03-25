@@ -256,6 +256,7 @@ async function triggerContainerAppJob(params, context) {
               { name: "GRAPH_CLIENT_SECRET", secretRef: "graph-client-secret" },
               { name: "GRAPH_TENANT_ID", secretRef: "graph-tenant-id" },
               { name: "LOGIC_APP_URL", secretRef: "logic-app-url" },
+              { name: "STORAGE_CONNECTION_STRING", secretRef: "storage-connection-string" },
             ],
           },
         ],

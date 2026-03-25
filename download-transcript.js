@@ -209,6 +209,7 @@ async function runMockMode() {
     filename,
     meetingSubject: subject,
     participants: mockParticipants,
+    chatId: process.env.MOCK_CHAT_ID || "",
   });
 
   process.exit(0);
@@ -878,6 +879,7 @@ async function main() {
         joinWebUrl: meeting.joinWebUrl || "",
         participants: meeting.participants || [],
         meetingDuration,
+        chatId: chatId || "",
       });
       process.exit(0);
     }
@@ -890,6 +892,7 @@ async function main() {
         skipped: true,
         reason: `Meeting has external invitees: ${inviteeCheck.reason}`,
         meetingDuration,
+        chatId: chatId || "",
       });
       process.exit(0);
     }
@@ -910,6 +913,7 @@ async function main() {
         skipped: true,
         reason: `Meeting has external participants (non-SSW): "${subject}"`,
         meetingDuration,
+        chatId: chatId || "",
       });
       process.exit(0);
     }
@@ -924,6 +928,7 @@ async function main() {
       meetingSubject: subject,
       participants: chatParticipants,
       meetingDuration,
+      chatId: chatId || "",
     });
 
     process.exit(0);
