@@ -500,6 +500,76 @@ async function fetchActualParticipantsFromChat(token, chatId, callId) {
   return { participants, callStartTime, callEndTime };
 }
 
+/**
+ * Detect whether a VTT transcript contains speaker labels (<v> tags)
+ * and count unique tagged speakers. This helps Claude adapt its analysis
+ * strategy for boardroom scenarios where some/all speakers lack labels.
+ * @param {string} content - Raw VTT content
+ * @returns {{hasSpeakerLabels: boolean, taggedSpeakerCount: number, taggedSpeakers: string[]}}
+ */
+function detectVttSpeakerLabels(content) {
+  const speakerMatches = content.match(/<v ([^>]+)>/g);
+  if (!speakerMatches || speakerMatches.length === 0) {
+    return { hasSpeakerLabels: false, taggedSpeakerCount: 0, taggedSpeakers: [] };
+  }
+  const uniqueSpeakers = [
+    ...new Set(speakerMatches.map((m) => m.replace(/<v ([^>]+)>/, "$1"))),
+  ];
+  return {
+    hasSpeakerLabels: true,
+    taggedSpeakerCount: uniqueSpeakers.length,
+    taggedSpeakers: uniqueSpeakers,
+  };
+}
+
+/**
+ * Extract invitee names from meeting participants (organizer + attendees).
+ * Derives display names from UPNs (e.g., "DanielMackay@ssw.com.au" -> "Daniel Mackay").
+ * @param {Object} meeting - Meeting object from Graph API
+ * @returns {Array<{upn: string, derivedName: string, userId: string, role: string}>}
+ */
+function extractInviteeNames(meeting) {
+  const invitees = [];
+
+  function deriveNameFromUpn(upn) {
+    if (!upn) return null;
+    // Extract the part before @ and split on camelCase boundaries
+    const localPart = upn.split("@")[0];
+    // Insert spaces before uppercase letters: "DanielMackay" -> "Daniel Mackay"
+    const name = localPart.replace(/([a-z])([A-Z])/g, "$1 $2");
+    return name;
+  }
+
+  // Add organizer
+  if (meeting.participants?.organizer) {
+    const org = meeting.participants.organizer;
+    invitees.push({
+      upn: org.upn || "",
+      derivedName: deriveNameFromUpn(org.upn),
+      userId: org.identity?.user?.id || "",
+      role: "organizer",
+    });
+  }
+
+  // Add attendees
+  if (meeting.participants?.attendees) {
+    for (const att of meeting.participants.attendees) {
+      // Skip service/room accounts (e.g., SSWYakShaver@sswcom.onmicrosoft.com)
+      const upn = att.upn || "";
+      if (upn.includes("@sswcom.onmicrosoft.com")) continue;
+
+      invitees.push({
+        upn,
+        derivedName: deriveNameFromUpn(upn),
+        userId: att.identity?.user?.id || "",
+        role: "attendee",
+      });
+    }
+  }
+
+  return invitees;
+}
+
 function parseVttTimestamp(ts) {
   const match = ts.match(/(\d+):(\d+):(\d+)\.(\d+)/);
   if (!match) return null;
@@ -914,6 +984,16 @@ async function main() {
       process.exit(0);
     }
 
+    // Detect VTT speaker label format (for boardroom vs individual join scenarios)
+    const vttInfo = detectVttSpeakerLabels(content);
+    log("info", "VTT speaker label detection", vttInfo);
+
+    // Extract invitee names from meeting invite list (for participant resolution)
+    const invitees = extractInviteeNames(meeting);
+    log("info", `Extracted ${invitees.length} invitees from meeting invite`, {
+      invitees: invitees.map((i) => ({ name: i.derivedName, role: i.role })),
+    });
+
     // Output result as JSON to stdout (includes notification info)
     outputResult({
       success: true,
@@ -924,6 +1004,8 @@ async function main() {
       meetingSubject: subject,
       participants: chatParticipants,
       meetingDuration,
+      invitees,
+      vttInfo,
     });
 
     process.exit(0);
@@ -972,6 +1054,8 @@ module.exports = {
   isExternalPerson,
   checkMeetingInviteesForExternal,
   hasExternalParticipants,
+  detectVttSpeakerLabels,
+  extractInviteeNames,
   validateConfig,
   runMockMode,
   convertToAustralianDate,

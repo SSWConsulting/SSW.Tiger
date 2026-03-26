@@ -21,6 +21,11 @@ You are the final arbiter of truth. Your job is to take the outputs from all 5 a
 
 This is non-negotiable. Create a canonical name mapping:
 
+#### Resolution Priority
+1. **`<v>` speaker tags are authoritative** — always use the tagged name as canonical, even if the person is not on the invite list
+2. **Invite list for correction** — when transcript text mentions a name (e.g., "Thiago") with no `<v>` tag, match against `attendees.json` invitees for the correct spelling (e.g., "Tiago Araujo" from UPN `TiagoAraujo@ssw.com.au`)
+3. **Never override `<v>` tags with invite list** — a speaker with tags who isn't on the invite list still gets their tagged name
+
 #### Rules
 - **Real names over roles** - "Alice" not "Product Owner"
 - **Consistent format** - Pick one and use it everywhere
