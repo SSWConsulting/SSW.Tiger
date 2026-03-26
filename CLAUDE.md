@@ -71,7 +71,15 @@ When processing a transcript, you have two data sources for identifying particip
 
 1. **`<v>` tags always win** — if someone has speaker tags, use their tagged name as canonical. This applies even if they are not on the invite list.
 2. **Invite list for name correction** — when the transcript text mentions someone by name (e.g., "Gryphon", "Thiago") but they have no `<v>` tag, match against the invite list to find the correct spelling (e.g., "Griffen", "Tiago"). With a small invite list of 6-10 people, even badly misspelled names have an obvious closest match.
-3. **Unknown speakers** — if a name appears in transcript text but has no `<v>` tag and no plausible invite list match, use the name as-is and flag as low confidence.
+3. **Unknown speakers** — if a name appears in transcript text but has no `<v>` tag and no plausible invite list match, do NOT create a participant card for them. They are likely being referenced in conversation but were not actually in the meeting.
+
+### Who Gets a Participant Card
+
+Only create participant cards for people who meet **at least one** of these criteria:
+1. They have `<v>` speaker tags in the VTT (they were on their own device)
+2. They are on the invite list AND are mentioned in the transcript (they were likely in the boardroom)
+
+People who are only **mentioned by name** in conversation but are NOT on the invite list and have no `<v>` tags do NOT get cards — they were being discussed, not attending. For example, if someone says "Willow suggested we do X", Willow does not get a participant card unless she has `<v>` tags or is on the invite list.
 
 ### Boardroom / Shared Device Handling
 
