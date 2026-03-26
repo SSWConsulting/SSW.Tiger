@@ -264,6 +264,12 @@ app.http("TriggerProcessing", {
   authLevel: "anonymous",
   extraOutputs: [queueOutput],
   handler: async (request, context) => {
+    // Check if this is an ad-hoc call trigger (raw IDs passed directly)
+    const callType = request.query.get("callType");
+    if (callType === "adhocCall") {
+      return handleAdhocCallTrigger(request, context);
+    }
+
     // Extract joinUrl from query string (GET) or request body (POST)
     let joinUrl = request.query.get("joinUrl");
 
@@ -366,6 +372,7 @@ app.http("TriggerProcessing", {
         userId,
         meetingId,
         transcriptId,
+        callType: "onlineMeeting",
         skipSubjectFilter: true,
         manualTrigger: true,
         timestamp: new Date().toISOString(),
@@ -394,3 +401,51 @@ app.http("TriggerProcessing", {
     }
   },
 });
+
+/**
+ * Handle manual trigger for ad-hoc calls.
+ * Unlike online meetings (which use a join URL to discover the meeting),
+ * ad-hoc calls pass the raw IDs directly since there's no join URL to resolve.
+ *
+ * Query params: callType=adhocCall&callId={id}&userId={id}&transcriptId={id}
+ */
+async function handleAdhocCallTrigger(request, context) {
+  const callId = request.query.get("callId");
+  const userId = request.query.get("userId");
+  const transcriptId = request.query.get("transcriptId");
+
+  if (!callId || !userId || !transcriptId) {
+    return createResponse(
+      request,
+      false,
+      "Missing required parameters for ad-hoc call trigger: callId, userId, transcriptId",
+      400,
+    );
+  }
+
+  structuredLog(context, "info", "Ad-hoc call manual trigger requested", {
+    callId,
+    userId,
+    transcriptId,
+  });
+
+  const queueMessage = {
+    userId,
+    callId,
+    transcriptId,
+    callType: "adhocCall",
+    skipSubjectFilter: true,
+    manualTrigger: true,
+    timestamp: new Date().toISOString(),
+  };
+
+  context.extraOutputs.set(queueOutput, [queueMessage]);
+
+  return createResponse(
+    request,
+    true,
+    "Ad-hoc call transcript has been queued for processing. You'll receive a Teams notification when the dashboard is ready.",
+    202,
+    { callId },
+  );
+}

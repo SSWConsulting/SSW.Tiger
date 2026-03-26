@@ -44,7 +44,10 @@ const CONFIG = {
   graphTenantId: process.env.GRAPH_TENANT_ID,
   userId: process.env.GRAPH_USER_ID,
   meetingId: process.env.GRAPH_MEETING_ID,
+  callId: process.env.GRAPH_CALL_ID,
   transcriptId: process.env.GRAPH_TRANSCRIPT_ID,
+  // "onlineMeeting" (default) or "adhocCall"
+  callType: process.env.CALL_TYPE || "onlineMeeting",
   outputPath: process.env.OUTPUT_PATH,
   // Mock mode for local testing (bypasses Graph API)
   mockMode: process.env.USE_MOCK_TRANSCRIPT === "true",
@@ -122,13 +125,19 @@ function validateConfig() {
     ["GRAPH_CLIENT_SECRET", CONFIG.graphClientSecret],
     ["GRAPH_TENANT_ID", CONFIG.graphTenantId],
     ["GRAPH_USER_ID", CONFIG.userId],
-    ["GRAPH_MEETING_ID", CONFIG.meetingId],
     ["GRAPH_TRANSCRIPT_ID", CONFIG.transcriptId],
   ];
 
   const missing = required
     .filter(([name, value]) => !value)
     .map(([name]) => name);
+
+  // For online meetings, meetingId is required; for ad-hoc calls, callId is required
+  if (CONFIG.callType === "adhocCall") {
+    if (!CONFIG.callId) missing.push("GRAPH_CALL_ID");
+  } else {
+    if (!CONFIG.meetingId) missing.push("GRAPH_MEETING_ID");
+  }
 
   if (missing.length > 0) {
     throw new Error(
@@ -292,8 +301,12 @@ async function fetchMeeting(token) {
 
 async function fetchTranscriptMetadata(token) {
   // Graph API endpoint for transcript metadata (includes createdDateTime)
-  // GET /users/{userId}/onlineMeetings/{meetingId}/transcripts/{transcriptId}
-  const graphUrl = `https://graph.microsoft.com/v1.0/users/${CONFIG.userId}/onlineMeetings/${CONFIG.meetingId}/transcripts/${CONFIG.transcriptId}`;
+  // Online meeting: GET /users/{userId}/onlineMeetings/{meetingId}/transcripts/{transcriptId}
+  // Ad-hoc call:    GET /users/{userId}/adhocCalls/{callId}/transcripts/{transcriptId}
+  const basePath = CONFIG.callType === "adhocCall"
+    ? `adhocCalls/${CONFIG.callId}`
+    : `onlineMeetings/${CONFIG.meetingId}`;
+  const graphUrl = `https://graph.microsoft.com/v1.0/users/${CONFIG.userId}/${basePath}/transcripts/${CONFIG.transcriptId}`;
 
   const response = await fetch(graphUrl, {
     method: "GET",
@@ -500,6 +513,23 @@ async function fetchActualParticipantsFromChat(token, chatId, callId) {
   return { participants, callStartTime, callEndTime };
 }
 
+/**
+ * Extract unique speaker names from VTT transcript content.
+ * VTT format includes speaker tags like: <v Bob Northwind>text</v>
+ * @param {string} content - Raw VTT content
+ * @returns {string[]} Array of unique speaker names
+ */
+function extractSpeakersFromVtt(content) {
+  if (!content) return [];
+  const speakerPattern = /<v\s+([^>]+)>/g;
+  const speakers = new Set();
+  let match;
+  while ((match = speakerPattern.exec(content)) !== null) {
+    speakers.add(match[1].trim());
+  }
+  return Array.from(speakers);
+}
+
 function parseVttTimestamp(ts) {
   const match = ts.match(/(\d+):(\d+):(\d+)\.(\d+)/);
   if (!match) return null;
@@ -552,8 +582,12 @@ function formatDuration(seconds) {
 
 async function downloadTranscriptContent(token) {
   // Graph API endpoint for transcript content
-  // GET /users/{userId}/onlineMeetings/{meetingId}/transcripts/{transcriptId}/content?$format=text/vtt
-  const graphUrl = `https://graph.microsoft.com/v1.0/users/${CONFIG.userId}/onlineMeetings/${CONFIG.meetingId}/transcripts/${CONFIG.transcriptId}/content?$format=text/vtt`;
+  // Online meeting: GET /users/{userId}/onlineMeetings/{meetingId}/transcripts/{transcriptId}/content?$format=text/vtt
+  // Ad-hoc call:    GET /users/{userId}/adhocCalls/{callId}/transcripts/{transcriptId}/content?$format=text/vtt
+  const basePath = CONFIG.callType === "adhocCall"
+    ? `adhocCalls/${CONFIG.callId}`
+    : `onlineMeetings/${CONFIG.meetingId}`;
+  const graphUrl = `https://graph.microsoft.com/v1.0/users/${CONFIG.userId}/${basePath}/transcripts/${CONFIG.transcriptId}/content?$format=text/vtt`;
 
   const response = await fetch(graphUrl, {
     method: "GET",
@@ -813,6 +847,97 @@ async function main() {
     // Get access token
     const token = await getGraphToken();
 
+    const isAdhocCall = CONFIG.callType === "adhocCall";
+
+    // For ad-hoc calls, skip by default unless manually triggered
+    if (isAdhocCall && !CONFIG.skipSubjectFilter) {
+      // Download transcript to get duration and participant info for the skip notification
+      const content = await downloadTranscriptContent(token);
+      const meetingDurationSeconds = parseDurationFromVtt(content);
+      const meetingDuration = formatDuration(meetingDurationSeconds);
+
+      // Extract participant names from VTT transcript for display
+      const speakerNames = extractSpeakersFromVtt(content);
+      const participantLabel = speakerNames.length > 0
+        ? speakerNames.join(", ")
+        : "Unknown participants";
+
+      // Fetch transcript metadata for date info
+      const transcriptMeta = await fetchTranscriptMetadata(token);
+      const transcriptDate = transcriptMeta.createdDateTime;
+
+      log("info", "Ad-hoc call detected, skipping by default", {
+        callId: CONFIG.callId,
+        participants: participantLabel,
+        duration: meetingDuration,
+      });
+
+      outputResult({
+        skipped: true,
+        skipReason: "adhocCall",
+        reason: `Ad-hoc call transcript detected (participants: ${participantLabel}). Use "Process anyway" to analyze.`,
+        meetingSubject: `Ad Hoc Call - ${participantLabel}`,
+        participants: [],
+        callId: CONFIG.callId,
+        userId: CONFIG.userId,
+        transcriptId: CONFIG.transcriptId,
+        meetingDuration,
+      });
+      process.exit(0);
+    }
+
+    // For ad-hoc calls with manual trigger (SKIP_SUBJECT_FILTER=true), process the transcript
+    if (isAdhocCall) {
+      log("info", "Processing ad-hoc call transcript (manual trigger)", {
+        callId: CONFIG.callId,
+        userId: CONFIG.userId,
+      });
+
+      // Download transcript content
+      const content = await downloadTranscriptContent(token);
+
+      if (!content.startsWith("WEBVTT")) {
+        log("warn", "Downloaded content may not be valid VTT format", {
+          preview: content.substring(0, 100),
+        });
+      }
+
+      const meetingDurationSeconds = parseDurationFromVtt(content);
+      const meetingDuration = formatDuration(meetingDurationSeconds);
+
+      // Fetch transcript metadata for date info
+      const transcriptMeta = await fetchTranscriptMetadata(token);
+      const transcriptDate = transcriptMeta.createdDateTime;
+
+      // Extract participant names from VTT for project naming
+      const speakerNames = extractSpeakersFromVtt(content);
+      const participantLabel = speakerNames.length > 0
+        ? speakerNames.join(", ")
+        : "Ad Hoc Call";
+      const subject = `Ad Hoc Call - ${participantLabel}`;
+      meetingSubject = subject;
+
+      const projectName = "adhoc-call";
+      const meetingDate = convertToAustralianDate(transcriptDate);
+      const filename = generateFilename({ subject }, transcriptDate);
+
+      const transcriptPath = await saveTranscript(content, filename);
+
+      outputResult({
+        success: true,
+        transcriptPath,
+        projectName,
+        meetingDate,
+        filename,
+        meetingSubject: subject,
+        participants: [],
+        meetingDuration,
+      });
+      process.exit(0);
+    }
+
+    // === Online meeting flow (existing logic, unchanged) ===
+
     // Fetch meeting details
     const meeting = await fetchMeeting(token);
 
@@ -934,6 +1059,8 @@ async function main() {
       stack: error.stack,
       userId: CONFIG.userId,
       meetingId: CONFIG.meetingId,
+      callId: CONFIG.callId,
+      callType: CONFIG.callType,
     };
     if (meetingSubject) {
       errorContext.meetingSubject = meetingSubject;
@@ -967,6 +1094,7 @@ module.exports = {
   saveTranscript,
   parseSubject,
   extractProjectName,
+  extractSpeakersFromVtt,
   generateFilename,
   matchesMeetingFilter,
   isExternalPerson,
