@@ -49,6 +49,9 @@ const CONFIG = {
   triggerUrl: process.env.TRIGGER_URL,
   meetingDuration: process.env.MEETING_DURATION || null,
   storageConnectionString: process.env.STORAGE_CONNECTION_STRING,
+  meetingId: process.env.GRAPH_MEETING_ID,
+  transcriptId: process.env.GRAPH_TRANSCRIPT_ID,
+  prevSkippedMessageId: process.env.PREV_SKIPPED_MESSAGE_ID,
 };
 
 function log(level, message, data = null) {
@@ -120,7 +123,20 @@ async function getStoredMessageId() {
 }
 
 /**
+ * Get a stable meeting key (meetingId-transcriptId) that survives across executions.
+ * Used so a triggered processing run can find the skipped card's messageId.
+ */
+function getMeetingKey() {
+  if (CONFIG.meetingId && CONFIG.transcriptId) {
+    return `${CONFIG.meetingId}-${CONFIG.transcriptId}`;
+  }
+  return null;
+}
+
+/**
  * Store the messageId returned by Logic App after sending a new card.
+ * For "skipped" notifications, also stores under a stable meeting key
+ * so a later triggered processing run can update the skipped card.
  */
 async function saveMessageId(messageId) {
   if (!CONFIG.executionId || !CONFIG.storageConnectionString) {
@@ -131,6 +147,18 @@ async function saveMessageId(messageId) {
   try {
     const { storeMessageId } = require("./lib/tableStorage");
     await storeMessageId(CONFIG.executionId, messageId, CONFIG.chatId);
+
+    // For "skipped" notifications, also store under stable meeting key
+    // so the triggered processing can find and update this card
+    if (CONFIG.notificationType === "skipped") {
+      const meetingKey = getMeetingKey();
+      if (meetingKey) {
+        await storeMessageId(`skipped-${meetingKey}`, messageId, CONFIG.chatId);
+        log("debug", "Stored skipped card messageId under stable key", {
+          meetingKey: `skipped-${meetingKey}`,
+        });
+      }
+    }
   } catch (err) {
     log("warn", "Failed to store messageId in Table Storage", {
       error: err.message,
@@ -139,7 +167,15 @@ async function saveMessageId(messageId) {
 }
 
 async function sendViaLogicApp(participants) {
-  const operationType = getOperationType(CONFIG.notificationType);
+  let operationType = getOperationType(CONFIG.notificationType);
+
+  // For "started" after a manual trigger, update the skipped card instead of sending new
+  if (CONFIG.notificationType === "started" && CONFIG.prevSkippedMessageId) {
+    operationType = "updateCard";
+    log("info", "Updating skipped card to started (manual trigger)", {
+      messageId: CONFIG.prevSkippedMessageId,
+    });
+  }
 
   const payload = {
     operationType,
@@ -152,8 +188,13 @@ async function sendViaLogicApp(participants) {
     meetingDuration: CONFIG.meetingDuration,
   };
 
-  // For updateCard, retrieve the stored messageId
-  if (operationType === "updateCard") {
+  // For "started" updating a skipped card, use the skipped card's messageId
+  if (CONFIG.notificationType === "started" && CONFIG.prevSkippedMessageId) {
+    payload.messageId = CONFIG.prevSkippedMessageId;
+  }
+
+  // For updateCard (completed/failed/cancelled), retrieve the stored messageId
+  if (operationType === "updateCard" && !payload.messageId) {
     const stored = await getStoredMessageId();
     if (stored && stored.messageId) {
       payload.messageId = stored.messageId;
@@ -209,9 +250,14 @@ async function sendViaLogicApp(participants) {
     throw new Error(`Logic App failed: ${response.status} - ${errorText}`);
   }
 
-  // For sendCard, Logic App returns { messageId } — store it for later updates
+  // For "started" updating a skipped card, store the same messageId under
+  // the current executionId so "completed"/"failed" updates can find it
   let messageId = null;
-  if (payload.operationType === "sendCard") {
+  if (CONFIG.notificationType === "started" && CONFIG.prevSkippedMessageId) {
+    messageId = CONFIG.prevSkippedMessageId;
+    await saveMessageId(messageId);
+    log("info", "Stored skipped card messageId under current execution", { messageId });
+  } else if (payload.operationType === "sendCard") {
     try {
       const responseBody = await response.json();
       messageId = responseBody.messageId || null;

@@ -156,9 +156,33 @@ run_pipeline() {
     export CHAT_ID="$CHAT_ID"
 
     # Step 2: Send "started" notification (if configured)
-    # Includes cancel URL if available, allowing users to cancel processing
+    # For manual triggers (SKIP_SUBJECT_FILTER=true), look up the skipped card's
+    # messageId so we can update it instead of sending a new card
     if [ -n "$LOGIC_APP_URL" ]; then
         export NOTIFICATION_TYPE="started"
+
+        if [ "$SKIP_SUBJECT_FILTER" = "true" ] && [ -n "$GRAPH_MEETING_ID" ] && [ -n "$GRAPH_TRANSCRIPT_ID" ] && [ -n "$STORAGE_CONNECTION_STRING" ]; then
+            # Try to retrieve the skipped card's messageId for update
+            SKIPPED_MSG=$(node -e "
+              const ts = require('./lib/tableStorage');
+              ts.getMessageId('skipped-${GRAPH_MEETING_ID}-${GRAPH_TRANSCRIPT_ID}')
+                .then(r => { if (r) process.stdout.write(JSON.stringify(r)); })
+                .catch(() => {});
+            " 2>/dev/null || echo "")
+
+            if [ -n "$SKIPPED_MSG" ] && [ "$SKIPPED_MSG" != "undefined" ] && [ "$SKIPPED_MSG" != "" ]; then
+                PREV_MESSAGE_ID=$(echo "$SKIPPED_MSG" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).messageId" 2>/dev/null || echo "")
+                PREV_CHAT_ID=$(echo "$SKIPPED_MSG" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).chatId" 2>/dev/null || echo "")
+                if [ -n "$PREV_MESSAGE_ID" ]; then
+                    export PREV_SKIPPED_MESSAGE_ID="$PREV_MESSAGE_ID"
+                    if [ -z "$CHAT_ID" ] && [ -n "$PREV_CHAT_ID" ]; then
+                        export CHAT_ID="$PREV_CHAT_ID"
+                    fi
+                    log "info" "Found skipped card messageId, will update instead of sending new card"
+                fi
+            fi
+        fi
+
         # CANCEL_URL and JOB_EXECUTION_ID are passed from Azure Function
         # They will be included in the notification payload for the Cancel button
         node send-teams-notification.js >/dev/null || log "warn" "Started notification failed"
