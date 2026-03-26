@@ -10,6 +10,7 @@ param containerImage string
 param ghcrUsername string
 param managedIdentityId string
 param managedIdentityClientId string
+param managedIdentityPrincipalId string
 
 // Log Analytics for container logs
 param logAnalyticsCustomerId string
@@ -155,6 +156,20 @@ resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
         }
       ]
     }
+  }
+}
+
+// Grant managed identity permission to start Container App Jobs
+// Contributor built-in role: https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles#contributor
+var contributorRoleId = 'b24988ac-6180-42a0-ab88-20f7382dd24c'
+
+resource jobRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(processorJob.id, managedIdentityPrincipalId, contributorRoleId)
+  scope: processorJob
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', contributorRoleId)
+    principalId: managedIdentityPrincipalId
+    principalType: 'ServicePrincipal'
   }
 }
 

@@ -104,6 +104,7 @@ module containerApp 'modules/containerApp.bicep' = {
     ghcrUsername: githubOrg
     managedIdentityId: id.outputs.id
     managedIdentityClientId: id.outputs.clientId
+    managedIdentityPrincipalId: id.outputs.principalId
     logAnalyticsCustomerId: monitoring.outputs.logAnalyticsCustomerId
     logAnalyticsPrimaryKey: monitoring.outputs.logAnalyticsPrimaryKey
     claudeModel: claudeModel

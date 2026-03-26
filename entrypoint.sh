@@ -116,6 +116,7 @@ run_pipeline() {
             PARTICIPANTS_JSON=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.stringify(JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).participants || [])" 2>/dev/null)
             JOIN_WEB_URL=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).joinWebUrl || ''" 2>/dev/null)
             MEETING_DURATION=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).meetingDuration || ''" 2>/dev/null)
+            CHAT_ID=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).chatId || ''" 2>/dev/null)
 
             # Build trigger URL from the cancel URL base (same Azure Function host)
             TRIGGER_URL=""
@@ -132,6 +133,7 @@ run_pipeline() {
             export NOTIFICATION_TYPE="skipped"
             export TRIGGER_URL="$TRIGGER_URL"
             export MEETING_DURATION="$MEETING_DURATION"
+            export CHAT_ID="$CHAT_ID"
             node send-teams-notification.js >/dev/null || log "warn" "Skipped notification failed"
         fi
 
@@ -144,17 +146,43 @@ run_pipeline() {
     MEETING_SUBJECT=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).meetingSubject")
     PARTICIPANTS_JSON=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.stringify(JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).participants || [])")
     MEETING_DURATION=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).meetingDuration || ''")
+    CHAT_ID=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).chatId || ''")
 
     # Export variables for notifications
     export PROJECT_NAME="$PROJECT_NAME"
     export MEETING_SUBJECT="$MEETING_SUBJECT"
     export PARTICIPANTS_JSON="$PARTICIPANTS_JSON"
     export MEETING_DURATION="$MEETING_DURATION"
+    export CHAT_ID="$CHAT_ID"
 
     # Step 2: Send "started" notification (if configured)
-    # Includes cancel URL if available, allowing users to cancel processing
+    # For manual triggers (SKIP_SUBJECT_FILTER=true), look up the skipped card's
+    # messageId so we can update it instead of sending a new card
     if [ -n "$LOGIC_APP_URL" ]; then
         export NOTIFICATION_TYPE="started"
+
+        if [ "$SKIP_SUBJECT_FILTER" = "true" ] && [ -n "$GRAPH_MEETING_ID" ] && [ -n "$GRAPH_TRANSCRIPT_ID" ] && [ -n "$STORAGE_CONNECTION_STRING" ]; then
+            # Try to retrieve the skipped card's messageId for update
+            SKIPPED_MSG=$(node -e "
+              const ts = require('./lib/tableStorage');
+              ts.getMessageId('skipped-${GRAPH_MEETING_ID}-${GRAPH_TRANSCRIPT_ID}')
+                .then(r => { if (r) process.stdout.write(JSON.stringify(r)); })
+                .catch(() => {});
+            " 2>/dev/null || echo "")
+
+            if [ -n "$SKIPPED_MSG" ] && [ "$SKIPPED_MSG" != "undefined" ] && [ "$SKIPPED_MSG" != "" ]; then
+                PREV_MESSAGE_ID=$(echo "$SKIPPED_MSG" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).messageId" 2>/dev/null || echo "")
+                PREV_CHAT_ID=$(echo "$SKIPPED_MSG" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).chatId" 2>/dev/null || echo "")
+                if [ -n "$PREV_MESSAGE_ID" ]; then
+                    export PREV_SKIPPED_MESSAGE_ID="$PREV_MESSAGE_ID"
+                    if [ -z "$CHAT_ID" ] && [ -n "$PREV_CHAT_ID" ]; then
+                        export CHAT_ID="$PREV_CHAT_ID"
+                    fi
+                    log "info" "Found skipped card messageId, will update instead of sending new card"
+                fi
+            fi
+        fi
+
         # CANCEL_URL and JOB_EXECUTION_ID are passed from Azure Function
         # They will be included in the notification payload for the Cancel button
         node send-teams-notification.js >/dev/null || log "warn" "Started notification failed"
