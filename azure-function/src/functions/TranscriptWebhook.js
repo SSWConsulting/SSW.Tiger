@@ -98,32 +98,50 @@ app.http("TranscriptWebhook", {
       }
 
       // Extract IDs from notification
+      // Supports both online meetings and ad-hoc calls:
+      //   Online meeting resource: users('{id}')/onlineMeetings('{id}')/transcripts('{id}')
+      //   Ad-hoc call resource:   users/{id}/adhocCalls/{callId}/transcripts/{transcriptId}
       const resource = notification.resource || "";
-      const userMatch = resource.match(/users\('([^']+)'\)/);
+      const userMatch = resource.match(/users\(?'?([^')]+)'?\)?/);
       const meetingMatch = resource.match(/onlineMeetings\('([^']+)'\)/);
-      const transcriptMatch = resource.match(/transcripts\('([^']+)'\)/);
+      const adhocMatch = resource.match(/adhoc[Cc]alls\/([^/]+)\/transcripts/);
+      const transcriptMatch = resource.match(/transcripts\(?'?([^')]+)'?\)?/);
 
       const userId =
         userMatch?.[1] || notification.resourceData?.meetingOrganizerId;
       const meetingId =
-        meetingMatch?.[1] || notification.resourceData?.meetingId;
+        meetingMatch?.[1] || notification.resourceData?.meetingId || null;
+      const callId = adhocMatch?.[1] || null;
       const transcriptId =
         transcriptMatch?.[1] || notification.resourceData?.id;
 
-      if (!userId || !meetingId || !transcriptId) {
-        structuredLog(context, "error", "Missing IDs", { userId, meetingId, transcriptId });
+      // Determine call type based on resource path
+      const callType = callId ? "adhocCall" : "onlineMeeting";
+
+      // For online meetings, meetingId is required; for ad-hoc calls, callId is required
+      if (!userId || !transcriptId || (!meetingId && !callId)) {
+        structuredLog(context, "error", "Missing IDs", { userId, meetingId, callId, transcriptId, callType });
         skippedCount++;
         continue;
       }
 
-      queueMessages.push({
+      const queueMessage = {
         userId,
-        meetingId,
         transcriptId,
+        callType,
         timestamp: new Date().toISOString(),
-      });
+      };
 
-      structuredLog(context, "info", "Queued", { userId, meetingId, transcriptId });
+      // Include the appropriate ID based on call type
+      if (callType === "adhocCall") {
+        queueMessage.callId = callId;
+      } else {
+        queueMessage.meetingId = meetingId;
+      }
+
+      queueMessages.push(queueMessage);
+
+      structuredLog(context, "info", "Queued", { userId, meetingId, callId, transcriptId, callType });
     }
 
     // Write all messages to queue (array is split into individual queue messages)

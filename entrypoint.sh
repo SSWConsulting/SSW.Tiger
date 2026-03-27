@@ -110,8 +110,8 @@ run_pipeline() {
         SKIP_REASON=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).skipReason || ''" 2>/dev/null || echo "")
         log "info" "Skipped: $REASON"
 
-        # If skipped due to subject filter, send a "skipped" notification so users can trigger manually
-        if [ "$SKIP_REASON" = "subjectFilter" ] && [ -n "$LOGIC_APP_URL" ]; then
+        # If skipped due to subject filter or ad-hoc call, send a "skipped" notification so users can trigger manually
+        if ([ "$SKIP_REASON" = "subjectFilter" ] || [ "$SKIP_REASON" = "adhocCall" ]) && [ -n "$LOGIC_APP_URL" ]; then
             MEETING_SUBJECT=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).meetingSubject || ''" 2>/dev/null)
             PARTICIPANTS_JSON=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.stringify(JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).participants || [])" 2>/dev/null)
             JOIN_WEB_URL=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).joinWebUrl || ''" 2>/dev/null)
@@ -119,11 +119,23 @@ run_pipeline() {
 
             # Build trigger URL from the cancel URL base (same Azure Function host)
             TRIGGER_URL=""
-            if [ -n "$CANCEL_URL" ] && [ -n "$JOIN_WEB_URL" ]; then
+            if [ -n "$CANCEL_URL" ]; then
                 FUNCTION_HOST=$(echo "$CANCEL_URL" | sed 's|/api/.*||')
-                ENCODED_JOIN_URL=$(node -pe "encodeURIComponent('$JOIN_WEB_URL')" 2>/dev/null || echo "")
-                if [ -n "$ENCODED_JOIN_URL" ]; then
-                    TRIGGER_URL="${FUNCTION_HOST}/api/TriggerProcessing?joinUrl=${ENCODED_JOIN_URL}"
+
+                if [ "$SKIP_REASON" = "adhocCall" ]; then
+                    # For ad-hoc calls, use raw IDs (no join URL available)
+                    AD_HOC_CALL_ID=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).callId || ''" 2>/dev/null)
+                    AD_HOC_USER_ID=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).userId || ''" 2>/dev/null)
+                    AD_HOC_TRANSCRIPT_ID=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).transcriptId || ''" 2>/dev/null)
+                    if [ -n "$AD_HOC_CALL_ID" ] && [ -n "$AD_HOC_USER_ID" ] && [ -n "$AD_HOC_TRANSCRIPT_ID" ]; then
+                        TRIGGER_URL="${FUNCTION_HOST}/api/TriggerProcessing?callType=adhocCall&callId=${AD_HOC_CALL_ID}&userId=${AD_HOC_USER_ID}&transcriptId=${AD_HOC_TRANSCRIPT_ID}"
+                    fi
+                elif [ -n "$JOIN_WEB_URL" ]; then
+                    # For online meetings, use the join URL
+                    ENCODED_JOIN_URL=$(node -pe "encodeURIComponent('$JOIN_WEB_URL')" 2>/dev/null || echo "")
+                    if [ -n "$ENCODED_JOIN_URL" ]; then
+                        TRIGGER_URL="${FUNCTION_HOST}/api/TriggerProcessing?joinUrl=${ENCODED_JOIN_URL}"
+                    fi
                 fi
             fi
 
@@ -202,8 +214,8 @@ run_pipeline() {
     fi
 }
 
-# Check mode
-if [ -n "$GRAPH_MEETING_ID" ] && [ -n "$GRAPH_TRANSCRIPT_ID" ] && [ -n "$GRAPH_USER_ID" ]; then
+# Check mode — accept either GRAPH_MEETING_ID (online meetings) or GRAPH_CALL_ID (ad-hoc calls)
+if ([ -n "$GRAPH_MEETING_ID" ] || [ -n "$GRAPH_CALL_ID" ]) && [ -n "$GRAPH_TRANSCRIPT_ID" ] && [ -n "$GRAPH_USER_ID" ]; then
     # Azure mode: full pipeline
     setup_claude_auth
     run_pipeline

@@ -137,23 +137,27 @@ app.storageQueue("ProcessTranscriptQueue", {
       data = message;
     }
 
-    const { userId, meetingId, transcriptId, skipSubjectFilter, manualTrigger } = data;
+    const { userId, meetingId, callId, transcriptId, callType, skipSubjectFilter, manualTrigger } = data;
 
-    if (!userId || !meetingId || !transcriptId) {
-      structuredLog(context, "error", "Missing IDs in queue message", { userId, meetingId, transcriptId });
+    // For online meetings, meetingId is required; for ad-hoc calls, callId is required
+    const resourceId = meetingId || callId;
+    const resolvedCallType = callType || (callId ? "adhocCall" : "onlineMeeting");
+
+    if (!userId || !resourceId || !transcriptId) {
+      structuredLog(context, "error", "Missing IDs in queue message", { userId, meetingId, callId, transcriptId, callType: resolvedCallType });
       throw new Error("Missing required IDs in queue message");
     }
 
     if (manualTrigger) {
-      structuredLog(context, "info", "Manual trigger - subject filter will be skipped", { meetingId });
+      structuredLog(context, "info", "Manual trigger - subject filter will be skipped", { meetingId, callId, callType: resolvedCallType });
     }
 
     // Check for duplicate (Graph may send same notification multiple times)
     // Manual triggers use a separate dedup key so they aren't blocked by webhook entries,
     // but still dedup against each other (prevents double-click spawning two containers)
-    const dedupKey = manualTrigger ? `manual-${meetingId}-${transcriptId}` : `${meetingId}-${transcriptId}`;
+    const dedupKey = manualTrigger ? `manual-${resourceId}-${transcriptId}` : `${resourceId}-${transcriptId}`;
     if (processedCache.has(dedupKey) && Date.now() - processedCache.get(dedupKey) < CACHE_TTL_MS) {
-      structuredLog(context, "info", "SKIP: Duplicate notification", { meetingId, transcriptId, manualTrigger: !!manualTrigger });
+      structuredLog(context, "info", "SKIP: Duplicate notification", { meetingId, callId, transcriptId, callType: resolvedCallType, manualTrigger: !!manualTrigger });
       return;
     }
 
@@ -162,7 +166,7 @@ app.storageQueue("ProcessTranscriptQueue", {
     processedCache.set(dedupKey, Date.now());
 
     try {
-      await triggerContainerAppJob({ userId, meetingId, transcriptId, skipSubjectFilter }, context);
+      await triggerContainerAppJob({ userId, meetingId, callId, transcriptId, callType: resolvedCallType, skipSubjectFilter }, context);
     } catch (err) {
       // Remove from cache on failure to allow retry
       processedCache.delete(dedupKey);
@@ -172,7 +176,8 @@ app.storageQueue("ProcessTranscriptQueue", {
 });
 
 async function triggerContainerAppJob(params, context) {
-  const { userId, meetingId, transcriptId, skipSubjectFilter } = params;
+  const { userId, meetingId, callId, transcriptId, callType, skipSubjectFilter } = params;
+  const resourceId = meetingId || callId;
 
   // Validate all required environment variables
   const subscriptionId = process.env.SUBSCRIPTION_ID;
@@ -204,7 +209,7 @@ async function triggerContainerAppJob(params, context) {
   }
 
   // Generate a unique execution ID for this job run
-  const executionId = `${meetingId}-${transcriptId}-${Date.now()}`;
+  const executionId = `${resourceId}-${transcriptId}-${Date.now()}`;
 
   // Build cancel URL if cancel function is configured
   // Include subscriptionId so cancel can work without in-memory cache (cross-instance)
@@ -221,7 +226,7 @@ async function triggerContainerAppJob(params, context) {
   // Use singleton client for better performance
   const client = getContainerAppsClient(subscriptionId);
 
-  structuredLog(context, "info", "Starting Container App Job", { jobName, userId, meetingId, transcriptId });
+  structuredLog(context, "info", "Starting Container App Job", { jobName, userId, meetingId, callId, transcriptId, callType });
 
   try {
     // beginStart() returns a poller for the LRO (Long Running Operation)
@@ -236,8 +241,10 @@ async function triggerContainerAppJob(params, context) {
             env: [
               // Dynamic values passed from queue message
               { name: "GRAPH_USER_ID", value: userId },
-              { name: "GRAPH_MEETING_ID", value: meetingId },
+              { name: "GRAPH_MEETING_ID", value: meetingId || "" },
+              { name: "GRAPH_CALL_ID", value: callId || "" },
               { name: "GRAPH_TRANSCRIPT_ID", value: transcriptId },
+              { name: "CALL_TYPE", value: callType || "onlineMeeting" },
               // Execution tracking for cancel functionality
               { name: "JOB_EXECUTION_ID", value: executionId },
               { name: "CANCEL_URL", value: cancelUrl },
@@ -283,14 +290,18 @@ async function triggerContainerAppJob(params, context) {
       cancelUrl: cancelUrl || "(not configured)",
       userId,
       meetingId,
+      callId,
       transcriptId,
+      callType,
     });
   } catch (err) {
     structuredLog(context, "error", "Container App Job failed", {
       jobName,
       userId,
       meetingId,
+      callId,
       transcriptId,
+      callType,
       error: err.message,
     });
     throw err; // Re-throw to trigger queue retry

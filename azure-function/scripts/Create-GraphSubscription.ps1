@@ -17,7 +17,8 @@ param(
     [string]$FunctionAppName = "func-tiger-staging",
     [string]$KeyVaultName = "kv-tiger-staging",
     [string]$ClientState = "",  # Will auto-generate if empty
-    [int]$ExpirationDays = 3
+    [int]$ExpirationDays = 3,
+    [switch]$IncludeAdhocCalls  # Also create subscription for ad-hoc call transcripts
 )
 
 # Generate secure clientState if not provided
@@ -114,15 +115,65 @@ try {
     }
 
     # Output subscription ID for scripting
-    return $response
+    $onlineMeetingResponse = $response
 } catch {
     $errorDetails = $_.ErrorDetails.Message | ConvertFrom-Json -ErrorAction SilentlyContinue
     if ($errorDetails) {
-        Write-Host "`nFailed to create subscription:" -ForegroundColor Red
+        Write-Host "`nFailed to create online meeting subscription:" -ForegroundColor Red
         Write-Host "  Code    : $($errorDetails.error.code)" -ForegroundColor Red
         Write-Host "  Message : $($errorDetails.error.message)" -ForegroundColor Red
     } else {
-        Write-Host "`nFailed to create subscription: $_" -ForegroundColor Red
+        Write-Host "`nFailed to create online meeting subscription: $_" -ForegroundColor Red
     }
     exit 1
 }
+
+# Step 5 (optional): Create ad-hoc call subscription
+# Requires CallTranscripts.Read.All permission on the App Registration
+if ($IncludeAdhocCalls) {
+    Write-Host "`n[5/5] Creating Graph subscription for ad-hoc call transcripts..." -ForegroundColor Yellow
+    Write-Host "  NOTE: Requires 'CallTranscripts.Read.All' permission on the App Registration" -ForegroundColor Cyan
+
+    $adhocSubscriptionBody = @{
+        changeType               = "created"
+        notificationUrl          = "$functionUrl`?code=$FunctionKey"
+        lifecycleNotificationUrl = "$functionUrl`?code=$FunctionKey"
+        resource                 = "communications/adhocCalls/getAllTranscripts"
+        expirationDateTime       = $expirationDateTime
+        clientState              = $ClientState
+    } | ConvertTo-Json
+
+    try {
+        $adhocResponse = Invoke-RestMethod -Method POST `
+            -Uri "https://graph.microsoft.com/v1.0/subscriptions" `
+            -Headers $headers `
+            -Body $adhocSubscriptionBody
+
+        Write-Host "`n=== Ad-Hoc Call Subscription Created Successfully ===" -ForegroundColor Green
+        Write-Host "  Subscription ID : $($adhocResponse.id)"
+        Write-Host "  Resource        : $($adhocResponse.resource)"
+        Write-Host "  Expires         : $($adhocResponse.expirationDateTime)"
+
+        # Save ad-hoc subscription ID to Key Vault
+        try {
+            az keyvault secret set --vault-name $KeyVaultName --name "graph-adhoc-subscription-id" --value $adhocResponse.id | Out-Null
+            Write-Host "  Saved to Key Vault: $KeyVaultName/graph-adhoc-subscription-id" -ForegroundColor Green
+        } catch {
+            Write-Host "  Warning: Failed to save to Key Vault: $_" -ForegroundColor Yellow
+            Write-Host "  Manually run: az keyvault secret set --vault-name $KeyVaultName --name graph-adhoc-subscription-id --value $($adhocResponse.id)" -ForegroundColor Yellow
+        }
+    } catch {
+        $errorDetails = $_.ErrorDetails.Message | ConvertFrom-Json -ErrorAction SilentlyContinue
+        if ($errorDetails) {
+            Write-Host "`nFailed to create ad-hoc call subscription:" -ForegroundColor Red
+            Write-Host "  Code    : $($errorDetails.error.code)" -ForegroundColor Red
+            Write-Host "  Message : $($errorDetails.error.message)" -ForegroundColor Red
+            Write-Host "  Ensure 'CallTranscripts.Read.All' permission is granted and admin-consented." -ForegroundColor Yellow
+        } else {
+            Write-Host "`nFailed to create ad-hoc call subscription: $_" -ForegroundColor Red
+        }
+        # Don't exit — the online meeting subscription was already created successfully
+    }
+}
+
+return $onlineMeetingResponse
