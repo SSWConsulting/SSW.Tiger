@@ -248,6 +248,27 @@ For each participant, provide:
 }
 ```
 
+## Boardroom / Shared Device Handling
+
+If an `attendees.json` file is available, read it for context. It contains:
+- `invitees[]` — names derived from the meeting invite list (UPNs). Use as a **suggestion** to resolve misspelled names from transcript text.
+- `vttInfo` — whether the VTT has `<v>` speaker tags and which speakers are tagged.
+
+**Resolution priority:**
+1. **`<v>` tags are authoritative** — always use the tagged name, even if the person is not on the invite list
+2. **Invite list for name correction** — when transcript text mentions someone (e.g., "Gryphon") but they have no `<v>` tag, match against the invite list for the correct spelling (e.g., "Griffen")
+3. **Never override `<v>` tag data** — a speaker with tags who isn't on the invite list still gets a full participant card
+
+**Who gets a participant card:**
+- People with `<v>` speaker tags (they were on their own device) — always
+- People on the invite list AND mentioned in the transcript (they were likely in the boardroom) — yes, but note individual speaking metrics are unavailable
+- People only mentioned by name but NOT on the invite list and no `<v>` tags — **NO card**. They were being discussed, not attending. (e.g., "Willow suggested we do X" does not mean Willow was in the meeting)
+
+**For boardroom participants** (on invite list + mentioned in transcript, no `<v>` tags):
+- Create participant cards with correct names and profile photos
+- Note that individual speaking time metrics are unavailable since they shared a device
+- Still analyze their contributions based on what the transcript text reveals about their involvement (e.g., "Alex showed the design" tells us Alex presented something)
+
 ## Your Standards
 
 - **Kindness is not dishonesty** - Honest feedback is a gift

@@ -380,6 +380,35 @@ class MeetingProcessor {
       this.log("warn", "Failed to copy transcript", { error: error.message });
     }
 
+    // Write attendees.json from meeting invite list (if available via env var)
+    try {
+      const inviteesJson = process.env.INVITEES_JSON;
+      const vttInfoJson = process.env.VTT_INFO_JSON;
+      if (inviteesJson) {
+        const invitees = JSON.parse(inviteesJson);
+        const vttInfo = vttInfoJson ? JSON.parse(vttInfoJson) : {};
+        const attendeesData = {
+          invitees,
+          vttInfo,
+          note: "Invitees are derived from the meeting invite list (UPNs). Use as a suggestion for name resolution — speaker <v> tags in the VTT are authoritative and take priority.",
+        };
+        const attendeesPath = path.join(this.meetingPath, "attendees.json");
+        await fs.writeFile(
+          attendeesPath,
+          JSON.stringify(attendeesData, null, 2),
+          "utf-8",
+        );
+        this.log("info", "Wrote attendees.json", {
+          inviteeCount: invitees.length,
+          hasSpeakerLabels: vttInfo.hasSpeakerLabels,
+        });
+      }
+    } catch (error) {
+      this.log("warn", "Failed to write attendees.json", {
+        error: error.message,
+      });
+    }
+
     // Clean up previous analysis for this specific meeting (if exists)
     const analysisDir = path.join(this.meetingPath, "analysis");
     try {
@@ -415,6 +444,7 @@ Meeting ID: ${this.meetingId}
 Meeting Date: ${this.meetingDate}
 Meeting folder: projects/${this.projectName}/${this.meetingId}/
 Transcript: projects/${this.projectName}/${this.meetingId}/transcript.vtt
+Attendees (meeting invite list - use as suggestion for name resolution): projects/${this.projectName}/${this.meetingId}/attendees.json
 Dashboard template: templates/dashboard.html
 
 Follow all steps in CLAUDE.md including deployment.

@@ -144,12 +144,16 @@ run_pipeline() {
     MEETING_SUBJECT=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).meetingSubject")
     PARTICIPANTS_JSON=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.stringify(JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).participants || [])")
     MEETING_DURATION=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).meetingDuration || ''")
+    INVITEES_JSON=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.stringify(JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).invitees || [])")
+    VTT_INFO_JSON=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.stringify(JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).vttInfo || {})")
 
     # Export variables for notifications
     export PROJECT_NAME="$PROJECT_NAME"
     export MEETING_SUBJECT="$MEETING_SUBJECT"
     export PARTICIPANTS_JSON="$PARTICIPANTS_JSON"
     export MEETING_DURATION="$MEETING_DURATION"
+    export INVITEES_JSON="$INVITEES_JSON"
+    export VTT_INFO_JSON="$VTT_INFO_JSON"
 
     # Step 2: Send "started" notification (if configured)
     # Includes cancel URL if available, allowing users to cancel processing

@@ -73,6 +73,13 @@ Create a detailed timeline showing EXACTLY when each person spoke:
 - This enables visualization like Teams' speaker timeline bars
 - Reveals patterns: who speaks in bursts vs. consistently, who gets interrupted, speaking distribution over time
 
+#### Boardroom / Shared Device Handling
+If the VTT transcript contains a mix of `<v>`-tagged speech and untagged speech:
+- `<v>`-tagged speech → attribute to the named speaker as normal
+- Untagged speech (no `<v>` tags) → attribute to a single entry called **"Group (Boardroom)"**
+- Do **NOT** attempt to guess which individual is speaking from untagged text based on content or context
+- This honestly represents the data: some speakers were identifiable, some were in a shared space
+
 ## Output Format
 
 ```json
