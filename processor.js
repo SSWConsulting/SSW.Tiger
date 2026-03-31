@@ -558,13 +558,20 @@ Generate the dashboard HTML to: projects/${this.projectName}/${this.meetingId}/d
       throw err;
     }
 
-    // Build the dashboard URL: use DASHBOARD_BASE_URL if set, otherwise query storage account
+    // Build the dashboard URL from DASHBOARD_BASE_URL env var
+    // Falls back to querying storage account (requires correct subscription context)
     let host = process.env.DASHBOARD_BASE_URL;
     if (!host) {
-      host = execSync(
-        `az storage account show --name ${storageAccount} --query "primaryEndpoints.web" -o tsv`,
-        { encoding: "utf-8" },
-      ).trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
+      try {
+        host = execSync(
+          `az storage account show --name ${storageAccount} --query "primaryEndpoints.web" -o tsv`,
+          { encoding: "utf-8" },
+        ).trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
+      } catch {
+        // Fallback: construct from storage account name (Australia East = z8)
+        host = `${storageAccount}.z8.web.core.windows.net`;
+        this.log("warn", "Could not query storage account, using fallback hostname", { host });
+      }
     }
 
     const deployedUrl = `https://${host}/${this.projectName}/${this.meetingId}`;
