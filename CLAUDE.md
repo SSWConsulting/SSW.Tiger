@@ -409,29 +409,37 @@ After generating the dashboard, deploy it to Azure Blob Storage:
      --auth-mode login \
      --overwrite
    ```
-4. **CRITICAL OUTPUT FORMAT**: After successful deployment, you MUST output this line in plain text (not in a code block, not in markdown):
+4. **Construct the DEPLOYED_URL** from the storage account's static website hostname:
+   ```bash
+   # Get the static website hostname
+   STORAGE_HOST=$(az storage account show --name $DASHBOARD_STORAGE_ACCOUNT --query "primaryEndpoints.web" -o tsv | sed 's|https://||' | sed 's|/$||')
+   ```
+   The dashboard URL is: `https://{STORAGE_HOST}/{project}/{meeting-id}`
+
+5. **CRITICAL OUTPUT FORMAT**: After successful deployment, you MUST output this line in plain text (not in a code block, not in markdown):
 
    ```
-   DEPLOYED_URL=https://dashboards.sswtiger.com/{project}/{meeting-id}
+   DEPLOYED_URL=https://{STORAGE_HOST}/{project}/{meeting-id}
    ```
 
    **Requirements for the DEPLOYED_URL line:**
    - Must be on its own line
    - Must include the full URL with `https://` protocol
+   - Must use the **actual storage hostname** from step 4 (e.g., `satigertestweb.z8.web.core.windows.net`)
    - Must NOT have any text before or after the URL on the same line
-   - Must use the exact path you deployed to (e.g., `https://dashboards.sswtiger.com/yakshaver/2026-01-22-094557`)
    - Do NOT wrap in code blocks, quotes, or markdown formatting
    - Do NOT add explanatory text like "Successfully deployed to..." on the same line
+   - Do NOT hardcode `dashboards.sswtiger.com` — always derive the URL from the storage account
 
    **Example of correct output:**
    ```
-   DEPLOYED_URL=https://dashboards.sswtiger.com/yakshaver/2026-01-22-094557
+   DEPLOYED_URL=https://satigertestweb.z8.web.core.windows.net/yakshaver/2026-01-22-094557
    ```
 
    **Examples of INCORRECT output (will fail parsing):**
    - `Deployed to: https://...` ❌
    - `` `DEPLOYED_URL=https://...` `` ❌
-   - `DEPLOYED_URL=dashboards.sswtiger.com/yakshaver/2026-01-22-094557` ❌ (missing protocol)
+   - `DEPLOYED_URL=satigertestweb.z8.web.core.windows.net/yakshaver/2026-01-22-094557` ❌ (missing protocol)
    - `Successfully deployed! DEPLOYED_URL=https://...` ❌
 
 The processor uses multiple pattern matching strategies to extract the URL, but following the exact format above ensures reliable extraction.
