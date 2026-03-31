@@ -235,17 +235,14 @@ class MeetingProcessor {
         "i",
       ),
 
-      // Pattern 2: DEPLOYED_URL= with any dashboards.sswtiger.com path
-      /DEPLOYED_URL=(https?:\/\/stats\.sswtiger\.com\/[a-z0-9-]+\/[a-z0-9-]+)/i,
+      // Pattern 2: DEPLOYED_URL= with any URL containing {project}/{meeting-id} path
+      /DEPLOYED_URL=(https?:\/\/[^\s"'`<>\\]+\/[a-z0-9-]+\/[a-z0-9-]+)/i,
 
       // Pattern 3: DEPLOYED_URL= with protocol and any domain
       /DEPLOYED_URL=(https?:\/\/[^\s"'`<>\\]+)/i,
 
       // Pattern 4: Just the expected URL with protocol (fallback)
       new RegExp(`(https?:\\/\\/${expectedDomain.replace(/\./g, "\\.").replace(/\//g, "\\/")})`, "i"),
-
-      // Pattern 5: Any dashboards.sswtiger.com URL (last resort)
-      /(https?:\/\/stats\.sswtiger\.com\/[a-z0-9-]+\/[a-z0-9-]+)/i,
     ];
 
     for (let i = 0; i < patterns.length; i++) {
@@ -274,14 +271,10 @@ class MeetingProcessor {
       return false;
     }
 
-    // Must be on dashboards.sswtiger.com
-    if (!url.toLowerCase().includes("dashboards.sswtiger.com/")) {
-      this.log("warn", "URL is not on dashboards.sswtiger.com", { url });
-      return false;
-    }
-
-    // Extract path part after dashboards.sswtiger.com/
-    const pathPart = url.replace(/^https?:\/\/stats\.sswtiger\.com\//i, "");
+    // Extract path: everything after the hostname
+    const pathMatch = url.match(/^https?:\/\/[^/]+(\/.*)/);
+    if (!pathMatch) return false;
+    const pathPart = pathMatch[1].replace(/^\//, "").replace(/\/$/, "");
 
     // Path should be {project}/{meeting-id} format
     if (!/^[a-z0-9-]+\/[a-z0-9-]+$/.test(pathPart)) {
