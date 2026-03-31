@@ -699,7 +699,7 @@ function extractProjectName(subject) {
 function generateFilename(meeting, transcriptDate) {
   // Use transcript createdDateTime (actual recording time)
   // Format: {date}-{time}.vtt (date+time is sufficient for uniqueness)
-  // This becomes the deploy URL: {project}-{date}-{time}.surge.sh
+  // This becomes the deploy URL: dashboards.sswtiger.com/{project}/{date}-{time}
   // Convert to Australian Eastern Time for correct local date
   const date = convertToAustralianDate(transcriptDate);
   const time = convertToAustralianTime(transcriptDate);

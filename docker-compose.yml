@@ -22,9 +22,8 @@ services:
       # Priority: CLAUDE_CODE_OAUTH_TOKEN > ANTHROPIC_API_KEY
       # Set ONE in your .env file (OAuth token recommended for subscriptions)
 
-      # Surge credentials (for Claude Code to use during deployment)
-      - SURGE_EMAIL=${SURGE_EMAIL}
-      - SURGE_TOKEN=${SURGE_TOKEN}
+      # Dashboard storage (Azure Blob Storage account name)
+      - DASHBOARD_STORAGE_ACCOUNT=${DASHBOARD_STORAGE_ACCOUNT}
 
       # Microsoft Graph API (Azure mode - for webhook-triggered processing)
       # These are passed by Azure Container Apps when triggered by webhook

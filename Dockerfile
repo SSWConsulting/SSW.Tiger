@@ -10,8 +10,14 @@ RUN apt-get update && \
     ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
-# Install surge CLI with pinned version for reproducibility
-RUN npm install -g surge@0.23.1
+# Install Azure CLI for dashboard deployment to Blob Storage
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gpg lsb-release && \
+    curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-archive-keyring.gpg && \
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-archive-keyring.gpg] https://packages.microsoft.com/repos/azure-cli/ $(lsb_release -cs) main" > /etc/apt/sources.list.d/azure-cli.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends azure-cli && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install Claude Code CLI as root
 # The install script may put it in ~/.local/bin or similar

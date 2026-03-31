@@ -24,6 +24,9 @@ param replicaTimeout int = 3600
 @description('Claude model ID for the processor (e.g. claude-opus-4-5-20251101)')
 param claudeModel string = 'claude-opus-4-5-20251101'
 
+@description('Storage account name for dashboard static website hosting')
+param dashboardStorageAccountName string
+
 var envName = toLower('ce-${project}-${environment}')
 var jobName = toLower('job-${project}-${environment}')
 
@@ -75,16 +78,6 @@ resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
         {
           name: 'anthropic-oauth-token'
           keyVaultUrl: 'https://${keyVaultName}${az.environment().suffixes.keyvaultDns}/secrets/anthropic-oauth-token'
-          identity: managedIdentityId
-        }
-        {
-          name: 'surge-email'
-          keyVaultUrl: 'https://${keyVaultName}${az.environment().suffixes.keyvaultDns}/secrets/surge-email'
-          identity: managedIdentityId
-        }
-        {
-          name: 'surge-token'
-          keyVaultUrl: 'https://${keyVaultName}${az.environment().suffixes.keyvaultDns}/secrets/surge-token'
           identity: managedIdentityId
         }
         {
@@ -142,8 +135,7 @@ resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
           env: [
             { name: 'AZURE_CLIENT_ID', value: managedIdentityClientId }
             { name: 'CLAUDE_CODE_OAUTH_TOKEN', secretRef: 'anthropic-oauth-token' }
-            { name: 'SURGE_EMAIL', secretRef: 'surge-email' }
-            { name: 'SURGE_TOKEN', secretRef: 'surge-token' }
+            { name: 'DASHBOARD_STORAGE_ACCOUNT', value: dashboardStorageAccountName }
             { name: 'CLAUDE_MODEL', value: claudeModel }
             { name: 'NODE_ENV', value: environment == 'prod' ? 'production' : 'development' }
             { name: 'GRAPH_CLIENT_ID', secretRef: 'graph-client-id' }

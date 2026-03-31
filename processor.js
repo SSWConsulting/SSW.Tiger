@@ -145,14 +145,11 @@ class MeetingProcessor {
       this.log("warn", "No Claude credentials - using CLI logged-in session");
     }
 
-    // Validate Surge credentials (required for deployment)
-    if (!process.env.SURGE_EMAIL || !process.env.SURGE_TOKEN) {
+    // Validate dashboard storage account (required for deployment)
+    if (!process.env.DASHBOARD_STORAGE_ACCOUNT) {
       throw new Error(
-        "Surge.sh credentials are required for deployment.\n" +
-          "Please set the following environment variables:\n" +
-          "  SURGE_EMAIL=<your-email>\n" +
-          "  SURGE_TOKEN=<your-token>\n" +
-          "Get your token by running: surge token",
+        "Dashboard storage account is required for deployment.\n" +
+          "Set the DASHBOARD_STORAGE_ACCOUNT environment variable to the Azure Storage account name.",
       );
     }
   }
@@ -212,53 +209,19 @@ class MeetingProcessor {
   }
 
   generateDeployUrl(projectName, meetingId) {
-    // Surge.sh domain limit: ~63 characters total (including .surge.sh suffix)
-    // Reserve 10 chars for ".surge.sh", leaving ~53 chars for project-meeting
-    // Format: {project}-{meeting-id}.surge.sh
+    // Deploy to dashboards.sswtiger.com via Azure Blob Storage + Cloudflare
+    // Format: dashboards.sswtiger.com/{project}/{meeting-id}
 
-    const MAX_DOMAIN_LENGTH = 35; // Without .surge.sh suffix
-    const MEETING_ID_LENGTH = 17; // YYYY-MM-DD-HHmmss (fixed length)
-    const SEPARATOR_LENGTH = 1; // hyphen between project and meeting
-
-    // Calculate max project name length
-    const maxProjectLength =
-      MAX_DOMAIN_LENGTH - MEETING_ID_LENGTH - SEPARATOR_LENGTH;
-
-    // Sanitize project name for valid surge.sh domain (only a-z, 0-9, hyphens allowed)
-    let truncatedProject =
+    // Sanitize project name for valid URL path (only a-z, 0-9, hyphens allowed)
+    const sanitizedProject =
       projectName
         .toLowerCase()
         .replace(/[^a-z0-9-]/g, "-") // Replace any non-alphanumeric char with hyphen
         .replace(/-+/g, "-") // Collapse consecutive hyphens
         .replace(/^-+|-+$/g, "") || // Trim all leading/trailing hyphens
       "general"; // Fallback if sanitization yields empty string
-    if (truncatedProject.length > maxProjectLength) {
-      // Truncate at word boundary (last hyphen before limit)
-      const truncated = truncatedProject.substring(0, maxProjectLength);
-      const lastHyphen = truncated.lastIndexOf("-");
-      truncatedProject =
-        lastHyphen > 0 ? truncated.substring(0, lastHyphen) : truncated;
 
-      this.log("warn", "Project name truncated for deploy URL", {
-        original: projectName,
-        truncated: truncatedProject,
-        originalLength: projectName.length,
-        maxLength: maxProjectLength,
-      });
-    }
-
-    const deployDomain = `${truncatedProject}-${meetingId}`;
-
-    // Validate total length
-    if (deployDomain.length > MAX_DOMAIN_LENGTH) {
-      this.log("error", "Deploy domain too long even after truncation", {
-        domain: deployDomain,
-        length: deployDomain.length,
-        maxLength: MAX_DOMAIN_LENGTH,
-      });
-    }
-
-    return `${deployDomain}.surge.sh`;
+    return `dashboards.sswtiger.com/${sanitizedProject}/${meetingId}`;
   }
 
   extractDeployedUrl(text, expectedDomain) {
@@ -266,23 +229,23 @@ class MeetingProcessor {
     // Pattern priority: most specific to most permissive
 
     const patterns = [
-      // Pattern 1: DEPLOYED_URL= with expected domain (most specific)
+      // Pattern 1: DEPLOYED_URL= with expected URL (most specific)
       new RegExp(
-        `DEPLOYED_URL=(https?:\\/\\/${expectedDomain.replace(/\./g, "\\.")})`,
+        `DEPLOYED_URL=(https?:\\/\\/${expectedDomain.replace(/\./g, "\\.").replace(/\//g, "\\/")})`,
         "i",
       ),
 
-      // Pattern 2: DEPLOYED_URL= with any surge.sh domain
-      /DEPLOYED_URL=(https?:\/\/[a-z0-9-]+\.surge\.sh)/i,
+      // Pattern 2: DEPLOYED_URL= with any dashboards.sswtiger.com path
+      /DEPLOYED_URL=(https?:\/\/stats\.sswtiger\.com\/[a-z0-9-]+\/[a-z0-9-]+)/i,
 
       // Pattern 3: DEPLOYED_URL= with protocol and any domain
       /DEPLOYED_URL=(https?:\/\/[^\s"'`<>\\]+)/i,
 
-      // Pattern 4: Just the expected domain with protocol (fallback)
-      new RegExp(`(https?:\\/\\/${expectedDomain.replace(/\./g, "\\.")})`, "i"),
+      // Pattern 4: Just the expected URL with protocol (fallback)
+      new RegExp(`(https?:\\/\\/${expectedDomain.replace(/\./g, "\\.").replace(/\//g, "\\/")})`, "i"),
 
-      // Pattern 5: Any surge.sh URL (last resort)
-      /(https?:\/\/[a-z0-9-]+\.surge\.sh)/i,
+      // Pattern 5: Any dashboards.sswtiger.com URL (last resort)
+      /(https?:\/\/stats\.sswtiger\.com\/[a-z0-9-]+\/[a-z0-9-]+)/i,
     ];
 
     for (let i = 0; i < patterns.length; i++) {
@@ -311,24 +274,18 @@ class MeetingProcessor {
       return false;
     }
 
-    // Must end with .surge.sh (case-insensitive)
-    if (!url.toLowerCase().endsWith(".surge.sh")) {
-      this.log("warn", "URL doesn't end with .surge.sh", { url });
+    // Must be on dashboards.sswtiger.com
+    if (!url.toLowerCase().includes("dashboards.sswtiger.com/")) {
+      this.log("warn", "URL is not on dashboards.sswtiger.com", { url });
       return false;
     }
 
-    // Extract domain part (without protocol and .surge.sh)
-    const domain = url.replace(/^https?:\/\//, "").replace(/\.surge\.sh$/i, "");
+    // Extract path part after dashboards.sswtiger.com/
+    const pathPart = url.replace(/^https?:\/\/stats\.sswtiger\.com\//i, "");
 
-    // Domain should only contain lowercase letters, numbers, and hyphens
-    if (!/^[a-z0-9-]+$/.test(domain)) {
-      this.log("warn", "Invalid domain format", { url, domain });
-      return false;
-    }
-
-    // Domain shouldn't start or end with hyphen
-    if (domain.startsWith("-") || domain.endsWith("-")) {
-      this.log("warn", "Domain starts or ends with hyphen", { url, domain });
+    // Path should be {project}/{meeting-id} format
+    if (!/^[a-z0-9-]+\/[a-z0-9-]+$/.test(pathPart)) {
+      this.log("warn", "Invalid URL path format", { url, pathPart });
       return false;
     }
 

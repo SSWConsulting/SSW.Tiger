@@ -13,6 +13,7 @@ param containerAppJobResourceGroup string
 param containerAppJobImage string
 param managedIdentityId string
 param managedIdentityClientId string
+param dashboardStorageAccountName string
 
 // Application Insights for logging
 param appInsightsConnectionString string
@@ -103,6 +104,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'CONTAINER_APP_JOB_NAME', value: containerAppJobName }
         { name: 'CONTAINER_APP_JOB_RESOURCE_GROUP', value: containerAppJobResourceGroup }
         { name: 'CONTAINER_APP_JOB_IMAGE', value: containerAppJobImage }
+        { name: 'DASHBOARD_STORAGE_ACCOUNT', value: dashboardStorageAccountName }
         // Subscription ID (for Container App API calls)
         { name: 'SUBSCRIPTION_ID', value: subscription().subscriptionId }
         // Graph Subscription ID (stored in Key Vault after creation via script)
