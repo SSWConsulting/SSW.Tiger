@@ -72,7 +72,7 @@ When processing a transcript, you have two data sources for identifying particip
 1. **`<v>` tags always win** — if someone has speaker tags, use their tagged name as canonical. This applies even if they are not on the invite list.
 2. **Invite list for name resolution** — when the transcript text mentions someone by name (e.g., "Gryphon", "Alex") but they have no `<v>` tag, match against the invite list for:
    - **Spelling correction**: "Gryphon" → "Griffen Edge", "Thiago" → "Tiago Araujo"
-   - **First-name-to-full-name expansion**: "Alex" → "Alex Torres" (from UPN `AlexTorres@ssw.com.au`). Even when the first name is already spelled correctly, always look up the **full derived name** from the invitees list. With a small invite list of 6-10 people, a first-name match is almost always the right person.
+   - **First-name-to-full-name expansion**: "Alex" → "Alex Blum" (from UPN `AlexBlum@ssw.com.au`). Even when the first name is already spelled correctly, always look up the **full derived name** from the invitees list. With a small invite list of 6-10 people, a first-name match is almost always the right person.
 3. **Unknown speakers** — if a name appears in transcript text but has no `<v>` tag and no plausible invite list match, do NOT create a participant card for them. They are likely being referenced in conversation but were not actually in the meeting.
 
 ### Who Gets a Participant Card
