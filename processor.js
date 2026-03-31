@@ -534,7 +534,7 @@ Generate the dashboard HTML to: projects/${this.projectName}/${this.meetingId}/d
     if (azureClientId) {
       this.log("info", "Logging in with managed identity", { clientId: azureClientId });
       try {
-        execSync(`az login --identity --username ${azureClientId}`, {
+        execSync(`az login --identity --client-id ${azureClientId}`, {
           encoding: "utf-8",
           stdio: ["pipe", "pipe", "pipe"],
         });
@@ -557,13 +557,16 @@ Generate the dashboard HTML to: projects/${this.projectName}/${this.meetingId}/d
       throw err;
     }
 
-    // Get the static website hostname
-    const hostOutput = execSync(
-      `az storage account show --name ${storageAccount} --query "primaryEndpoints.web" -o tsv`,
-      { encoding: "utf-8" },
-    ).trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
+    // Build the dashboard URL: use DASHBOARD_BASE_URL if set, otherwise query storage account
+    let host = process.env.DASHBOARD_BASE_URL;
+    if (!host) {
+      host = execSync(
+        `az storage account show --name ${storageAccount} --query "primaryEndpoints.web" -o tsv`,
+        { encoding: "utf-8" },
+      ).trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
+    }
 
-    const deployedUrl = `https://${hostOutput}/${this.projectName}/${this.meetingId}`;
+    const deployedUrl = `https://${host}/${this.projectName}/${this.meetingId}`;
     this.log("info", "Dashboard deployed", { url: deployedUrl });
     return deployedUrl;
   }

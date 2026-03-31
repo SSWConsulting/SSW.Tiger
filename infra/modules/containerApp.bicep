@@ -29,6 +29,8 @@ param dashboardStorageAccountName string
 
 var envName = toLower('ce-${project}-${environment}')
 var jobName = toLower('job-${project}-${environment}')
+// Dashboard URL: dashboards.sswtiger.com for staging, dashboards-{env}.sswtiger.com for others
+var dashboardBaseUrl = environment == 'staging' ? 'dashboards.sswtiger.com' : 'dashboards-${environment}.sswtiger.com'
 
 // Container Apps Environment (the "cluster")
 resource containerEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
@@ -136,6 +138,7 @@ resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
             { name: 'AZURE_CLIENT_ID', value: managedIdentityClientId }
             { name: 'CLAUDE_CODE_OAUTH_TOKEN', secretRef: 'anthropic-oauth-token' }
             { name: 'DASHBOARD_STORAGE_ACCOUNT', value: dashboardStorageAccountName }
+            { name: 'DASHBOARD_BASE_URL', value: dashboardBaseUrl }
             { name: 'CLAUDE_MODEL', value: claudeModel }
             { name: 'NODE_ENV', value: environment == 'prod' ? 'production' : 'development' }
             { name: 'GRAPH_CLIENT_ID', secretRef: 'graph-client-id' }

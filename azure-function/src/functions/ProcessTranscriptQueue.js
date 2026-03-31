@@ -250,6 +250,7 @@ async function triggerContainerAppJob(params, context) {
               { name: "NODE_ENV", value: "production" },
               { name: "AZURE_CLIENT_ID", value: process.env.AZURE_CLIENT_ID },
               { name: "DASHBOARD_STORAGE_ACCOUNT", value: process.env.DASHBOARD_STORAGE_ACCOUNT },
+              { name: "DASHBOARD_BASE_URL", value: process.env.DASHBOARD_BASE_URL },
               // Secrets from job configuration (defined in containerApp.bicep)
               { name: "CLAUDE_CODE_OAUTH_TOKEN", secretRef: "anthropic-oauth-token" },
               { name: "GRAPH_CLIENT_ID", secretRef: "graph-client-id" },

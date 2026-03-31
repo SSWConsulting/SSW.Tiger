@@ -20,6 +20,7 @@ param appInsightsConnectionString string
 
 var functionAppName = toLower('func-${project}-${environment}')
 var hostingPlanName = toLower('plan-${project}-${environment}')
+var dashboardBaseUrl = environment == 'staging' ? 'dashboards.sswtiger.com' : 'dashboards-${environment}.sswtiger.com'
 
 // App Service Plan (Consumption - serverless)
 resource hostingPlan 'Microsoft.Web/serverfarms@2023-12-01' = {
@@ -105,6 +106,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'CONTAINER_APP_JOB_RESOURCE_GROUP', value: containerAppJobResourceGroup }
         { name: 'CONTAINER_APP_JOB_IMAGE', value: containerAppJobImage }
         { name: 'DASHBOARD_STORAGE_ACCOUNT', value: dashboardStorageAccountName }
+        { name: 'DASHBOARD_BASE_URL', value: dashboardBaseUrl }
         // Subscription ID (for Container App API calls)
         { name: 'SUBSCRIPTION_ID', value: subscription().subscriptionId }
         // Graph Subscription ID (stored in Key Vault after creation via script)
