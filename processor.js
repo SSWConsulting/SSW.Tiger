@@ -208,83 +208,6 @@ class MeetingProcessor {
     };
   }
 
-  generateDeployUrl(projectName, meetingId) {
-    // Deploy to dashboards.sswtiger.com via Azure Blob Storage + Cloudflare
-    // Format: dashboards.sswtiger.com/{project}/{meeting-id}
-
-    // Sanitize project name for valid URL path (only a-z, 0-9, hyphens allowed)
-    const sanitizedProject =
-      projectName
-        .toLowerCase()
-        .replace(/[^a-z0-9-]/g, "-") // Replace any non-alphanumeric char with hyphen
-        .replace(/-+/g, "-") // Collapse consecutive hyphens
-        .replace(/^-+|-+$/g, "") || // Trim all leading/trailing hyphens
-      "general"; // Fallback if sanitization yields empty string
-
-    return `dashboards.sswtiger.com/${sanitizedProject}/${meetingId}`;
-  }
-
-  extractDeployedUrl(text, expectedDomain) {
-    // Try multiple patterns to extract the deployed URL
-    // Pattern priority: most specific to most permissive
-
-    const patterns = [
-      // Pattern 1: DEPLOYED_URL= with expected URL (most specific)
-      new RegExp(
-        `DEPLOYED_URL=(https?:\\/\\/${expectedDomain.replace(/\./g, "\\.").replace(/\//g, "\\/")})`,
-        "i",
-      ),
-
-      // Pattern 2: DEPLOYED_URL= with any URL containing {project}/{meeting-id} path
-      /DEPLOYED_URL=(https?:\/\/[^\s"'`<>\\]+\/[a-z0-9-]+\/[a-z0-9-]+)/i,
-
-      // Pattern 3: DEPLOYED_URL= with protocol and any domain
-      /DEPLOYED_URL=(https?:\/\/[^\s"'`<>\\]+)/i,
-
-      // Pattern 4: Just the expected URL with protocol (fallback)
-      new RegExp(`(https?:\\/\\/${expectedDomain.replace(/\./g, "\\.").replace(/\//g, "\\/")})`, "i"),
-    ];
-
-    for (let i = 0; i < patterns.length; i++) {
-      const match = text.match(patterns[i]);
-      if (match && match[1]) {
-        const url = match[1].trim();
-
-        // Validate URL format
-        if (this.validateDeployedUrl(url)) {
-          this.log("debug", `Extracted deployed URL (pattern ${i + 1})`, {
-            url,
-          });
-          return url;
-        }
-      }
-    }
-
-    return null;
-  }
-
-  validateDeployedUrl(url) {
-    if (!url) return false;
-
-    // Must start with http:// or https://
-    if (!url.startsWith("http://") && !url.startsWith("https://")) {
-      return false;
-    }
-
-    // Extract path: everything after the hostname
-    const pathMatch = url.match(/^https?:\/\/[^/]+(\/.*)/);
-    if (!pathMatch) return false;
-    const pathPart = pathMatch[1].replace(/^\//, "").replace(/\/$/, "");
-
-    // Path should be {project}/{meeting-id} format
-    if (!/^[a-z0-9-]+\/[a-z0-9-]+$/.test(pathPart)) {
-      this.log("warn", "Invalid URL path format", { url, pathPart });
-      return false;
-    }
-
-    return true;
-  }
-
   async initialize(transcriptPath, projectName) {
     // Validate transcript file exists
     try {
@@ -380,13 +303,6 @@ class MeetingProcessor {
     // Get authentication configuration
     const authConfig = this.getClaudeAuthMethod();
 
-    // Meeting-specific output filename
-    const outputFilename = `${this.projectName}-${this.meetingId}.html`;
-    const outputPath = path.join(CONFIG.outputDir, outputFilename);
-
-    // Generate deploy URL with truncation if needed
-    const deployUrl = this.generateDeployUrl(this.projectName, this.meetingId);
-
     const prompt = `Read CLAUDE.md and process the meeting transcript following the complete workflow.
 
 Project: ${this.projectName}
@@ -397,9 +313,8 @@ Transcript: projects/${this.projectName}/${this.meetingId}/transcript.vtt
 Attendees (meeting invite list - use as suggestion for name resolution): projects/${this.projectName}/${this.meetingId}/attendees.json
 Dashboard template: templates/dashboard.html
 
-Follow all steps in CLAUDE.md including deployment.
-Deploy to: ${deployUrl}
-Output DEPLOYED_URL as specified.`;
+Follow all steps in CLAUDE.md EXCEPT deployment. Do NOT deploy or upload the dashboard.
+Generate the dashboard HTML to: projects/${this.projectName}/${this.meetingId}/dashboard/index.html`;
 
     return new Promise((resolve, reject) => {
       // Spawn Claude Code CLI in print mode (non-interactive)
@@ -461,7 +376,6 @@ Output DEPLOYED_URL as specified.`;
       claude.stdin.end();
       this.log("info", "Processing transcript with Claude CLI...");
 
-      let deployedUrl = null;
       let stderr = "";
       let firstOutputReceived = false;
       let lastOutputTime = Date.now();
@@ -484,26 +398,11 @@ Output DEPLOYED_URL as specified.`;
         crlfDelay: Infinity,
       });
 
-      // Accumulate all output for fallback URL extraction
-      let allStdout = "";
-
       stdoutReader.on("line", (line) => {
         lastOutputTime = Date.now(); // Reset inactivity timer
         firstOutputReceived = true;
 
         if (!line || !line.trim()) return;
-
-        // Accumulate for fallback
-        allStdout += line + "\n";
-
-        // Fast-path: capture deployed URL if it appears in plain output
-        if (!deployedUrl) {
-          const extracted = this.extractDeployedUrl(line, deployUrl);
-          if (extracted) {
-            deployedUrl = extracted;
-            this.log("info", "✅ Deployed URL captured", { url: deployedUrl });
-          }
-        }
 
         try {
           const parsed = this.parseStreamJsonLine(line);
@@ -531,35 +430,7 @@ Output DEPLOYED_URL as specified.`;
         clearInterval(inactivityTimer);
 
         if (code === 0) {
-          // If URL not found yet, try fallback extraction from all accumulated output
-          if (!deployedUrl) {
-            this.log(
-              "warn",
-              "Deployed URL not found in real-time, trying fallback extraction",
-            );
-
-            // Try extracting from accumulated stdout
-            deployedUrl = this.extractDeployedUrl(allStdout, deployUrl);
-
-            // If still not found, try stderr
-            if (!deployedUrl) {
-              deployedUrl = this.extractDeployedUrl(stderr, deployUrl);
-            }
-
-            if (deployedUrl) {
-              this.log("info", "✅ Deployed URL extracted via fallback", {
-                url: deployedUrl,
-              });
-            } else {
-              this.log("error", "❌ Failed to extract deployed URL", {
-                expectedDomain: deployUrl,
-                stdoutPreview: allStdout.substring(0, 500),
-                stderrPreview: stderr.substring(0, 500),
-              });
-            }
-          }
-
-          resolve({ stdout: null, stderr, deployedUrl });
+          resolve({ stderr });
         } else {
           const runtimeSeconds = Math.round((Date.now() - startTime) / 1000);
           const memUsage = process.memoryUsage();
@@ -642,6 +513,47 @@ Output DEPLOYED_URL as specified.`;
     }
   }
 
+  async deployDashboard(dashboardPath) {
+    const storageAccount = process.env.DASHBOARD_STORAGE_ACCOUNT;
+    if (!storageAccount) {
+      throw new Error("DASHBOARD_STORAGE_ACCOUNT not set");
+    }
+
+    const blobDestination = `$web/${this.projectName}/${this.meetingId}`;
+    const dashboardDir = path.dirname(dashboardPath);
+
+    this.log("info", "Deploying dashboard to blob storage", {
+      storageAccount,
+      destination: blobDestination,
+    });
+
+    // Login with managed identity
+    const { execSync } = require("child_process");
+    const azureClientId = process.env.AZURE_CLIENT_ID;
+
+    if (azureClientId) {
+      execSync(`az login --identity --username ${azureClientId}`, {
+        stdio: "pipe",
+      });
+    }
+
+    // Upload dashboard files
+    execSync(
+      `az storage blob upload-batch --source "${dashboardDir}" --destination "${blobDestination}" --account-name ${storageAccount} --auth-mode login --overwrite`,
+      { stdio: "pipe" },
+    );
+
+    // Get the static website hostname
+    const hostOutput = execSync(
+      `az storage account show --name ${storageAccount} --query "primaryEndpoints.web" -o tsv`,
+      { encoding: "utf-8" },
+    ).trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
+
+    const deployedUrl = `https://${hostOutput}/${this.projectName}/${this.meetingId}`;
+    this.log("info", "Dashboard deployed", { url: deployedUrl });
+    return deployedUrl;
+  }
+
   async process(transcriptPath, projectName) {
     try {
       // Validate credentials first (fail fast)
@@ -654,11 +566,14 @@ Output DEPLOYED_URL as specified.`;
       await this.setupProjectStructure();
 
       // Invoke Claude Code CLI (non-interactive, auto-accept)
-      // Claude will handle: analysis, consolidation, dashboard generation, AND deployment
-      const claudeResult = await this.invokeClaude();
+      // Claude generates analysis + dashboard HTML only (no deployment)
+      await this.invokeClaude();
 
       // Check if output exists at canonical location (meeting folder)
       const canonicalPath = await this.checkOutputExists();
+
+      // Deploy dashboard to Azure Blob Storage
+      const deployedUrl = await this.deployDashboard(canonicalPath);
 
       // Optional: Copy to output directory for convenience
       const outputCopyPath = await this.copyToOutputDirectory(canonicalPath);
@@ -669,7 +584,7 @@ Output DEPLOYED_URL as specified.`;
         meetingDate: this.meetingDate,
         dashboardPath: canonicalPath,
         outputCopyPath,
-        deployedUrl: claudeResult.deployedUrl,
+        deployedUrl,
       };
     } catch (error) {
       this.log("error", error.message);

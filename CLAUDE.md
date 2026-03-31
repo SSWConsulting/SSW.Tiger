@@ -52,12 +52,10 @@ You are a meeting transcript processor. Your job is to convert .vtt transcripts 
 │                  4. GENERATE DASHBOARD                           │
 │  Use consolidated.json (NOT raw agent outputs)                  │
 │  Multi-tab HTML with consistent naming throughout               │
+│  Save to: projects/{project}/{meeting-id}/dashboard/index.html  │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
-┌─────────────────────────────────────────────────────────────────┐
-│                      5. DEPLOY                                   │
-│  az storage blob upload-batch → dashboards.sswtiger.com/{project}/{id}  │
-└─────────────────────────────────────────────────────────────────┘
+              (Deployment handled by processor.js)
 ```
 
 ## Participant Resolution
@@ -395,54 +393,11 @@ The template includes a script that automatically falls back to initials (from `
 
 ## Deployment
 
-After generating the dashboard, deploy it to Azure Blob Storage:
+**Do NOT deploy the dashboard.** Deployment is handled automatically by `processor.js` after you generate the HTML. Your only job is to save the dashboard to:
 
-1. Navigate to the dashboard directory
-2. **Use the deploy URL specified in the prompt** (the subdomain is the blob container path)
-3. Login with Managed Identity and upload:
-   ```bash
-   az login --identity --username $AZURE_CLIENT_ID
-   az storage blob upload-batch \
-     --source . \
-     --destination '$web/{project}/{meeting-id}' \
-     --account-name $DASHBOARD_STORAGE_ACCOUNT \
-     --auth-mode login \
-     --overwrite
-   ```
-4. **Construct the DEPLOYED_URL** from the storage account's static website hostname:
-   ```bash
-   # Get the static website hostname
-   STORAGE_HOST=$(az storage account show --name $DASHBOARD_STORAGE_ACCOUNT --query "primaryEndpoints.web" -o tsv | sed 's|https://||' | sed 's|/$||')
-   ```
-   The dashboard URL is: `https://{STORAGE_HOST}/{project}/{meeting-id}`
-
-5. **CRITICAL OUTPUT FORMAT**: After successful deployment, you MUST output this line in plain text (not in a code block, not in markdown):
-
-   ```
-   DEPLOYED_URL=https://{STORAGE_HOST}/{project}/{meeting-id}
-   ```
-
-   **Requirements for the DEPLOYED_URL line:**
-   - Must be on its own line
-   - Must include the full URL with `https://` protocol
-   - Must use the **actual storage hostname** from step 4 (e.g., `satigertestweb.z8.web.core.windows.net`)
-   - Must NOT have any text before or after the URL on the same line
-   - Do NOT wrap in code blocks, quotes, or markdown formatting
-   - Do NOT add explanatory text like "Successfully deployed to..." on the same line
-   - Do NOT hardcode `dashboards.sswtiger.com` — always derive the URL from the storage account
-
-   **Example of correct output:**
-   ```
-   DEPLOYED_URL=https://satigertestweb.z8.web.core.windows.net/yakshaver/2026-01-22-094557
-   ```
-
-   **Examples of INCORRECT output (will fail parsing):**
-   - `Deployed to: https://...` ❌
-   - `` `DEPLOYED_URL=https://...` `` ❌
-   - `DEPLOYED_URL=satigertestweb.z8.web.core.windows.net/yakshaver/2026-01-22-094557` ❌ (missing protocol)
-   - `Successfully deployed! DEPLOYED_URL=https://...` ❌
-
-The processor uses multiple pattern matching strategies to extract the URL, but following the exact format above ensures reliable extraction.
+```
+projects/{project}/{meeting-id}/dashboard/index.html
+```
 
 ## DO NOT
 
@@ -452,6 +407,5 @@ The processor uses multiple pattern matching strategies to extract the URL, but 
 - **Skip the consolidation step**
 - Use inconsistent names across tabs
 - Generate a simple single-tab page
-- Skip the deployment
+- Deploy the dashboard (processor.js handles deployment)
 - Rush through the analysis - THIS IS IMPORTANT
-- Add extra text after DEPLOYED_URL (processor parses this line)
