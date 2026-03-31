@@ -248,6 +248,7 @@ async function triggerContainerAppJob(params, context) {
                 : []),
               // Static values - must be included as template override replaces the env array
               { name: "NODE_ENV", value: "production" },
+              { name: "AZURE_CLIENT_ID", value: process.env.AZURE_CLIENT_ID },
               { name: "DASHBOARD_STORAGE_ACCOUNT", value: process.env.DASHBOARD_STORAGE_ACCOUNT },
               // Secrets from job configuration (defined in containerApp.bicep)
               { name: "CLAUDE_CODE_OAUTH_TOKEN", secretRef: "anthropic-oauth-token" },

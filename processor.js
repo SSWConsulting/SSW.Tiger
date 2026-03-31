@@ -527,21 +527,35 @@ Generate the dashboard HTML to: projects/${this.projectName}/${this.meetingId}/d
       destination: blobDestination,
     });
 
-    // Login with managed identity
     const { execSync } = require("child_process");
     const azureClientId = process.env.AZURE_CLIENT_ID;
 
+    // Login with managed identity
     if (azureClientId) {
-      execSync(`az login --identity --username ${azureClientId}`, {
-        stdio: "pipe",
-      });
+      this.log("info", "Logging in with managed identity", { clientId: azureClientId });
+      try {
+        execSync(`az login --identity --username ${azureClientId}`, {
+          encoding: "utf-8",
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+      } catch (err) {
+        this.log("error", "az login --identity failed", { stderr: err.stderr });
+        throw new Error(`az login --identity failed: ${err.stderr}`);
+      }
+    } else {
+      this.log("warn", "AZURE_CLIENT_ID not set, assuming az is already logged in");
     }
 
     // Upload dashboard files
-    execSync(
-      `az storage blob upload-batch --source "${dashboardDir}" --destination "${blobDestination}" --account-name ${storageAccount} --auth-mode login --overwrite`,
-      { stdio: "pipe" },
-    );
+    try {
+      execSync(
+        `az storage blob upload-batch --source "${dashboardDir}" --destination "${blobDestination}" --account-name ${storageAccount} --auth-mode login --overwrite`,
+        { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
+      );
+    } catch (err) {
+      this.log("error", "Blob upload failed", { stderr: err.stderr });
+      throw err;
+    }
 
     // Get the static website hostname
     const hostOutput = execSync(
