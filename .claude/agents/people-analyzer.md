@@ -256,7 +256,9 @@ If an `attendees.json` file is available, read it for context. It contains:
 
 **Resolution priority:**
 1. **`<v>` tags are authoritative** — always use the tagged name, even if the person is not on the invite list
-2. **Invite list for name correction** — when transcript text mentions someone (e.g., "Gryphon") but they have no `<v>` tag, match against the invite list for the correct spelling (e.g., "Griffen")
+2. **Invite list for name resolution** — when transcript text mentions someone (e.g., "Gryphon", "Alex") but they have no `<v>` tag, match against the invite list for:
+   - **Spelling correction**: "Gryphon" → "Griffen Edge" (from invite list)
+   - **First-name-to-full-name expansion**: "Alex" → "Alex Torres" (from invite list). Even when the first name is already spelled correctly, always look up the full derived name from `attendees.json`. With a small invite list, a first-name match is almost always the right person.
 3. **Never override `<v>` tag data** — a speaker with tags who isn't on the invite list still gets a full participant card
 
 **Who gets a participant card:**

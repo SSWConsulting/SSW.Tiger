@@ -23,7 +23,9 @@ This is non-negotiable. Create a canonical name mapping:
 
 #### Resolution Priority
 1. **`<v>` speaker tags are authoritative** — always use the tagged name as canonical, even if the person is not on the invite list
-2. **Invite list for correction** — when transcript text mentions a name (e.g., "Thiago") with no `<v>` tag, match against `attendees.json` invitees for the correct spelling (e.g., "Tiago Araujo" from UPN `TiagoAraujo@ssw.com.au`)
+2. **Invite list for name resolution** — when transcript text mentions someone by name (e.g., "Thiago", "Alex") with no `<v>` tag, match against `attendees.json` invitees for:
+   - **Spelling correction**: "Thiago" → "Tiago Araujo" (from UPN `TiagoAraujo@ssw.com.au`)
+   - **First-name-to-full-name expansion**: "Alex" → "Alex Torres" (from UPN `AlexTorres@ssw.com.au`). Even when the first name is spelled correctly, always look up the full name from the invitees list. With a small invite list of 6-10 people, a first-name match is almost always the right person.
 3. **Never override `<v>` tags with invite list** — a speaker with tags who isn't on the invite list still gets their tagged name
 
 #### Rules
