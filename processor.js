@@ -519,7 +519,8 @@ Generate the dashboard HTML to: projects/${this.projectName}/${this.meetingId}/d
       throw new Error("DASHBOARD_STORAGE_ACCOUNT not set");
     }
 
-    const blobDestination = `$web/${this.projectName}/${this.meetingId}`;
+    // Use single quotes to prevent shell from interpreting $web as a variable
+    const blobDestination = `'$web/${this.projectName}/${this.meetingId}'`;
     const dashboardDir = path.dirname(dashboardPath);
 
     this.log("info", "Deploying dashboard to blob storage", {
@@ -549,7 +550,7 @@ Generate the dashboard HTML to: projects/${this.projectName}/${this.meetingId}/d
     // Upload dashboard files
     try {
       execSync(
-        `az storage blob upload-batch --source "${dashboardDir}" --destination "${blobDestination}" --account-name ${storageAccount} --auth-mode login --overwrite`,
+        `az storage blob upload-batch --source "${dashboardDir}" --destination ${blobDestination} --account-name ${storageAccount} --auth-mode login --overwrite`,
         { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
       );
     } catch (err) {
