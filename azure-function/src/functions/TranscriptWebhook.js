@@ -12,6 +12,43 @@ const { app, output } = require("@azure/functions");
 const LOG_PREFIX = "[TIGER]";
 
 /**
+ * In-memory deduplication cache for webhook notifications.
+ * Prevents duplicate queue messages when Graph sends the same notification twice.
+ * Key: `${meetingId}-${transcriptId}`, Value: timestamp
+ * TTL: 10 minutes
+ *
+ * This works because duplicate Graph notifications typically hit the same
+ * function instance within seconds. The queue-level dedup in ProcessTranscriptQueue
+ * remains as a secondary safety net for cross-instance scenarios.
+ */
+const webhookDedupCache = new Map();
+const DEDUP_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+function isWebhookDuplicate(meetingId, transcriptId) {
+  const key = `${meetingId}-${transcriptId}`;
+  const cachedTime = webhookDedupCache.get(key);
+  if (cachedTime && Date.now() - cachedTime < DEDUP_TTL_MS) {
+    return true;
+  }
+  return false;
+}
+
+function markWebhookProcessed(meetingId, transcriptId) {
+  const key = `${meetingId}-${transcriptId}`;
+  webhookDedupCache.set(key, Date.now());
+
+  // Cleanup old entries to prevent memory leak
+  if (webhookDedupCache.size > 1000) {
+    const now = Date.now();
+    for (const [k, v] of webhookDedupCache) {
+      if (now - v > DEDUP_TTL_MS) {
+        webhookDedupCache.delete(k);
+      }
+    }
+  }
+}
+
+/**
  * Structured logging helper for consistent log format
  */
 function structuredLog(context, level, message, data = {}) {
@@ -115,6 +152,15 @@ app.http("TranscriptWebhook", {
         skippedCount++;
         continue;
       }
+
+      // Deduplicate at webhook level to prevent duplicate queue messages
+      // Graph may send the same notification multiple times (at-least-once delivery)
+      if (isWebhookDuplicate(meetingId, transcriptId)) {
+        structuredLog(context, "info", "SKIP: Duplicate webhook notification", { meetingId, transcriptId });
+        skippedCount++;
+        continue;
+      }
+      markWebhookProcessed(meetingId, transcriptId);
 
       queueMessages.push({
         userId,
