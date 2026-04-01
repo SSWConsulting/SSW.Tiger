@@ -937,6 +937,31 @@ async function main() {
       formatted: meetingDuration,
     });
 
+    // Filter: check meeting invitees (organizer + attendees) for external users
+    // External = UPN contains "client" OR displayName doesn't include "SSW" OR different tenantId
+    // IMPORTANT: Must run BEFORE subject filter so external meetings are silently dropped
+    // (subject filter sends "skipped" notifications — external meetings must not trigger those)
+    const inviteeCheck = checkMeetingInviteesForExternal(meeting);
+    if (inviteeCheck.hasExternal) {
+      outputResult({
+        skipped: true,
+        reason: `Meeting has external invitees: ${inviteeCheck.reason}`,
+        meetingDuration,
+      });
+      process.exit(0);
+    }
+
+    // Filter: skip meetings with external participants (non-SSW tenantId)
+    // Uses chatParticipants already fetched above
+    if (hasExternalParticipants(chatParticipants)) {
+      outputResult({
+        skipped: true,
+        reason: `Meeting has external participants (non-SSW): "${subject}"`,
+        meetingDuration,
+      });
+      process.exit(0);
+    }
+
     if (CONFIG.skipSubjectFilter) {
       log("info", "Subject filter skipped (manual trigger)", { subject });
     } else if (!matchesMeetingFilter(subject)) {
@@ -952,37 +977,11 @@ async function main() {
       process.exit(0);
     }
 
-    // Filter: check meeting invitees (organizer + attendees) for external users
-    // External = UPN contains "client" OR displayName doesn't include "SSW" OR different tenantId
-    const inviteeCheck = checkMeetingInviteesForExternal(meeting);
-    if (inviteeCheck.hasExternal) {
-      outputResult({
-        skipped: true,
-        reason: `Meeting has external invitees: ${inviteeCheck.reason}`,
-        meetingDuration,
-      });
-      process.exit(0);
-    }
-
     // Extract project name and generate filename using transcript date
     // Convert to Australian Eastern Time for correct local date
     const projectName = extractProjectName(subject);
     const meetingDate = convertToAustralianDate(transcriptDate);
     const filename = generateFilename(meeting, transcriptDate);
-
-    // Save transcript to file (only reached if meeting passes all filters)
-    const transcriptPath = await saveTranscript(content, filename);
-
-    // Filter: skip meetings with external participants (non-SSW tenantId)
-    // Uses chatParticipants already fetched above
-    if (hasExternalParticipants(chatParticipants)) {
-      outputResult({
-        skipped: true,
-        reason: `Meeting has external participants (non-SSW): "${subject}"`,
-        meetingDuration,
-      });
-      process.exit(0);
-    }
 
     // Detect VTT speaker label format (for boardroom vs individual join scenarios)
     const vttInfo = detectVttSpeakerLabels(content);
