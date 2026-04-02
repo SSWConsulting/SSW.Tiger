@@ -993,6 +993,9 @@ async function main() {
       invitees: invitees.map((i) => ({ name: i.derivedName, role: i.role })),
     });
 
+    // Save transcript to file (only reached if meeting passes all filters)
+    const transcriptPath = await saveTranscript(content, filename);
+
     // Output result as JSON to stdout (includes notification info)
     outputResult({
       success: true,
