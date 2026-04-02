@@ -95,6 +95,18 @@ module dashboardStorage 'modules/dashboardStorage.bicep' = {
   }
 }
 
+// 4c. Cosmos DB - Meeting metadata and consolidated analysis
+module cosmosDb 'modules/cosmosDb.bicep' = {
+  name: 'provision-cosmos-db-${suffix}'
+  params: {
+    project: project
+    environment: environment
+    costCategoryTag: costCategoryTag
+    location: location
+    managedIdentityPrincipalId: id.outputs.principalId
+  }
+}
+
 // 5. Monitoring - Log Analytics + Application Insights
 module monitoring 'modules/monitoring.bicep' = {
   name: 'provision-monitoring-${suffix}'
@@ -123,6 +135,7 @@ module containerApp 'modules/containerApp.bicep' = {
     logAnalyticsPrimaryKey: monitoring.outputs.logAnalyticsPrimaryKey
     claudeModel: claudeModel
     dashboardStorageAccountName: dashboardStorage.outputs.name
+    cosmosEndpoint: cosmosDb.outputs.endpoint
   }
 }
 
@@ -155,6 +168,8 @@ module functionApp 'modules/functionApp.bicep' = {
     managedIdentityClientId: id.outputs.clientId
     appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
     dashboardStorageAccountName: dashboardStorage.outputs.name
+    cosmosEndpoint: cosmosDb.outputs.endpoint
+    claudeModel: claudeModel
   }
 }
 
@@ -190,6 +205,13 @@ output managedIdentity object = {
   name: id.outputs.name
 }
 
+
+output cosmosDb object = {
+  endpoint: cosmosDb.outputs.endpoint
+  accountName: cosmosDb.outputs.accountName
+  databaseName: cosmosDb.outputs.databaseName
+  containerName: cosmosDb.outputs.containerName
+}
 
 output monitoring object = {
   logAnalyticsName: monitoring.outputs.logAnalyticsName

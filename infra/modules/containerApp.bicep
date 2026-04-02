@@ -27,6 +27,9 @@ param claudeModel string = 'claude-opus-4-5-20251101'
 @description('Storage account name for dashboard static website hosting')
 param dashboardStorageAccountName string
 
+@description('Cosmos DB endpoint for meeting metadata persistence')
+param cosmosEndpoint string = ''
+
 var envName = toLower('ce-${project}-${environment}')
 var jobName = toLower('job-${project}-${environment}')
 // Dashboard URL: dashboards.sswtiger.com for staging, dashboards-{env}.sswtiger.com for others
@@ -146,12 +149,16 @@ resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
             { name: 'GRAPH_TENANT_ID', secretRef: 'graph-tenant-id' }
             { name: 'LOGIC_APP_URL', secretRef: 'logic-app-url' }
             { name: 'STORAGE_CONNECTION_STRING', secretRef: 'storage-connection-string' }
+            { name: 'COSMOS_ENDPOINT', value: cosmosEndpoint }
           ]
         }
       ]
     }
   }
 }
+
+// NOTE: Managed identity has Contributor at resource group level (configured externally)
+// This covers jobs.start/stop/list permissions needed by the Function App
 
 output environmentId string = containerEnv.id
 output environmentName string = containerEnv.name
