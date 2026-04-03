@@ -36,6 +36,7 @@
 
 const fs = require("fs").promises;
 const path = require("path");
+const { log } = require("../lib/logger");
 
 // Configuration from environment
 const CONFIG = {
@@ -93,16 +94,6 @@ function convertToAustralianTime(utcTimestamp) {
     minute: '2-digit',
     second: '2-digit'
   }).replace(/:/g, '');
-}
-
-function log(level, message, data = null) {
-  const logEntry = {
-    level: level.toLowerCase(),
-    message,
-    ...(data && { ...data }),
-  };
-  // All logs to stderr (consistent with processor.js)
-  console.error(JSON.stringify(logEntry));
 }
 
 function validateConfig() {

@@ -257,6 +257,10 @@ async function triggerContainerAppJob(params, context) {
               { name: "GRAPH_CLIENT_SECRET", secretRef: "graph-client-secret" },
               { name: "GRAPH_TENANT_ID", secretRef: "graph-tenant-id" },
               { name: "LOGIC_APP_URL", secretRef: "logic-app-url" },
+              // Cosmos DB for meeting metadata persistence
+              { name: "COSMOS_ENDPOINT", value: process.env.COSMOS_ENDPOINT || "" },
+              // Claude model override
+              { name: "CLAUDE_MODEL", value: process.env.CLAUDE_MODEL || "" },
             ],
           },
         ],

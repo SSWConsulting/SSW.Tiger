@@ -37,14 +37,15 @@ RUN if [ -f /root/.local/bin/claude ]; then \
 WORKDIR /app
 
 # Copy application code
-COPY processor.js ./
-COPY download-transcript.js ./
-COPY send-teams-notification.js ./
+COPY processor/ ./processor/
+COPY lib/ ./lib/
 COPY CLAUDE.md ./
 COPY .claude/agents/ ./.claude/agents/
 COPY .claude/skills/ ./.claude/skills/
 COPY templates/ ./templates/
 COPY entrypoint.sh ./
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
 
 # Create necessary directories
 RUN mkdir -p /app/projects /app/output
