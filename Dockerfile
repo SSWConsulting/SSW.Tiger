@@ -1,5 +1,5 @@
 # Use official Node.js LTS with Claude Code CLI support
-FROM node:18-slim
+FROM node:20-slim
 
 # Install dependencies (including ca-certificates for Claude SSL/TLS)
 RUN apt-get update && \
