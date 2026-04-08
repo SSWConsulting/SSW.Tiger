@@ -107,10 +107,10 @@ async function deployDashboard({ dashboardPath, projectName, meetingId }) {
     }
   }
 
-  const dashboardPath = `${projectName}/${meetingId}`;
-  const deployedUrl = `https://${host}/${dashboardPath}`;
+  const storagePath = `${projectName}/${meetingId}`;
+  const deployedUrl = `https://${host}/${storagePath}`;
   log("info", "Dashboard deployed", { url: deployedUrl });
-  return { deployedUrl, dashboardPath };
+  return { deployedUrl, dashboardPath: storagePath };
 }
 
 /**
