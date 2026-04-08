@@ -107,15 +107,16 @@ async function deployDashboard({ dashboardPath, projectName, meetingId }) {
     }
   }
 
-  const deployedUrl = `https://${host}/${projectName}/${meetingId}`;
+  const dashboardPath = `${projectName}/${meetingId}`;
+  const deployedUrl = `https://${host}/${dashboardPath}`;
   log("info", "Dashboard deployed", { url: deployedUrl });
-  return deployedUrl;
+  return { deployedUrl, dashboardPath };
 }
 
 /**
  * Persist meeting metadata and consolidated JSON to Cosmos DB.
  */
-async function persistToCosmos({ projectName, meetingId, meetingDate, deployedUrl, meetingPath }) {
+async function persistToCosmos({ projectName, meetingId, meetingDate, dashboardPath, meetingPath }) {
   const consolidatedPath = path.join(meetingPath, "analysis", "consolidated.json");
 
   let consolidated = null;
@@ -140,7 +141,7 @@ async function persistToCosmos({ projectName, meetingId, meetingDate, deployedUr
     projectName,
     meetingId,
     meetingDate,
-    dashboardUrl: deployedUrl,
+    dashboardPath,
     consolidated,
     metadata,
   });

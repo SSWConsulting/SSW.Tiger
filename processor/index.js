@@ -65,7 +65,7 @@ async function processTranscript(transcriptPath, projectName) {
   });
 
   // Deploy to Azure Blob Storage
-  const deployedUrl = await deployDashboard({
+  const { deployedUrl, dashboardPath: storagePath } = await deployDashboard({
     dashboardPath: canonicalPath,
     projectName,
     meetingId,
@@ -78,7 +78,7 @@ async function processTranscript(transcriptPath, projectName) {
         projectName,
         meetingId,
         meetingDate,
-        deployedUrl,
+        dashboardPath: storagePath,
         meetingPath,
       });
     } catch (err) {
