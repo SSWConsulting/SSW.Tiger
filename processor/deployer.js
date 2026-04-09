@@ -57,6 +57,8 @@ async function deployDashboard({ dashboardPath, projectName, meetingId }) {
 
   const dashboardDir = path.dirname(dashboardPath);
 
+  const blobDestination = `$web/${projectName}/${meetingId}`;
+
   log("info", "Deploying dashboard to blob storage", {
     storageAccount,
     destination: blobDestination,
@@ -86,7 +88,7 @@ async function deployDashboard({ dashboardPath, projectName, meetingId }) {
     execFileSync("az", [
       "storage", "blob", "upload-batch",
       "--source", dashboardDir,
-      "--destination", `$web/${projectName}/${meetingId}`,
+      "--destination", blobDestination,
       "--account-name", storageAccount,
       "--auth-mode", "login",
       "--overwrite",
