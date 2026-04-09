@@ -27,9 +27,7 @@ param claudeModel string = 'claude-opus-4-5-20251101'
 
 var functionAppName = toLower('func-${project}-${environment}')
 var hostingPlanName = toLower('plan-${project}-${environment}')
-// Dashboard URL: use raw blob host until custom domain is configured
-// TODO: Switch to dashboards.sswtiger.com / dashboards-{env}.sswtiger.com when DNS is ready
-var dashboardBaseUrl = '${dashboardStorageAccountName}.z8.web.core.windows.net'
+var dashboardBaseUrl = environment == 'staging' ? 'dashboards.sswtiger.com' : 'dashboards-${environment}.sswtiger.com'
 
 // App Service Plan (Consumption - serverless)
 resource hostingPlan 'Microsoft.Web/serverfarms@2023-12-01' = {

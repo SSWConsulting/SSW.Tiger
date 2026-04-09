@@ -55,7 +55,6 @@ async function deployDashboard({ dashboardPath, projectName, meetingId }) {
     throw new Error("DASHBOARD_STORAGE_ACCOUNT not set");
   }
 
-  const blobDestination = `'$web/${projectName}/${meetingId}'`;
   const dashboardDir = path.dirname(dashboardPath);
 
   log("info", "Deploying dashboard to blob storage", {
@@ -63,14 +62,14 @@ async function deployDashboard({ dashboardPath, projectName, meetingId }) {
     destination: blobDestination,
   });
 
-  const { execSync } = require("child_process");
+  const { execFileSync } = require("child_process");
   const azureClientId = process.env.AZURE_CLIENT_ID;
 
   // Login with managed identity
   if (azureClientId) {
     log("info", "Logging in with managed identity", { clientId: azureClientId });
     try {
-      execSync(`az login --identity --client-id ${azureClientId}`, {
+      execFileSync("az", ["login", "--identity", "--client-id", azureClientId], {
         encoding: "utf-8",
         stdio: ["pipe", "pipe", "pipe"],
       });
@@ -84,10 +83,14 @@ async function deployDashboard({ dashboardPath, projectName, meetingId }) {
 
   // Upload dashboard files
   try {
-    execSync(
-      `az storage blob upload-batch --source "${dashboardDir}" --destination ${blobDestination} --account-name ${storageAccount} --auth-mode login --overwrite`,
-      { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
-    );
+    execFileSync("az", [
+      "storage", "blob", "upload-batch",
+      "--source", dashboardDir,
+      "--destination", `$web/${projectName}/${meetingId}`,
+      "--account-name", storageAccount,
+      "--auth-mode", "login",
+      "--overwrite",
+    ], { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
   } catch (err) {
     log("error", "Blob upload failed", { stderr: err.stderr });
     throw err;
@@ -97,10 +100,12 @@ async function deployDashboard({ dashboardPath, projectName, meetingId }) {
   let host = process.env.DASHBOARD_BASE_URL;
   if (!host) {
     try {
-      host = execSync(
-        `az storage account show --name ${storageAccount} --query "primaryEndpoints.web" -o tsv`,
-        { encoding: "utf-8" },
-      ).trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
+      host = execFileSync("az", [
+        "storage", "account", "show",
+        "--name", storageAccount,
+        "--query", "primaryEndpoints.web",
+        "-o", "tsv",
+      ], { encoding: "utf-8" }).trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
     } catch {
       host = `${storageAccount}.z8.web.core.windows.net`;
       log("warn", "Could not query storage account, using fallback hostname", { host });

@@ -32,9 +32,7 @@ param cosmosEndpoint string = ''
 
 var envName = toLower('ce-${project}-${environment}')
 var jobName = toLower('job-${project}-${environment}')
-// Dashboard URL: use raw blob host until custom domain is configured
-// TODO: Switch to dashboards.sswtiger.com / dashboards-{env}.sswtiger.com when DNS is ready
-var dashboardBaseUrl = '${dashboardStorageAccountName}.z8.web.core.windows.net'
+var dashboardBaseUrl = environment == 'staging' ? 'dashboards.sswtiger.com' : 'dashboards-${environment}.sswtiger.com'
 
 // Container Apps Environment (the "cluster")
 resource containerEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
