@@ -10,40 +10,25 @@ assignees: ''
 <!-- **Tip:** Delete parts that are not relevant -->
 <!-- Next to Cc:, @ mention users who should be in the loop -->
 Cc:
-<!-- add intended user next to **Hi** -->
-Hi {{ USER }}
+Hi Team!
 
-<!-- duration in the format of xx min xx sec -->
-[▶️ Watch the video ({{ DURATION }})]({{ VIDEO_LINK }})
+<!-- duration in the format of xx min xx sec, or just xx sec if under 1 min -->
+🟥 [Watch the video ({{ DURATION }})]({{ VIDEO_LINK }})
 
-### Describe the Bug
-<!-- A clear and concise description of what the bug is. -->
+### Pain
+<!-- A clear and concise description of the problem and its impact. -->
 
-### To Reproduce
-Steps to reproduce the behavior:
+### Acceptance Criteria
+<!-- Define the requirements that must be met for this bug to be considered fixed. -->
+1. {{ AC 1 }}
+
+### Reproduce Steps
 1. ...
 2. ...
 3. ...
 4. See error
 
-### Expected Behavior
-<!-- A clear and concise description of what you expected to happen. -->
-
-### Tasks
-<!-- Add below task to issue body, unless user specifies detailed tasks. -->
-- [ ] Investigate
-- [ ] Fix
-
-### More Information
-<!-- Add any other context about the problem here. -->
-
-### Environment
- - Device: [e.g. iPhone 12]
- - Browser: [e.g. chrome, safari]
- - OS: [e.g. iOS]
-
-### Screenshots
-<!-- If applicable, add screenshots to help explain your problem. -->
-
+### Screenshot
+<!-- If applicable, add a screenshot to help explain your problem. -->
 
 Thanks!
