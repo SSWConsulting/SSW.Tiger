@@ -248,14 +248,19 @@ async function triggerContainerAppJob(params, context) {
                 : []),
               // Static values - must be included as template override replaces the env array
               { name: "NODE_ENV", value: "production" },
+              { name: "AZURE_CLIENT_ID", value: process.env.AZURE_CLIENT_ID },
+              { name: "DASHBOARD_STORAGE_ACCOUNT", value: process.env.DASHBOARD_STORAGE_ACCOUNT },
+              { name: "DASHBOARD_BASE_URL", value: process.env.DASHBOARD_BASE_URL },
               // Secrets from job configuration (defined in containerApp.bicep)
               { name: "CLAUDE_CODE_OAUTH_TOKEN", secretRef: "anthropic-oauth-token" },
-              { name: "SURGE_EMAIL", secretRef: "surge-email" },
-              { name: "SURGE_TOKEN", secretRef: "surge-token" },
               { name: "GRAPH_CLIENT_ID", secretRef: "graph-client-id" },
               { name: "GRAPH_CLIENT_SECRET", secretRef: "graph-client-secret" },
               { name: "GRAPH_TENANT_ID", secretRef: "graph-tenant-id" },
               { name: "LOGIC_APP_URL", secretRef: "logic-app-url" },
+              // Cosmos DB for meeting metadata persistence
+              { name: "COSMOS_ENDPOINT", value: process.env.COSMOS_ENDPOINT || "" },
+              // Claude model override
+              { name: "CLAUDE_MODEL", value: process.env.CLAUDE_MODEL || "" },
             ],
           },
         ],

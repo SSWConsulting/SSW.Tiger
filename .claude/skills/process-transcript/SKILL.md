@@ -129,10 +129,15 @@ Create `projects/{project}/dashboards/{date}/index.html` using the **consolidate
 - Improvement tracking
 - Trajectory visualizations
 
-### Step 5: Deploy to Surge.sh
+### Step 5: Deploy to Azure Blob Storage
 ```bash
-cd projects/{project}/dashboards/{date}
-surge . {project}-{date}.surge.sh
+az login --identity --username $AZURE_CLIENT_ID
+az storage blob upload-batch \
+  --source projects/{project}/{meeting-id}/dashboard \
+  --destination '$web/{project}/{meeting-id}' \
+  --account-name $DASHBOARD_STORAGE_ACCOUNT \
+  --auth-mode login \
+  --overwrite
 ```
 
 ### Step 6: Report Success
@@ -151,7 +156,7 @@ surge . {project}-{date}.surge.sh
   - Quality score: 92/100
 
 ✓ Dashboard generated: projects/{project}/dashboards/{date}/index.html
-✓ Deployed to: https://{project}-{date}.surge.sh
+✓ Deployed to: https://dashboards.sswtiger.com/{project}/{meeting-id}
 ```
 
 ## File Structure

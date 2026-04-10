@@ -24,6 +24,8 @@
  *   Error: {"error": true, "message": "..."}
  */
 
+const { log } = require("../lib/logger");
+
 const CONFIG = {
   logicAppUrl: process.env.LOGIC_APP_URL,
   dashboardUrl: process.env.DASHBOARD_URL,
@@ -36,16 +38,6 @@ const CONFIG = {
   triggerUrl: process.env.TRIGGER_URL, // URL to manually trigger processing (for "skipped" notifications)
   meetingDuration: process.env.MEETING_DURATION || null, // Pre-formatted duration string (e.g. "23 min", "1 hr 32 min")
 };
-
-function log(level, message, data = null) {
-  const logEntry = {
-    level: level.toLowerCase(),
-    message,
-    ...(data && { ...data }),
-  };
-  // All logs to stderr (consistent with processor.js)
-  console.error(JSON.stringify(logEntry));
-}
 
 function outputResult(result) {
   console.log(JSON.stringify(result));

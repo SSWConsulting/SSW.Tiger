@@ -13,12 +13,21 @@ param containerAppJobResourceGroup string
 param containerAppJobImage string
 param managedIdentityId string
 param managedIdentityClientId string
+param dashboardStorageAccountName string
 
 // Application Insights for logging
 param appInsightsConnectionString string
 
+@description('Cosmos DB endpoint (passed through to Container App Job)')
+param cosmosEndpoint string = ''
+
+@description('Claude model ID (passed through to Container App Job)')
+param claudeModel string = 'claude-opus-4-5-20251101'
+
+
 var functionAppName = toLower('func-${project}-${environment}')
 var hostingPlanName = toLower('plan-${project}-${environment}')
+var dashboardBaseUrl = environment == 'staging' ? 'dashboards.sswtiger.com' : 'dashboards-${environment}.sswtiger.com'
 
 // App Service Plan (Consumption - serverless)
 resource hostingPlan 'Microsoft.Web/serverfarms@2023-12-01' = {
@@ -103,6 +112,11 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'CONTAINER_APP_JOB_NAME', value: containerAppJobName }
         { name: 'CONTAINER_APP_JOB_RESOURCE_GROUP', value: containerAppJobResourceGroup }
         { name: 'CONTAINER_APP_JOB_IMAGE', value: containerAppJobImage }
+        { name: 'DASHBOARD_STORAGE_ACCOUNT', value: dashboardStorageAccountName }
+        { name: 'DASHBOARD_BASE_URL', value: dashboardBaseUrl }
+        // Passed through to Container App Job at start time
+        { name: 'COSMOS_ENDPOINT', value: cosmosEndpoint }
+        { name: 'CLAUDE_MODEL', value: claudeModel }
         // Subscription ID (for Container App API calls)
         { name: 'SUBSCRIPTION_ID', value: subscription().subscriptionId }
         // Graph Subscription ID (stored in Key Vault after creation via script)

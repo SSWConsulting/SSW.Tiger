@@ -36,6 +36,7 @@
 
 const fs = require("fs").promises;
 const path = require("path");
+const { log } = require("../lib/logger");
 
 // Configuration from environment
 const CONFIG = {
@@ -93,16 +94,6 @@ function convertToAustralianTime(utcTimestamp) {
     minute: '2-digit',
     second: '2-digit'
   }).replace(/:/g, '');
-}
-
-function log(level, message, data = null) {
-  const logEntry = {
-    level: level.toLowerCase(),
-    message,
-    ...(data && { ...data }),
-  };
-  // All logs to stderr (consistent with processor.js)
-  console.error(JSON.stringify(logEntry));
 }
 
 function validateConfig() {
@@ -699,7 +690,7 @@ function extractProjectName(subject) {
 function generateFilename(meeting, transcriptDate) {
   // Use transcript createdDateTime (actual recording time)
   // Format: {date}-{time}.vtt (date+time is sufficient for uniqueness)
-  // This becomes the deploy URL: {project}-{date}-{time}.surge.sh
+  // This becomes the deploy URL: dashboards.sswtiger.com/{project}/{date}-{time}
   // Convert to Australian Eastern Time for correct local date
   const date = convertToAustralianDate(transcriptDate);
   const time = convertToAustralianTime(transcriptDate);

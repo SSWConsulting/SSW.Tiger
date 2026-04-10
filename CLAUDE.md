@@ -1,6 +1,6 @@
 # Meeting Summary Dashboard Generator
 
-You are a meeting transcript processor. Your job is to convert .vtt transcripts into **comprehensive, multi-tab HTML dashboards** and deploy them to surge.sh.
+You are a meeting transcript processor. Your job is to convert .vtt transcripts into **comprehensive, multi-tab HTML dashboards** and deploy them to Azure Blob Storage (served via sswtiger.com).
 
 ## CRITICAL RULES
 
@@ -8,7 +8,7 @@ You are a meeting transcript processor. Your job is to convert .vtt transcripts 
 2. **NEVER just summarize** - Always generate a FULL multi-tab dashboard
 3. **ALWAYS use the specialized agents** for deep analysis
 4. **ALWAYS run consolidation** before generating the dashboard
-5. **ALWAYS deploy to surge.sh** after generating the dashboard
+5. **ALWAYS deploy to Azure Blob Storage** after generating the dashboard
 6. **PUT SERIOUS EFFORT INTO THIS** - This is important work
 
 ## Architecture
@@ -52,12 +52,10 @@ You are a meeting transcript processor. Your job is to convert .vtt transcripts 
 │                  4. GENERATE DASHBOARD                           │
 │  Use consolidated.json (NOT raw agent outputs)                  │
 │  Multi-tab HTML with consistent naming throughout               │
+│  Save to: projects/{project}/{meeting-id}/dashboard/index.html  │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
-┌─────────────────────────────────────────────────────────────────┐
-│                      5. DEPLOY                                   │
-│  surge . {project}-{meeting-id}.surge.sh                        │
-└─────────────────────────────────────────────────────────────────┘
+              (Deployment handled by processor.js)
 ```
 
 ## Participant Resolution
@@ -395,37 +393,11 @@ The template includes a script that automatically falls back to initials (from `
 
 ## Deployment
 
-After generating the dashboard, deploy it to surge.sh:
+**Do NOT deploy the dashboard.** Deployment is handled automatically by `processor.js` after you generate the HTML. Your only job is to save the dashboard to:
 
-1. Navigate to the dashboard directory
-2. **Use the deploy URL specified in the prompt** (it's already truncated if needed for surge.sh limits)
-3. Run the exact command from the prompt: `surge . {deploy-url}`
-4. **CRITICAL OUTPUT FORMAT**: After successful deployment, you MUST output this line in plain text (not in a code block, not in markdown):
-
-   ```
-   DEPLOYED_URL=https://{deploy-url}
-   ```
-
-   **Requirements for the DEPLOYED_URL line:**
-   - Must be on its own line
-   - Must include the full URL with `https://` protocol
-   - Must NOT have any text before or after the URL on the same line
-   - Must use the exact domain you deployed to (e.g., `https://yakshaver-2026-01-22-094557.surge.sh`)
-   - Do NOT wrap in code blocks, quotes, or markdown formatting
-   - Do NOT add explanatory text like "Successfully deployed to..." on the same line
-
-   **Example of correct output:**
-   ```
-   DEPLOYED_URL=https://yakshaver-2026-01-22-094557.surge.sh
-   ```
-
-   **Examples of INCORRECT output (will fail parsing):**
-   - `Deployed to: https://...` ❌
-   - `` `DEPLOYED_URL=https://...` `` ❌
-   - `DEPLOYED_URL=yakshaver-2026-01-22-094557.surge.sh` ❌ (missing protocol)
-   - `Successfully deployed! DEPLOYED_URL=https://...` ❌
-
-The processor uses multiple pattern matching strategies to extract the URL, but following the exact format above ensures reliable extraction.
+```
+projects/{project}/{meeting-id}/dashboard/index.html
+```
 
 ## DO NOT
 
@@ -435,6 +407,5 @@ The processor uses multiple pattern matching strategies to extract the URL, but 
 - **Skip the consolidation step**
 - Use inconsistent names across tabs
 - Generate a simple single-tab page
-- Skip the deployment
+- Deploy the dashboard (processor.js handles deployment)
 - Rush through the analysis - THIS IS IMPORTANT
-- Add extra text after DEPLOYED_URL (processor parses this line)

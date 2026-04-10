@@ -2,9 +2,9 @@
   "name": "meeting-summariser",
   "version": "1.0.0",
   "description": "Containerized meeting transcript processor that generates analysis dashboards",
-  "main": "processor.js",
+  "main": "processor/index.js",
   "scripts": {
-    "start": "node processor.js"
+    "start": "node processor/index.js"
   },
   "keywords": [
     "meeting",
@@ -15,8 +15,11 @@
   ],
   "author": "",
   "license": "MIT",
-  "dependencies": {},
+  "dependencies": {
+    "@azure/cosmos": "^4.9.2",
+    "@azure/identity": "^4.13.1"
+  },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   }
 }

@@ -80,7 +80,7 @@ EOF
 send_failure_notification() {
     if [ -n "$LOGIC_APP_URL" ] && [ -n "$PARTICIPANTS_JSON" ]; then
         export NOTIFICATION_TYPE="failed"
-        node send-teams-notification.js >/dev/null || true
+        node processor/sendNotification.js >/dev/null || true
     fi
 }
 
@@ -92,7 +92,7 @@ run_pipeline() {
     # Step 1: Download transcript
     # stderr flows through for real-time logs, stdout captured (JSON result)
     set +e
-    DOWNLOAD_RESULT=$(node download-transcript.js)
+    DOWNLOAD_RESULT=$(node processor/downloadTranscript.js)
     DOWNLOAD_EXIT_CODE=$?
     set -e
 
@@ -132,7 +132,7 @@ run_pipeline() {
             export NOTIFICATION_TYPE="skipped"
             export TRIGGER_URL="$TRIGGER_URL"
             export MEETING_DURATION="$MEETING_DURATION"
-            node send-teams-notification.js >/dev/null || log "warn" "Skipped notification failed"
+            node processor/sendNotification.js >/dev/null || log "warn" "Skipped notification failed"
         fi
 
         exit 0
@@ -161,7 +161,7 @@ run_pipeline() {
         export NOTIFICATION_TYPE="started"
         # CANCEL_URL and JOB_EXECUTION_ID are passed from Azure Function
         # They will be included in the notification payload for the Cancel button
-        node send-teams-notification.js >/dev/null || log "warn" "Started notification failed"
+        node processor/sendNotification.js >/dev/null || log "warn" "Started notification failed"
     fi
 
     # Step 3: Process transcript
@@ -171,7 +171,7 @@ run_pipeline() {
     set +e
     # stderr flows through for real-time display
     # stdout (only DEPLOYED_URL) captured to variable
-    PROCESSOR_STDOUT=$(node processor.js "$TRANSCRIPT_PATH" "$PROJECT_NAME")
+    PROCESSOR_STDOUT=$(node processor/index.js "$TRANSCRIPT_PATH" "$PROJECT_NAME")
     PROCESSOR_EXIT_CODE=$?
     set -e
 
@@ -202,7 +202,7 @@ run_pipeline() {
         log "info" "Sending completed notification..."
         export NOTIFICATION_TYPE="completed"
         export DASHBOARD_URL="$DEPLOYED_URL"
-        node send-teams-notification.js >/dev/null || log "warn" "Completed notification failed"
+        node processor/sendNotification.js >/dev/null || log "warn" "Completed notification failed"
     fi
 }
 
@@ -214,5 +214,5 @@ if [ -n "$GRAPH_MEETING_ID" ] && [ -n "$GRAPH_TRANSCRIPT_ID" ] && [ -n "$GRAPH_U
 else
     # Local mode: direct processor call
     setup_claude_auth
-    node processor.js "$@"
+    node processor/index.js "$@"
 fi

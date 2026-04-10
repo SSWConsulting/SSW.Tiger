@@ -34,6 +34,9 @@ param claudeModel string = 'claude-opus-4-5-20251101'
 @description('Unique suffix for deployment names')
 param suffix string = take(uniqueString(utcNow()), 6)
 
+@description('Skip Logic App deployment to preserve Portal configuration')
+param deployLogicApp bool = false
+
 
 var containerImage = 'ghcr.io/${githubOrg}/tiger-processor:${imageTag}'
 
@@ -69,7 +72,7 @@ module kvRoleAssignment 'modules/keyVaultRoleAssignment.bicep' = {
   }
 }
 
-// 4. Storage Account - Required by Function App runtime only
+// 4a. Storage Account - Required by Function App runtime only
 module storage 'modules/storage.bicep' = {
   name: 'provision-storage-${suffix}'
   params: {
@@ -77,6 +80,30 @@ module storage 'modules/storage.bicep' = {
     environment: environment
     costCategoryTag: costCategoryTag
     location: location
+  }
+}
+
+// 4b. Dashboard Storage - Static website hosting for meeting dashboards
+module dashboardStorage 'modules/dashboardStorage.bicep' = {
+  name: 'provision-dashboard-storage-${suffix}'
+  params: {
+    project: project
+    environment: environment
+    costCategoryTag: costCategoryTag
+    location: location
+    managedIdentityPrincipalId: id.outputs.principalId
+  }
+}
+
+// 4c. Cosmos DB - Meeting metadata and consolidated analysis
+module cosmosDb 'modules/cosmosDb.bicep' = {
+  name: 'provision-cosmos-db-${suffix}'
+  params: {
+    project: project
+    environment: environment
+    costCategoryTag: costCategoryTag
+    location: location
+    managedIdentityPrincipalId: id.outputs.principalId
   }
 }
 
@@ -107,11 +134,14 @@ module containerApp 'modules/containerApp.bicep' = {
     logAnalyticsCustomerId: monitoring.outputs.logAnalyticsCustomerId
     logAnalyticsPrimaryKey: monitoring.outputs.logAnalyticsPrimaryKey
     claudeModel: claudeModel
+    dashboardStorageAccountName: dashboardStorage.outputs.name
+    cosmosEndpoint: cosmosDb.outputs.endpoint
   }
 }
 
 // 7. Logic App - Teams notification via meeting chat
-module logicApp 'modules/logicApp.bicep' = {
+// Conditional: skip to preserve Portal-configured workflow definition
+module logicApp 'modules/logicApp.bicep' = if (deployLogicApp) {
   name: 'provision-logic-app-${suffix}'
   params: {
     project: project
@@ -137,6 +167,9 @@ module functionApp 'modules/functionApp.bicep' = {
     managedIdentityId: id.outputs.id
     managedIdentityClientId: id.outputs.clientId
     appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
+    dashboardStorageAccountName: dashboardStorage.outputs.name
+    cosmosEndpoint: cosmosDb.outputs.endpoint
+    claudeModel: claudeModel
   }
 }
 
@@ -148,6 +181,11 @@ output keyVault object = {
 output storage object = {
   name: storage.outputs.name
   blobEndpoint: storage.outputs.blobEndpoint
+}
+
+output dashboardStorage object = {
+  name: dashboardStorage.outputs.name
+  staticWebsiteHost: dashboardStorage.outputs.staticWebsiteHost
 }
 
 output containerApp object = {
@@ -167,8 +205,12 @@ output managedIdentity object = {
   name: id.outputs.name
 }
 
-output logicApp object = {
-  name: logicApp.outputs.name
+
+output cosmosDb object = {
+  endpoint: cosmosDb.outputs.endpoint
+  accountName: cosmosDb.outputs.accountName
+  databaseName: cosmosDb.outputs.databaseName
+  containerName: cosmosDb.outputs.containerName
 }
 
 output monitoring object = {

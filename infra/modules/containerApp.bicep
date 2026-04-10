@@ -24,8 +24,15 @@ param replicaTimeout int = 3600
 @description('Claude model ID for the processor (e.g. claude-opus-4-5-20251101)')
 param claudeModel string = 'claude-opus-4-5-20251101'
 
+@description('Storage account name for dashboard static website hosting')
+param dashboardStorageAccountName string
+
+@description('Cosmos DB endpoint for meeting metadata persistence')
+param cosmosEndpoint string = ''
+
 var envName = toLower('ce-${project}-${environment}')
 var jobName = toLower('job-${project}-${environment}')
+var dashboardBaseUrl = environment == 'staging' ? 'dashboards.sswtiger.com' : 'dashboards-${environment}.sswtiger.com'
 
 // Container Apps Environment (the "cluster")
 resource containerEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
@@ -75,16 +82,6 @@ resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
         {
           name: 'anthropic-oauth-token'
           keyVaultUrl: 'https://${keyVaultName}${az.environment().suffixes.keyvaultDns}/secrets/anthropic-oauth-token'
-          identity: managedIdentityId
-        }
-        {
-          name: 'surge-email'
-          keyVaultUrl: 'https://${keyVaultName}${az.environment().suffixes.keyvaultDns}/secrets/surge-email'
-          identity: managedIdentityId
-        }
-        {
-          name: 'surge-token'
-          keyVaultUrl: 'https://${keyVaultName}${az.environment().suffixes.keyvaultDns}/secrets/surge-token'
           identity: managedIdentityId
         }
         {
@@ -142,8 +139,8 @@ resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
           env: [
             { name: 'AZURE_CLIENT_ID', value: managedIdentityClientId }
             { name: 'CLAUDE_CODE_OAUTH_TOKEN', secretRef: 'anthropic-oauth-token' }
-            { name: 'SURGE_EMAIL', secretRef: 'surge-email' }
-            { name: 'SURGE_TOKEN', secretRef: 'surge-token' }
+            { name: 'DASHBOARD_STORAGE_ACCOUNT', value: dashboardStorageAccountName }
+            { name: 'DASHBOARD_BASE_URL', value: dashboardBaseUrl }
             { name: 'CLAUDE_MODEL', value: claudeModel }
             { name: 'NODE_ENV', value: environment == 'prod' ? 'production' : 'development' }
             { name: 'GRAPH_CLIENT_ID', secretRef: 'graph-client-id' }
@@ -151,12 +148,16 @@ resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
             { name: 'GRAPH_TENANT_ID', secretRef: 'graph-tenant-id' }
             { name: 'LOGIC_APP_URL', secretRef: 'logic-app-url' }
             { name: 'STORAGE_CONNECTION_STRING', secretRef: 'storage-connection-string' }
+            { name: 'COSMOS_ENDPOINT', value: cosmosEndpoint }
           ]
         }
       ]
     }
   }
 }
+
+// NOTE: Managed identity has Contributor at resource group level (configured externally)
+// This covers jobs.start/stop/list permissions needed by the Function App
 
 output environmentId string = containerEnv.id
 output environmentName string = containerEnv.name
