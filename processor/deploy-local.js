@@ -18,7 +18,6 @@
 
 require("dotenv").config({ path: require("path").join(__dirname, "..", ".env") });
 const path = require("path");
-const { log } = require("../lib/logger");
 const { checkOutputExists, deployDashboard, persistToCosmos } = require("./deployer");
 
 const ROOT_DIR = path.join(__dirname, "..");
