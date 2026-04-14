@@ -65,7 +65,7 @@ Transcript (.vtt)
 │  DASHBOARD GENERATION (SSW branded)              │
 └──────────────────────────────────────────────────┘
        ↓
-    Deploy to surge.sh
+    Deploy to Azure Blob Storage (dashboards.sswtiger.com)
 ```
 
 ## 📁 Project Structure
@@ -102,12 +102,32 @@ MeetingSummary/
 ### Prerequisites
 
 - [Claude Code CLI](https://docs.anthropic.com/claude/docs/claude-code)
-- [Node.js](https://nodejs.org/) + surge.sh: `npm install -g surge`
+- [Node.js](https://nodejs.org/)
+- [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) (for dashboard deployment)
 
-### Option 1: Interactive Usage (Claude Code CLI)
+### Setup
 
 ```bash
-cd c:\DataCalumSimpson\MeetingSummary
+# 1. Clone and install
+git clone https://github.com/SSWConsulting/SSW.Tiger.git
+cd SSW.Tiger
+npm install
+
+# 2. Configure environment
+cp .env.example .env
+# Edit .env and set:
+#   CLAUDE_CODE_OAUTH_TOKEN (or ANTHROPIC_API_KEY)
+#   DASHBOARD_STORAGE_ACCOUNT=<your-storage-account>
+#   DASHBOARD_BASE_URL=dashboards.sswtiger.com
+#   COSMOS_ENDPOINT=https://<your-cosmos>.documents.azure.com:443/
+
+# 3. Login to Azure (one-time, for dashboard deployment)
+az login
+```
+
+### Option 1: Interactive (Claude Code CLI)
+
+```bash
 claude
 ```
 
@@ -115,33 +135,35 @@ Then talk naturally:
 
 ```
 "Here's the weekly standup for project-alpha" + attach your .vtt file
-```
-
-Or process an existing transcript:
-
-```
 "Process the yakshaver transcript from today"
 ```
 
-### Option 2: Automated Processing (Container)
+Claude generates the dashboard HTML. To deploy it afterwards:
+
+```
+"Deploy the dashboard"           # Tell Claude (uses deploy-dashboard skill)
+```
+
+Or deploy manually from the command line:
+
+```bash
+node processor/deploy-local.js <project-name> <meeting-id>
+```
+
+### Option 2: Automated (Container / Azure)
 
 **Local Development**:
 
 ```bash
-# 1. Configure authentication (.env file)
-cp .env.example .env
-# Edit .env and set ANTHROPIC_API_KEY or CLAUDE_SUBSCRIPTION_TOKEN
-
-# 2. Build container
+# Build and run
 docker-compose build
-
-# 3. Process transcript
 docker-compose run --rm meeting-processor /app/dropzone/meeting.vtt projectname
 ```
 
 **Production (Azure)**:
 
 See [TIGER.md](TIGER.md) for full Azure deployment guide with Key Vault integration.
+The Azure pipeline handles deployment automatically via `processor/index.js` → `deployer.js`.
 
 ## 🔐 Authentication
 
@@ -249,7 +271,7 @@ After processing a transcript, you'll get:
 
 2. **Dashboard** in `projects/{project}/dashboards/{date}/index.html`
 
-3. **Deployment** at `https://{project}-{date}.surge.sh`
+3. **Deployment** at `https://dashboards.sswtiger.com/{project}/{meeting-id}`
 
 ## 🤝 Contributing
 

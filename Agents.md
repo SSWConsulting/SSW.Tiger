@@ -4,7 +4,7 @@
 
 ## What This System Does
 
-When a Microsoft Teams meeting ends, T.I.G.E.R. automatically downloads the transcript, runs 6 AI analysis agents, generates an HTML dashboard, deploys it to surge.sh, and notifies participants — zero human intervention.
+When a Microsoft Teams meeting ends, T.I.G.E.R. automatically downloads the transcript, runs 6 AI analysis agents, generates an HTML dashboard, deploys it to Azure Blob Storage (dashboards.sswtiger.com), and notifies participants — zero human intervention.
 
 ## Architecture at a Glance
 
@@ -26,7 +26,7 @@ TranscriptWebhook.js ──► Storage Queue ──► ProcessTranscriptQueue.js
                                          │   ├─ analytics-generator │
                                          │   ├─ longitudinal-anlzr  │
                                          │   └─ consolidator        │
-                                         │ → dashboard → surge.sh   │
+                                         │ → dashboard → Azure Blob Storage   │
                                          │ send-teams-notification  │
                                          └──────────────────────────┘
                                                     │
@@ -132,7 +132,7 @@ Skills in `.claude/skills/` are user-facing workflows that orchestrate the agent
 | `organize-transcript` | File a `.vtt` into the correct project folder | Changing folder structure conventions |
 | `analyze-meeting` | Extract basic insights (summary, action items) | Changing what basic analysis captures |
 | `generate-dashboard` | Generate HTML from `consolidated.json` | Changing dashboard generation logic |
-| `deploy-dashboard` | Deploy to surge.sh | Changing hosting target |
+| `deploy-dashboard` | Deploy to Azure Blob Storage (dashboards.sswtiger.com) | Changing hosting target |
 | `list-projects` | Show all projects and meeting history | Changing project listing format |
 
 ## Data Flow
@@ -265,7 +265,7 @@ secrets: [{
 |---|---|---|
 | Graph API | Client credentials | `OnlineMeetings.Read.All` + `CallRecords.Read.All` + Application Access Policy |
 | Claude CLI | OAuth or API key | OAuth for production, API key for dev |
-| Surge.sh | Email + token | `SURGE_EMAIL` + `SURGE_TOKEN` |
+| Azure Blob Storage | Storage account + base URL | `DASHBOARD_STORAGE_ACCOUNT` + `DASHBOARD_BASE_URL` |
 | Key Vault | Managed Identity | No credentials in code |
 | Webhook | `clientState` | Random string verified per notification |
 
@@ -309,5 +309,5 @@ ContainerAppConsoleLogs_CL
 | Webhook not triggering | Graph subscription expired (3-day TTL) | Check `RenewSubscription.js` timer is running |
 | Transcript download 403 | Application Access Policy missing | Teams Admin must configure the policy |
 | Claude processing timeout | Meeting too long / agents stuck | Increase Container App Job timeout |
-| Dashboard not deploying | Surge credentials expired | Verify `SURGE_EMAIL` + `SURGE_TOKEN` in Key Vault |
+| Dashboard not deploying | Azure storage auth failed | Verify `DASHBOARD_STORAGE_ACCOUNT` is set and `az login` is authenticated |
 | Notifications not sent | Logic App URL misconfigured | Check `LOGIC_APP_URL` env var |

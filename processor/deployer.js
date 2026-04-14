@@ -1,3 +1,17 @@
+/**
+ * Dashboard Deployment (Programmatic)
+ *
+ * Deployment is handled by code (not by Claude) for reliability:
+ * - Deterministic: same code, same result, every time
+ * - Fast: direct Node.js, no LLM round-trip
+ * - Atomic: blob upload + Cosmos DB persist in one sequence
+ * - Observable: structured JSON logs, clear errors, exit codes
+ *
+ * Azure pipeline:  processor/index.js → deployer.js (automatic)
+ * Local scripted:  processor/deploy-local.js → deployer.js (one command)
+ * Local interactive: deploy-dashboard skill → deploy-local.js → deployer.js
+ */
+
 const fs = require("fs").promises;
 const path = require("path");
 const { log } = require("../lib/logger");
@@ -65,6 +79,7 @@ async function deployDashboard({ dashboardPath, projectName, meetingId }) {
   });
 
   const { execFileSync } = require("child_process");
+  const isWindows = process.platform === "win32";
   const azureClientId = process.env.AZURE_CLIENT_ID;
 
   // Login with managed identity
@@ -74,6 +89,7 @@ async function deployDashboard({ dashboardPath, projectName, meetingId }) {
       execFileSync("az", ["login", "--identity", "--client-id", azureClientId], {
         encoding: "utf-8",
         stdio: ["pipe", "pipe", "pipe"],
+        shell: isWindows,
       });
     } catch (err) {
       log("error", "az login --identity failed", { stderr: err.stderr });
@@ -92,7 +108,7 @@ async function deployDashboard({ dashboardPath, projectName, meetingId }) {
       "--account-name", storageAccount,
       "--auth-mode", "login",
       "--overwrite",
-    ], { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
+    ], { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], shell: isWindows });
   } catch (err) {
     log("error", "Blob upload failed", { stderr: err.stderr });
     throw err;
@@ -107,7 +123,7 @@ async function deployDashboard({ dashboardPath, projectName, meetingId }) {
         "--name", storageAccount,
         "--query", "primaryEndpoints.web",
         "-o", "tsv",
-      ], { encoding: "utf-8" }).trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
+      ], { encoding: "utf-8", shell: isWindows }).trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
     } catch {
       host = `${storageAccount}.z8.web.core.windows.net`;
       log("warn", "Could not query storage account, using fallback hostname", { host });
