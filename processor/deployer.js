@@ -1,3 +1,17 @@
+/**
+ * Dashboard Deployment (Programmatic)
+ *
+ * Deployment is handled by code (not by Claude) for reliability:
+ * - Deterministic: same code, same result, every time
+ * - Fast: direct Node.js, no LLM round-trip
+ * - Atomic: blob upload + Cosmos DB persist in one sequence
+ * - Observable: structured JSON logs, clear errors, exit codes
+ *
+ * Azure pipeline:  processor/index.js → deployer.js (automatic)
+ * Local scripted:  processor/deploy-local.js → deployer.js (one command)
+ * Local interactive: deploy-dashboard skill → deploy-local.js → deployer.js
+ */
+
 const fs = require("fs").promises;
 const path = require("path");
 const { log } = require("../lib/logger");
