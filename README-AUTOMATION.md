@@ -13,7 +13,7 @@ When a Microsoft Teams meeting ends, the system automatically:
 1. **Detects** new transcripts via Microsoft Graph webhooks
 2. **Downloads** the transcript content (.vtt format)
 3. **Processes** using Claude AI to generate comprehensive analysis
-4. **Deploys** an HTML dashboard to surge.sh
+4. **Deploys** an HTML dashboard to Azure Blob Storage
 5. **Notifies** meeting participants with the dashboard link
 
 All without human intervention.
@@ -88,8 +88,8 @@ All without human intervention.
 │  │      - longitudinal-analyzer (recurring issues)           │  │
 │  │    • Consolidates outputs (name normalization)            │  │
 │  │    • Generates SSW-branded HTML dashboard                 │  │
-│  │    • Deploys to surge.sh                                  │  │
-│  │    • Outputs: DEPLOYED_URL=https://...surge.sh            │  │
+│  │    • Deploys to Azure Blob Storage                        │  │
+│  │    • Outputs: DEPLOYED_URL=https://dashboards.sswtiger.com/...  │  │
 │  └───────────────────────────────────────────────────────────┘  │
 │                          │                                       │
 │                          ↓                                       │
@@ -158,7 +158,7 @@ All without human intervention.
    - GRAPH_USER_ID, GRAPH_MEETING_ID, GRAPH_TRANSCRIPT_ID
    - GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, GRAPH_TENANT_ID
    - ANTHROPIC_API_KEY (from Key Vault reference)
-   - SURGE_EMAIL, SURGE_TOKEN (from Key Vault reference)
+   - DASHBOARD_STORAGE_ACCOUNT, DASHBOARD_BASE_URL
 5. Generate unique execution ID
 6. Trigger Container App Job via Azure SDK:
    - Pass all environment variables
@@ -188,8 +188,8 @@ GRAPH_USER_ID, GRAPH_MEETING_ID, GRAPH_TRANSCRIPT_ID
 # Claude authentication
 ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN
 
-# Surge.sh deployment
-SURGE_EMAIL, SURGE_TOKEN
+# Azure Blob Storage deployment
+DASHBOARD_STORAGE_ACCOUNT, DASHBOARD_BASE_URL
 
 # Optional: Cancellation support
 CHECK_CANCELLATION_URL (Function App endpoint to check cancel status)
@@ -261,7 +261,7 @@ LOGIC_APP_URL (Logic App HTTP trigger)
    - Must match: YYYY-MM-DD-HHmmss.vtt
    - Extract: meetingId, meetingDate, meetingTime
 3. Validate credentials:
-   - Require: SURGE_EMAIL + SURGE_TOKEN
+   - Require: DASHBOARD_STORAGE_ACCOUNT + DASHBOARD_BASE_URL
    - Check: CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY
 4. Create project folder structure:
    projects/{project-name}/{meeting-id}/
@@ -280,7 +280,7 @@ LOGIC_APP_URL (Logic App HTTP trigger)
    - Log progress to stderr
    
 7. Monitor for deployment:
-   - Search stdout for: DEPLOYED_URL=https://...surge.sh
+   - Search stdout for: DEPLOYED_URL=https://dashboards.sswtiger.com/...
    - Extract URL using regex
    - Validate URL format
    
@@ -289,7 +289,7 @@ LOGIC_APP_URL (Logic App HTTP trigger)
    - Any non-zero exit code = failure
    
 9. Output to stdout:
-   DEPLOYED_URL=https://projectname-2026-02-04-143000.surge.sh
+   DEPLOYED_URL=https://dashboards.sswtiger.com/projectname/2026-02-04-143000
 ```
 
 **Claude Processing (Internal)**:
@@ -304,7 +304,7 @@ LOGIC_APP_URL (Logic App HTTP trigger)
 
 7. generate-dashboard:    Merge all outputs → Apply SSW template → Generate HTML
 
-8. deploy-dashboard:      Upload to surge.sh → Output URL
+8. deploy-dashboard:      Upload to Azure Blob Storage → Output URL
 ```
 
 #### 3.4. Send Notification (`send-teams-notification.js`)
@@ -373,10 +373,10 @@ LOGIC_APP_URL (Logic App HTTP trigger)
    - Best for testing/development
    - Get from: https://console.anthropic.com/
 
-### Surge.sh Authentication
-**Required**: Email + Token
-- Get token: `surge token`
-- Store in Key Vault
+### Azure Blob Storage Authentication
+**Required**: Storage account name + Azure CLI auth
+- Authenticate: `az login`
+- Store account name in Key Vault
 
 ### Key Vault Integration
 All secrets stored in Azure Key Vault:
@@ -435,9 +435,9 @@ GRAPH_TENANT_ID=...
 ANTHROPIC_API_KEY=...              # Pay-as-you-go
 CLAUDE_CODE_OAUTH_TOKEN=...        # Subscription
 
-# Surge.sh Deployment
-SURGE_EMAIL=...
-SURGE_TOKEN=...
+# Azure Blob Storage Deployment
+DASHBOARD_STORAGE_ACCOUNT=<storage-account-name>
+DASHBOARD_BASE_URL=dashboards.sswtiger.com
 ```
 
 **Optional**:
@@ -473,7 +473,7 @@ param costCategoryTag = { 'cost-category': 'dev/test' }
 2. App Registration (Graph API permissions)
 3. GitHub repository (for CI/CD)
 4. Claude API access (API key or OAuth)
-5. Surge.sh account
+5. Azure Storage account for dashboards
 
 ### Initial Setup
 
@@ -498,7 +498,7 @@ az keyvault secret set --vault-name kv-tiger-staging \
   --name AnthropicApiKey --value "sk-ant-..."
   
 az keyvault secret set --vault-name kv-tiger-staging \
-  --name SurgeToken --value "..."
+  --name DashboardStorageAccount --value "..."
 ```
 
 #### 4. Create Graph Subscription
@@ -544,7 +544,7 @@ docker-compose run --rm meeting-processor \
 
 # 4. Verify output
 # - Dashboard generated in projects/test-project/
-# - Deployed to surge.sh
+# - Deployed to Azure Blob Storage
 ```
 
 ### E2E Testing (Azure)
@@ -566,7 +566,7 @@ curl -X POST https://func-tiger-staging.azurewebsites.net/api/TranscriptWebhook?
 # 5. Wait ~2 minutes for transcript generation
 # 6. Check Function logs for webhook notification
 # 7. Check Container App Job logs for processing
-# 8. Verify dashboard deployed to surge.sh
+# 8. Verify dashboard deployed to Azure Blob Storage
 # 9. Check Teams for notification message
 ```
 
@@ -624,8 +624,8 @@ ContainerAppConsoleLogs_CL
 - **Solution**: Increase timeout or reduce transcript length
 
 **Issue**: Dashboard not deploying
-- **Check**: Surge credentials in Key Vault
-- **Solution**: Verify SURGE_EMAIL and SURGE_TOKEN
+- **Check**: DASHBOARD_STORAGE_ACCOUNT is set
+- **Solution**: Verify DASHBOARD_STORAGE_ACCOUNT and run az login
 
 ---
 
@@ -637,7 +637,7 @@ ContainerAppConsoleLogs_CL
 |-------------|---------|----------|
 | `AnthropicApiKey` | Claude API authentication | https://console.anthropic.com/ |
 | `ClaudeCodeOAuthToken` | Claude subscription (alternative) | `claude auth login` |
-| `SurgeToken` | Surge.sh deployment | `surge token` |
+| `DashboardStorageAccount` | Azure Blob Storage deployment | Azure Portal |
 | `GraphClientSecret` | Graph API app secret | Azure Portal → App Registration |
 | `WebhookClientState` | Webhook validation | Generate random string |
 

@@ -13,7 +13,7 @@ Convert a .vtt meeting transcript into a comprehensive, deployed HTML dashboard 
 1. ✅ Orchestrates **5 specialized analysis agents**
 2. ✅ Runs **consolidation** to ensure consistency
 3. ✅ Creates a **multi-tab HTML dashboard** with rich insights
-4. ✅ Deploys to **surge.sh**
+4. ✅ Generates a deployable dashboard (deploy via `deploy-dashboard` skill or `node processor/deploy-local.js`)
 5. ✅ Returns a **public URL**
 
 ## NEVER DO
@@ -22,7 +22,7 @@ Convert a .vtt meeting transcript into a comprehensive, deployed HTML dashboard 
 - ❌ Skip any analysis phase
 - ❌ Skip the consolidation step
 - ❌ Generate a simple single-page summary
-- ❌ Skip the deployment
+- ❌ Deploy the dashboard directly (use the deploy-dashboard skill or deploy-local.js instead)
 
 ## Pipeline Steps
 
@@ -129,16 +129,16 @@ Create `projects/{project}/dashboards/{date}/index.html` using the **consolidate
 - Improvement tracking
 - Trajectory visualizations
 
-### Step 5: Deploy to Azure Blob Storage
-```bash
-az login --identity --username $AZURE_CLIENT_ID
-az storage blob upload-batch \
-  --source projects/{project}/{meeting-id}/dashboard \
-  --destination '$web/{project}/{meeting-id}' \
-  --account-name $DASHBOARD_STORAGE_ACCOUNT \
-  --auth-mode login \
-  --overwrite
-```
+### Step 5: Deploy Dashboard
+
+After generating the dashboard, offer deployment options:
+
+1. **Ask Claude:** "deploy the dashboard" → triggers the `deploy-dashboard` skill
+2. **Run manually:** `node processor/deploy-local.js {project} {meeting-id}`
+
+The deployed URL will be: `https://dashboards.sswtiger.com/{project}/{meeting-id}`
+
+> **Note:** When running under `processor.js` (Azure pipeline), deployment is handled automatically by `deployer.js`. Do NOT deploy from within this skill in that context.
 
 ### Step 6: Report Success
 ```
