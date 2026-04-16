@@ -140,7 +140,8 @@ run_pipeline() {
 
     # Extract values from download result
     TRANSCRIPT_PATH=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).transcriptPath")
-    PROJECT_NAME=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).projectName")
+    PROJECT_SLUG=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).projectName")
+    PROJECT_NAME=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).displayName")
     MEETING_SUBJECT=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).meetingSubject")
     PARTICIPANTS_JSON=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.stringify(JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).participants || [])")
     MEETING_DURATION=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).meetingDuration || ''")
@@ -171,7 +172,7 @@ run_pipeline() {
     set +e
     # stderr flows through for real-time display
     # stdout (only DEPLOYED_URL) captured to variable
-    PROCESSOR_STDOUT=$(node processor/index.js "$TRANSCRIPT_PATH" "$PROJECT_NAME")
+    PROCESSOR_STDOUT=$(node processor/index.js "$TRANSCRIPT_PATH" "$PROJECT_SLUG")
     PROCESSOR_EXIT_CODE=$?
     set -e
 

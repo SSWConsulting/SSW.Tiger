@@ -37,6 +37,7 @@
 const fs = require("fs").promises;
 const path = require("path");
 const { log } = require("../lib/logger");
+const { sanitizeId } = require("../lib/sanitize");
 
 // Configuration from environment
 const CONFIG = {
@@ -162,7 +163,8 @@ async function runMockMode() {
   }
 
   // Extract project name and generate filename
-  const projectName = extractProjectName(subject);
+  const { displayName, projectSlug } = parseSubject(subject);
+  const projectName = projectSlug;
   // In mock mode, use the mock date directly
   // Convert to Australian Eastern Time for consistency with real mode
   const mockTranscriptDate = CONFIG.mockMeetingDate
@@ -196,6 +198,7 @@ async function runMockMode() {
     success: true,
     transcriptPath,
     projectName,
+    displayName,
     meetingDate,
     filename,
     meetingSubject: subject,
@@ -635,56 +638,53 @@ async function downloadTranscriptContent(token) {
 }
 
 function parseSubject(subject) {
-  if (!subject) return { projectName: "general", title: "meeting" };
+  if (!subject) return { displayName: "general", projectSlug: "general", title: "meeting" };
 
-  let projectName = "general";
+  let displayName = null;
   let title = subject;
 
   // Format 1: [ProjectName] Meeting Title
   const bracketMatch = subject.match(/^\[([^\]]+)\]\s*(.*)$/);
   if (bracketMatch) {
-    projectName = bracketMatch[1].trim();
+    displayName = bracketMatch[1].trim();
     title = bracketMatch[2].trim() || "meeting";
-    return {
-      projectName: projectName.toLowerCase().replace(/\s+/g, "-"),
-      title,
-    };
   }
 
   // Format 2: ProjectName - Meeting Title (dash separator)
   // Support both hyphen (-), en dash (–), and em dash (—)
-  const dashMatch = subject.match(/^([^-–—]+)\s*[-–—]\s*(.+)$/);
-  if (dashMatch) {
-    const projectPart = dashMatch[1].trim();
-    if (projectPart.length <= 30 && !projectPart.includes(" and ")) {
-      projectName = projectPart;
-      title = dashMatch[2].trim();
-      return {
-        projectName: projectName.toLowerCase().replace(/\s+/g, "-"),
-        title,
-      };
+  if (!displayName) {
+    const dashMatch = subject.match(/^([^-–—]+)\s*[-–—]\s*(.+)$/);
+    if (dashMatch) {
+      const projectPart = dashMatch[1].trim();
+      if (projectPart.length <= 30 && !projectPart.includes(" and ")) {
+        displayName = projectPart;
+        title = dashMatch[2].trim();
+      }
     }
   }
 
   // Format 3: ProjectName: Meeting Title (colon separator)
-  const colonMatch = subject.match(/^([^:]+)\s*:\s*(.+)$/);
-  if (colonMatch) {
-    const projectPart = colonMatch[1].trim();
-    if (projectPart.length <= 30 && !projectPart.includes(" and ")) {
-      projectName = projectPart;
-      title = colonMatch[2].trim();
-      return {
-        projectName: projectName.toLowerCase().replace(/\s+/g, "-"),
-        title,
-      };
+  if (!displayName) {
+    const colonMatch = subject.match(/^([^:]+)\s*:\s*(.+)$/);
+    if (colonMatch) {
+      const projectPart = colonMatch[1].trim();
+      if (projectPart.length <= 30 && !projectPart.includes(" and ")) {
+        displayName = projectPart;
+        title = colonMatch[2].trim();
+      }
     }
   }
 
-  return { projectName: "general", title: subject };
+  const resolvedName = displayName || "general";
+  return {
+    displayName: resolvedName,
+    projectSlug: sanitizeId(resolvedName) || "general",
+    title,
+  };
 }
 
 function extractProjectName(subject) {
-  return parseSubject(subject).projectName;
+  return parseSubject(subject).projectSlug;
 }
 
 function generateFilename(meeting, transcriptDate) {
@@ -970,7 +970,8 @@ async function main() {
 
     // Extract project name and generate filename using transcript date
     // Convert to Australian Eastern Time for correct local date
-    const projectName = extractProjectName(subject);
+    const { displayName, projectSlug } = parseSubject(subject);
+    const projectName = projectSlug;
     const meetingDate = convertToAustralianDate(transcriptDate);
     const filename = generateFilename(meeting, transcriptDate);
 
@@ -992,6 +993,7 @@ async function main() {
       success: true,
       transcriptPath,
       projectName,
+      displayName,
       meetingDate,
       filename,
       meetingSubject: subject,

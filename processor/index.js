@@ -24,7 +24,7 @@ const { checkOutputExists, copyToOutputDirectory, deployDashboard, persistToCosm
 const ROOT_DIR = path.join(__dirname, "..");
 const OUTPUT_DIR = process.env.OUTPUT_DIR || path.join(ROOT_DIR, "output");
 
-async function processTranscript(transcriptPath, projectName) {
+async function processTranscript(transcriptPath, projectSlug) {
   // Validate credentials first (fail fast)
   validateCredentials();
 
@@ -38,7 +38,9 @@ async function processTranscript(transcriptPath, projectName) {
   // Parse meeting info from filename
   const resolvedPath = path.resolve(transcriptPath);
   const { meetingId, meetingDate, meetingTime } = validateTranscriptFilename(resolvedPath);
-  const projectPath = path.join(ROOT_DIR, "projects", projectName);
+  // Display name for Claude prompt / notifications (from env, set by entrypoint.sh)
+  const displayName = process.env.PROJECT_NAME || projectSlug;
+  const projectPath = path.join(ROOT_DIR, "projects", projectSlug);
   const meetingPath = path.join(projectPath, meetingId);
 
   log("debug", "Initialized", { meetingId, meetingDate, meetingTime });
@@ -46,9 +48,10 @@ async function processTranscript(transcriptPath, projectName) {
   // Setup project structure
   await setupProjectStructure({ meetingPath, transcriptPath: resolvedPath });
 
-  // Invoke Claude Code CLI
+  // Invoke Claude Code CLI (uses display name for human-readable prompt)
   await invokeClaude({
-    projectName,
+    projectName: displayName,
+    projectSlug,
     meetingId,
     meetingDate,
     meetingPath,
@@ -60,14 +63,14 @@ async function processTranscript(transcriptPath, projectName) {
   const canonicalPath = await checkOutputExists({
     meetingPath,
     outputDir: OUTPUT_DIR,
-    projectName,
+    projectName: projectSlug,
     meetingId,
   });
 
   // Deploy to Azure Blob Storage
   const { deployedUrl, dashboardPath: storagePath } = await deployDashboard({
     dashboardPath: canonicalPath,
-    projectName,
+    projectName: projectSlug,
     meetingId,
   });
 
@@ -75,7 +78,7 @@ async function processTranscript(transcriptPath, projectName) {
   if (process.env.COSMOS_ENDPOINT) {
     try {
       await persistToCosmos({
-        projectName,
+        projectName: projectSlug,
         meetingId,
         meetingDate,
         dashboardPath: storagePath,
@@ -94,7 +97,7 @@ async function processTranscript(transcriptPath, projectName) {
   const outputCopyPath = await copyToOutputDirectory({
     sourcePath: canonicalPath,
     outputDir: OUTPUT_DIR,
-    projectName,
+    projectName: projectSlug,
     meetingId,
   });
 
