@@ -132,7 +132,7 @@ function extractEventPreview(event) {
  * @param {string} params.outputDir - absolute path to output directory
  * @param {string} params.rootDir - absolute path to project root (for templates, CLAUDE.md)
  */
-async function invokeClaude({ projectName, meetingId, meetingDate, meetingPath, outputDir, rootDir }) {
+async function invokeClaude({ projectName, projectSlug, meetingId, meetingDate, meetingPath, outputDir, rootDir }) {
   await fs.mkdir(outputDir, { recursive: true });
 
   const authConfig = getClaudeAuthMethod();
@@ -142,13 +142,13 @@ async function invokeClaude({ projectName, meetingId, meetingDate, meetingPath, 
 Project: ${projectName}
 Meeting ID: ${meetingId}
 Meeting Date: ${meetingDate}
-Meeting folder: projects/${projectName}/${meetingId}/
-Transcript: projects/${projectName}/${meetingId}/transcript.vtt
-Attendees (meeting invite list - use as suggestion for name resolution): projects/${projectName}/${meetingId}/attendees.json
+Meeting folder: projects/${projectSlug}/${meetingId}/
+Transcript: projects/${projectSlug}/${meetingId}/transcript.vtt
+Attendees (meeting invite list - use as suggestion for name resolution): projects/${projectSlug}/${meetingId}/attendees.json
 Dashboard template: templates/dashboard.html
 
 Follow all steps in CLAUDE.md EXCEPT deployment. Do NOT deploy or upload the dashboard.
-Generate the dashboard HTML to: projects/${projectName}/${meetingId}/dashboard/index.html`;
+Generate the dashboard HTML to: projects/${projectSlug}/${meetingId}/dashboard/index.html`;
 
   return new Promise((resolve, reject) => {
     const args = [
