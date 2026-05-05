@@ -1,6 +1,10 @@
 const fs = require("fs").promises;
 const path = require("path");
 const { log } = require("../lib/logger");
+const {
+  fetchSswProfileSlugs,
+  resolveSswProfileSlug,
+} = require("../lib/sswPeopleResolver");
 
 /**
  * Validate transcript filename matches YYYY-MM-DD-HHmmss.vtt pattern.
@@ -63,10 +67,43 @@ async function setupProjectStructure({ meetingPath, transcriptPath }) {
     if (inviteesJson) {
       const invitees = JSON.parse(inviteesJson);
       const vttInfo = vttInfoJson ? JSON.parse(vttInfoJson) : {};
+
+      let slugList = null;
+      try {
+        slugList = await fetchSswProfileSlugs();
+        log("info", "Fetched SSW.People.Profiles slug list", {
+          slugCount: slugList.length,
+        });
+      } catch (error) {
+        log(
+          "warn",
+          "Failed to fetch SSW.People.Profiles slug list, skipping resolution",
+          { error: error.message },
+        );
+      }
+
+      if (slugList) {
+        for (const invitee of invitees) {
+          invitee.sswProfileSlug = resolveSswProfileSlug(
+            invitee.derivedName,
+            slugList,
+          );
+        }
+        if (Array.isArray(vttInfo.taggedSpeakers)) {
+          vttInfo.taggedSpeakerSlugs = {};
+          for (const speaker of vttInfo.taggedSpeakers) {
+            vttInfo.taggedSpeakerSlugs[speaker] = resolveSswProfileSlug(
+              speaker,
+              slugList,
+            );
+          }
+        }
+      }
+
       const attendeesData = {
         invitees,
         vttInfo,
-        note: "Invitees are derived from the meeting invite list (UPNs). Use as a suggestion for name resolution — speaker <v> tags in the VTT are authoritative and take priority.",
+        note: "Invitees are derived from the meeting invite list (UPNs). Use as a suggestion for name resolution — speaker <v> tags in the VTT are authoritative and take priority. The 'sswProfileSlug' field (when present) is the resolved SSW.People.Profiles folder name; use it to build the profile photo URL. If sswProfileSlug is null, render the initials placeholder instead of guessing a slug from the display name.",
       };
       const attendeesPath = path.join(meetingPath, "attendees.json");
       await fs.writeFile(

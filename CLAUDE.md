@@ -307,10 +307,23 @@ Profile photos are stored in the SSW.People.Profiles GitHub repository:
 https://raw.githubusercontent.com/SSWConsulting/SSW.People.Profiles/main/{Person-Name}/Images/{Person-Name}-Profile.jpg
 ```
 
-**Name Conversion Rules:**
+**Resolving `{Person-Name}` (the folder slug):**
+
+The slug is pre-resolved against the SSW.People.Profiles folder list and stored in `attendees.json`. **Always prefer the pre-resolved value over guessing from the display name** — Teams display names may use nicknames (e.g. "Tom Iwainski") that don't match the actual folder ("Thomas-Iwainski").
+
+For each participant card, look up the slug in this order:
+1. **Invitees**: find the invitee in `attendees.json -> invitees[]` whose `derivedName` matches the participant. Use their `sswProfileSlug`.
+2. **VTT-tagged speakers**: look the participant's name up in `attendees.json -> vttInfo.taggedSpeakerSlugs` (a map of speaker name → slug). Use that slug.
+3. **No entry** (e.g. an external guest with no invite + no `<v>` tag): fall back to constructing `{First-Last}` from their name with normal capitalization.
+
+**Slug field semantics:**
+- `sswProfileSlug: "Thomas-Iwainski"` → use that exact slug in the URL
+- `sswProfileSlug: null` → the resolver couldn't disambiguate. **Render the initials placeholder directly** instead of guessing — do NOT construct a URL from the display name in this case (it would either 404 or, worse, point to the wrong person).
+- Field absent → use the construction fallback above
+
+**Manual conversion rules (only when constructing from a name as a fallback):**
 - Convert spaces to hyphens: "Bob Northwind" → "Bob-Northwind"
 - Preserve capitalization: "Adam Cogan" → "Adam-Cogan"
-- Use full name as stored in SSW People
 
 #### Participant Card HTML Structure
 

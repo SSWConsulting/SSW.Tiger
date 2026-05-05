@@ -251,8 +251,10 @@ For each participant, provide:
 ## Boardroom / Shared Device Handling
 
 If an `attendees.json` file is available, read it for context. It contains:
-- `invitees[]` — names derived from the meeting invite list (UPNs). Use as a **suggestion** to resolve misspelled names from transcript text.
-- `vttInfo` — whether the VTT has `<v>` speaker tags and which speakers are tagged.
+- `invitees[]` — names derived from the meeting invite list (UPNs). Use as a **suggestion** to resolve misspelled names from transcript text. Each invitee may include an `sswProfileSlug` field (the pre-resolved SSW.People.Profiles folder name).
+- `vttInfo` — whether the VTT has `<v>` speaker tags and which speakers are tagged. May include `vttInfo.taggedSpeakerSlugs`, a map of tagged speaker name → resolved SSW profile slug.
+
+When emitting participants, **carry the `sswProfileSlug` value through to your output** so downstream dashboard generation uses the correct folder (e.g. "Tom Iwainski" → `Thomas-Iwainski`). If `sswProfileSlug` is `null`, propagate `null` — it signals "ambiguous, render initials" and must not be replaced with a guess.
 
 **Resolution priority:**
 1. **`<v>` tags are authoritative** — always use the tagged name, even if the person is not on the invite list

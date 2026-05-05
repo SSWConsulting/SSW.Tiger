@@ -32,6 +32,7 @@ This is non-negotiable. Create a canonical name mapping:
 - **Real names over roles** - "Alice" not "Product Owner"
 - **Consistent format** - Pick one and use it everywhere
 - **Handle unknowns** - "Participant 3" for unidentified speakers, with note
+- **Carry through `sswProfileSlug`** - For each canonical participant, copy the resolved SSW.People.Profiles folder slug from `attendees.json` (`invitees[].sswProfileSlug` for invite-list members, `vttInfo.taggedSpeakerSlugs[<name>]` for VTT-tagged speakers). If the resolver returned `null`, propagate `null` — it means "ambiguous, render initials" and must not be replaced with a guess.
 
 #### Mapping Table
 ```json
@@ -42,7 +43,8 @@ This is non-negotiable. Create a canonical name mapping:
       "displayName": "Alice",
       "aliases": ["Alice", "Product Owner", "PO", "the facilitator", "the person running the meeting"],
       "role": "Product Owner",
-      "isIdentified": true
+      "isIdentified": true,
+      "sswProfileSlug": "Alice-Smith"
     },
     {
       "canonical": "Participant 3",
