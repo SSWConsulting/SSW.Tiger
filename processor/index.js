@@ -20,6 +20,7 @@ const { log } = require("../lib/logger");
 const { validateTranscriptFilename, setupProjectStructure } = require("./projectSetup");
 const { validateCredentials, invokeClaude } = require("./claudeRunner");
 const { checkOutputExists, copyToOutputDirectory, deployDashboard, persistToCosmos } = require("./deployer");
+const { validateAndRepairDashboard } = require("./dashboardValidator");
 
 const ROOT_DIR = path.join(__dirname, "..");
 const OUTPUT_DIR = process.env.OUTPUT_DIR || path.join(ROOT_DIR, "output");
@@ -66,6 +67,18 @@ async function processTranscript(transcriptPath, projectSlug) {
     projectName: projectSlug,
     meetingId,
   });
+
+  // Guard against syntax errors in inline <script> blocks (mainly the
+  // tailwind.config block, which the model has been observed to corrupt
+  // in rare regenerations - see GitHub issue #98).
+  try {
+    await validateAndRepairDashboard(
+      canonicalPath,
+      path.join(ROOT_DIR, "templates", "dashboard.html"),
+    );
+  } catch (err) {
+    log("warn", "Dashboard validation step failed (non-fatal)", { error: err.message });
+  }
 
   // Deploy to Azure Blob Storage
   const { deployedUrl, dashboardPath: storagePath } = await deployDashboard({
