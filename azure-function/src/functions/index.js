@@ -4,3 +4,4 @@ require("./ProcessTranscriptQueue");
 require("./RenewSubscription");
 require("./CancelProcessing");
 require("./TriggerProcessing");
+require("./RestartProcessing");

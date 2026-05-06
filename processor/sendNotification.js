@@ -36,6 +36,7 @@ const CONFIG = {
   cancelUrl: process.env.CANCEL_URL, // URL to cancel processing (for "started" notifications)
   executionId: process.env.JOB_EXECUTION_ID, // Execution ID for tracking
   triggerUrl: process.env.TRIGGER_URL, // URL to manually trigger processing (for "skipped" notifications)
+  restartUrl: process.env.RESTART_URL, // URL to restart processing (for "cancelled" and "failed" notifications)
   meetingDuration: process.env.MEETING_DURATION || null, // Pre-formatted duration string (e.g. "23 min", "1 hr 32 min")
 };
 
@@ -86,6 +87,21 @@ async function sendViaLogicApp(participants) {
     payload.triggerUrl = CONFIG.triggerUrl;
     log("debug", "Including trigger URL in notification", {
       triggerUrl: CONFIG.triggerUrl,
+    });
+  }
+
+  // Include restartUrl for "cancelled" and "failed" notifications
+  // (allows any participant to re-run the pipeline for the same meeting)
+  if (
+    (CONFIG.notificationType === "cancelled" ||
+      CONFIG.notificationType === "failed") &&
+    CONFIG.restartUrl
+  ) {
+    payload.restartUrl = CONFIG.restartUrl;
+    payload.executionId = CONFIG.executionId;
+    log("debug", "Including restart URL in notification", {
+      restartUrl: CONFIG.restartUrl,
+      executionId: CONFIG.executionId,
     });
   }
 

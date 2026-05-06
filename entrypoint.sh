@@ -12,8 +12,25 @@ log() {
     echo "{\"level\":\"$level\",\"message\":\"$message\"}" >&2
 }
 
+# Send a "cancelled" Teams notification with a Restart button.
+# Safe to call repeatedly — the sentinel file prevents duplicate dispatch
+# even across the parent shell and any subshells.
+NOTIFIED_SENTINEL="/tmp/.tiger-cancelled-notified"
+send_cancelled_notification() {
+    if [ -e "$NOTIFIED_SENTINEL" ]; then
+        return
+    fi
+    if [ -z "$LOGIC_APP_URL" ] || [ -z "$PARTICIPANTS_JSON" ]; then
+        return
+    fi
+    : > "$NOTIFIED_SENTINEL"
+    NOTIFICATION_TYPE="cancelled" node processor/sendNotification.js >/dev/null 2>&1 || true
+}
+
 # Background cancellation checker
-# Polls CHECK_CANCELLATION_URL every 5 seconds and exits if cancelled
+# Polls CHECK_CANCELLATION_URL every 15s. On cancellation: signal the parent
+# group with SIGTERM — the on_sigterm trap (below) sends the notification and
+# exits. Single dispatch path keeps duplicate handling simple.
 CANCEL_CHECKER_PID=""
 
 start_cancel_checker() {
@@ -28,7 +45,7 @@ start_cancel_checker() {
             IS_CANCELLED=$(echo "$CANCEL_CHECK" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).cancelled" 2>/dev/null || echo "false")
             if [ "$IS_CANCELLED" = "true" ]; then
                 log "info" "Job cancelled by user, terminating..."
-                # Kill the parent process group
+                # Signal the parent process group; on_sigterm trap handles the rest
                 kill -TERM -$$ 2>/dev/null || true
                 exit 0
             fi
@@ -43,7 +60,19 @@ stop_cancel_checker() {
     fi
 }
 
-# Cleanup on exit
+# SIGTERM trap — fires when:
+#   1. The cancel checker calls `kill -TERM -$$` after detecting cancellation
+#   2. Azure Container Apps issues `delete` before the next 15s poll
+# Both paths converge here, so the cancelled notification is sent exactly once.
+on_sigterm() {
+    log "info" "SIGTERM received — sending cancelled notification before exit"
+    send_cancelled_notification
+    stop_cancel_checker
+    exit 143
+}
+trap on_sigterm TERM
+
+# Cleanup on normal exit
 trap stop_cancel_checker EXIT
 
 # Setup Claude CLI authentication

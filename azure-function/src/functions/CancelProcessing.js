@@ -8,6 +8,32 @@ const {
 } = require("./ProcessTranscriptQueue");
 
 /**
+ * Build the URL for the RestartProcessing endpoint based on the current
+ * request's CancelProcessing URL. Returns "" if any required param is missing.
+ */
+function buildRestartUrl(request, executionId, userId, meetingId, transcriptId) {
+  if (!executionId || !userId || !meetingId || !transcriptId) return "";
+  // Resolve absolute URL of this CancelProcessing request, then swap the path.
+  // request.url is absolute on Azure Functions runtime.
+  let restartUrl;
+  try {
+    const url = new URL(request.url);
+    url.pathname = url.pathname.replace(/\/CancelProcessing$/, "/RestartProcessing");
+    url.search = "";
+    restartUrl = url.toString();
+  } catch {
+    return "";
+  }
+  const params = new URLSearchParams({
+    executionId,
+    userId,
+    meetingId,
+    transcriptId,
+  });
+  return `${restartUrl}?${params.toString()}`;
+}
+
+/**
  * Generate HTML response page for browser requests
  */
 function generateHtmlResponse(success, message, details = {}) {
@@ -16,6 +42,13 @@ function generateHtmlResponse(success, message, details = {}) {
   const bgColor = success ? "#d4edda" : "#f8d7da";
   const textColor = success ? "#155724" : "#721c24";
   const borderColor = success ? "#c3e6cb" : "#f5c6cb";
+
+  // Restart button is only shown on the success page (when we know the
+  // run was just cancelled and no longer running).
+  const restartButton =
+    success && details.restartUrl
+      ? `<a href="${details.restartUrl}" class="restart-button">↻ Restart Processing</a>`
+      : "";
 
   return `<!DOCTYPE html>
 <html>
@@ -53,6 +86,18 @@ function generateHtmlResponse(success, message, details = {}) {
     }
     .details { font-size: 12px; color: #666; text-align: left; }
     .close-hint { margin-top: 20px; color: #999; font-size: 14px; }
+    .restart-button {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 12px 24px;
+      background: #cc0000;
+      color: white;
+      text-decoration: none;
+      border-radius: 6px;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    .restart-button:hover { background: #a30000; }
   </style>
 </head>
 <body>
@@ -61,6 +106,7 @@ function generateHtmlResponse(success, message, details = {}) {
     <div class="title">${title}</div>
     <div class="message">${message}</div>
     ${details.executionName ? `<div class="details"><strong>Execution:</strong> ${details.executionName}</div>` : ""}
+    ${restartButton}
     <div class="close-hint">You can close this window now.</div>
   </div>
 </body>
@@ -144,6 +190,8 @@ app.http("CancelProcessing", {
     const resourceGroup = request.query.get("resourceGroup");
     const subscriptionIdParam = request.query.get("subscriptionId");
     const userId = request.query.get("userId");
+    const meetingId = request.query.get("meetingId");
+    const transcriptId = request.query.get("transcriptId");
 
     structuredLog(context, "info", "Cancel request received", {
       executionId,
@@ -151,6 +199,8 @@ app.http("CancelProcessing", {
       resourceGroup,
       subscriptionId: subscriptionIdParam,
       userId,
+      meetingId,
+      transcriptId,
     });
 
     // Validate required parameters
@@ -304,12 +354,22 @@ app.http("CancelProcessing", {
       // Mark as cancelled (for job to check)
       markAsCancelled(executionId);
 
+      // Build a Restart link to show on the success page (best-effort —
+      // omitted if any required ID is missing, e.g. older cancel URLs)
+      const restartUrl = buildRestartUrl(
+        request,
+        executionId,
+        userId,
+        meetingId,
+        transcriptId,
+      );
+
       return createResponse(
         request,
         true,
         "Processing has been cancelled successfully.",
         200,
-        { executionId, executionName },
+        { executionId, executionName, restartUrl },
       );
     } catch (err) {
       structuredLog(context, "error", "Failed to cancel processing", {
