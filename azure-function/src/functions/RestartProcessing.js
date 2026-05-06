@@ -65,6 +65,28 @@ function isRestartInFlight(meetingId, transcriptId) {
   return true;
 }
 
+/**
+ * Inspect a live Container Apps Job execution and decide whether it is already
+ * processing this meeting+transcript. This catches cross-instance cases where
+ * the in-memory executionMappingCache is empty but Azure still has a running
+ * execution for the same meeting.
+ */
+function executionMatchesMeeting(execution, meetingId, transcriptId) {
+  const containers = execution?.template?.containers;
+  if (!Array.isArray(containers)) return false;
+  for (const c of containers) {
+    if (!Array.isArray(c.env)) continue;
+    const envMap = new Map(c.env.map((e) => [e.name, e.value]));
+    if (
+      envMap.get("GRAPH_MEETING_ID") === meetingId &&
+      envMap.get("GRAPH_TRANSCRIPT_ID") === transcriptId
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // SSW Tiger logo URL (optionally overridable via env var for environment swaps)
 const TIGER_LOGO_URL =
   process.env.TIGER_LOGO_URL ||
@@ -146,6 +168,7 @@ app.http("RestartProcessing", {
 
     if (subscriptionId && resourceGroup && jobName) {
       try {
+        const client = getContainerAppsClient(subscriptionId);
         const cachedActive = findActiveExecutionForMeeting(
           meetingId,
           transcriptId,
@@ -155,7 +178,6 @@ app.http("RestartProcessing", {
           // Verify it's actually still running via Azure (cache could be stale).
           // SDK only exposes list() on jobsExecutions — no direct get().
           try {
-            const client = getContainerAppsClient(subscriptionId);
             let liveExec = null;
             for await (const exec of client.jobsExecutions.list(
               resourceGroup,
@@ -204,6 +226,40 @@ app.http("RestartProcessing", {
               },
             );
           }
+        }
+
+        // Cross-instance / cold-start fallback: cache may be empty, but the
+        // Container Apps API can still show a running execution for the same
+        // meeting. Scan live executions by env vars before queueing another run.
+        for await (const exec of client.jobsExecutions.list(
+          resourceGroup,
+          jobName,
+        )) {
+          if (exec.status !== "Running" && exec.status !== "Processing") {
+            continue;
+          }
+          if (!executionMatchesMeeting(exec, meetingId, transcriptId)) {
+            continue;
+          }
+
+          structuredLog(
+            context,
+            "info",
+            "Restart blocked: live execution already running",
+            {
+              meetingId,
+              transcriptId,
+              runningExecutionName: exec.name,
+              userId,
+            },
+          );
+          return createResponse(
+            request,
+            false,
+            "A processing run for this meeting is already in progress. Please wait for it to complete or cancel it before restarting.",
+            409,
+            { conflict: true },
+          );
         }
       } catch (err) {
         // Don't block restart on a check failure; log and proceed.

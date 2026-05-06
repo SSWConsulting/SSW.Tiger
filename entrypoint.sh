@@ -69,6 +69,7 @@ stop_cancel_checker() {
 # cancellation — otherwise we'd mislabel platform shutdowns as user cancels.
 on_sigterm() {
     log "info" "SIGTERM received — checking cancellation status"
+    local exit_code=143
     if [ -n "$CHECK_CANCELLATION_URL" ]; then
         local check_result
         check_result=$(curl -s --max-time 3 "$CHECK_CANCELLATION_URL" 2>/dev/null || echo '{"cancelled":false}')
@@ -77,12 +78,16 @@ on_sigterm() {
         if [ "$is_cancelled" = "true" ]; then
             log "info" "Cancellation confirmed — sending cancelled notification"
             send_cancelled_notification
+            # User cancellation is an expected stop, not a processing failure.
+            # Exit 0 so Container Apps Jobs do not retry the same cancelled run
+            # and create a second stopped execution with the same env vars.
+            exit_code=0
         else
             log "info" "SIGTERM was not a user cancellation — exiting silently"
         fi
     fi
     stop_cancel_checker
-    exit 143
+    exit "$exit_code"
 }
 trap on_sigterm TERM
 
@@ -129,7 +134,7 @@ send_failure_notification() {
 
 # Main pipeline
 run_pipeline() {
-    # Start background cancellation checker (polls every 5s)
+    # Start background cancellation checker (polls every 15s)
     start_cancel_checker
 
     # Step 1: Download transcript

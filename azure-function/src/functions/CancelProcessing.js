@@ -116,19 +116,21 @@ function executionIdMatches(executionId, meetingId, transcriptId) {
 }
 
 /**
- * Inspect a JobExecution's env vars to confirm it belongs to the requested
- * meeting+transcript. Used to safely identify the right execution when the
+ * Inspect a JobExecution's env vars to confirm it is the requested run.
+ * Used to safely identify the right execution when the
  * in-memory mapping cache is missing (e.g., after Function App restart),
- * without falling back to "stop the only running one" — which could stop
- * an unrelated meeting that happens to be the only one running.
+ * without falling back to "stop the only running one". Matching the exact
+ * JOB_EXECUTION_ID also prevents an old cancel link from stopping a later
+ * restart for the same meeting+transcript.
  */
-function executionMatchesMeeting(execution, meetingId, transcriptId) {
+function executionMatchesRequest(execution, executionId, meetingId, transcriptId) {
   const containers = execution?.template?.containers;
   if (!Array.isArray(containers)) return false;
   for (const c of containers) {
     if (!Array.isArray(c.env)) continue;
     const envMap = new Map(c.env.map((e) => [e.name, e.value]));
     if (
+      envMap.get("JOB_EXECUTION_ID") === executionId &&
       envMap.get("GRAPH_MEETING_ID") === meetingId &&
       envMap.get("GRAPH_TRANSCRIPT_ID") === transcriptId
     ) {
@@ -229,7 +231,7 @@ app.http("CancelProcessing", {
         // Fallback path: in-memory mapping is gone (Function restart, cross-instance).
         // We must NOT just stop "the only running execution" — that could stop an
         // unrelated meeting. Instead, find the running execution whose env vars
-        // match this meetingId+transcriptId.
+        // match this exact executionId+meetingId+transcriptId.
         structuredLog(
           context,
           "info",
@@ -247,7 +249,9 @@ app.http("CancelProcessing", {
             continue;
           }
           runningCount += 1;
-          if (executionMatchesMeeting(exec, meetingId, transcriptId)) {
+          if (
+            executionMatchesRequest(exec, executionId, meetingId, transcriptId)
+          ) {
             matched = exec;
             break;
           }
