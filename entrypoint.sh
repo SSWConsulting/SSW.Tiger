@@ -60,13 +60,27 @@ stop_cancel_checker() {
     fi
 }
 
-# SIGTERM trap — fires when:
-#   1. The cancel checker calls `kill -TERM -$$` after detecting cancellation
-#   2. Azure Container Apps issues `delete` before the next 15s poll
-# Both paths converge here, so the cancelled notification is sent exactly once.
+# SIGTERM trap — fires for any SIGTERM, including:
+#   1. The cancel checker calling `kill -TERM -$$` after detecting cancellation
+#   2. Azure Container Apps issuing `delete` (cancel from CancelProcessing)
+#   3. Platform-issued signals (scale-in, replica timeout, maintenance) that are
+#      NOT user cancellations
+# Only send the cancelled notification when CheckCancellation actually confirms
+# cancellation — otherwise we'd mislabel platform shutdowns as user cancels.
 on_sigterm() {
-    log "info" "SIGTERM received — sending cancelled notification before exit"
-    send_cancelled_notification
+    log "info" "SIGTERM received — checking cancellation status"
+    if [ -n "$CHECK_CANCELLATION_URL" ]; then
+        local check_result
+        check_result=$(curl -s --max-time 3 "$CHECK_CANCELLATION_URL" 2>/dev/null || echo '{"cancelled":false}')
+        local is_cancelled
+        is_cancelled=$(echo "$check_result" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).cancelled" 2>/dev/null || echo "false")
+        if [ "$is_cancelled" = "true" ]; then
+            log "info" "Cancellation confirmed — sending cancelled notification"
+            send_cancelled_notification
+        else
+            log "info" "SIGTERM was not a user cancellation — exiting silently"
+        fi
+    fi
     stop_cancel_checker
     exit 143
 }

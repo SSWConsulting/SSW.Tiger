@@ -25,11 +25,18 @@ const {
  *   3. ProcessTranscriptQueue has its own dedup keyed by `restart-${meetingId}-${transcriptId}`.
  */
 
-// In-memory tracking of restart requests issued in the last 5 minutes.
+// In-memory tracking of restart requests issued in the last 30 seconds.
 // Key: `${meetingId}-${transcriptId}` — Value: timestamp.
-// This is the second concurrency layer described in the design.
+//
+// Purpose: bridge the brief window between this endpoint enqueuing a message
+// and ProcessTranscriptQueue picking it up and starting a container. Once the
+// container starts, executionMappingCache picks up the slack and Layer 1
+// (Azure API check) handles further restart attempts.
+//
+// 30s is enough to absorb double-clicks from a single user; a longer TTL
+// would block legitimate retries when a freshly-started container fails fast.
 const restartInFlight = new Map();
-const RESTART_INFLIGHT_TTL_MS = 5 * 60 * 1000;
+const RESTART_INFLIGHT_TTL_MS = 30 * 1000;
 
 function markRestartInFlight(meetingId, transcriptId) {
   restartInFlight.set(`${meetingId}-${transcriptId}`, Date.now());
