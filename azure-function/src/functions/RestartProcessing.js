@@ -5,7 +5,11 @@ const {
   findActiveExecutionForMeeting,
   structuredLog,
 } = require("./ProcessTranscriptQueue");
-const { buildResponse } = require("../htmlResponseCard");
+const {
+  buildResponse,
+  renderConfirmationCard,
+  renderCard,
+} = require("../htmlResponseCard");
 
 /**
  * HTTP trigger to restart a transcript processing job for the same meeting.
@@ -141,6 +145,7 @@ app.http("RestartProcessing", {
       userId,
       meetingId,
       transcriptId,
+      method: request.method,
       sourceIp,
     });
 
@@ -158,6 +163,41 @@ app.http("RestartProcessing", {
         `Missing required parameter(s): ${missing.join(", ")}`,
         400,
       );
+    }
+
+    // For GET requests: check in-memory cache first so we can show "already
+    // running" immediately without a confirmation step. If clearly running,
+    // show the conflict page straight away. Otherwise show the confirmation
+    // page — POST will do the full live API check before actually queueing.
+    if (request.method === "GET") {
+      const cachedActive = findActiveExecutionForMeeting(
+        meetingId,
+        transcriptId,
+      );
+      if (cachedActive || isRestartInFlight(meetingId, transcriptId)) {
+        return {
+          status: 200,
+          headers: { "Content-Type": "text/html" },
+          body: renderCard({
+            status: "conflict",
+            icon: "⏳",
+            title: "Already Running",
+            message:
+              "A processing run for this meeting is already in progress. Please wait for it to complete or cancel it before restarting.",
+          }),
+        };
+      }
+      return {
+        status: 200,
+        headers: { "Content-Type": "text/html" },
+        body: renderConfirmationCard({
+          icon: "↻",
+          title: "Restart Processing?",
+          message: "This will re-run the meeting analysis from scratch.",
+          actionUrl: request.url,
+          confirmLabel: "↻ Confirm Restart",
+        }),
+      };
     }
 
     // Layer 1: Live check via Container Apps API + in-memory mapping cache.

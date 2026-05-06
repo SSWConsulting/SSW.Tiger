@@ -6,20 +6,32 @@ const {
   structuredLog,
   LOG_PREFIX,
 } = require("./ProcessTranscriptQueue");
-const { buildResponse } = require("../htmlResponseCard");
+const {
+  buildResponse,
+  renderConfirmationCard,
+} = require("../htmlResponseCard");
 
 /**
  * Build the URL for the RestartProcessing endpoint based on the current
  * request's CancelProcessing URL. Returns "" if any required param is missing.
  */
-function buildRestartUrl(request, executionId, userId, meetingId, transcriptId) {
+function buildRestartUrl(
+  request,
+  executionId,
+  userId,
+  meetingId,
+  transcriptId,
+) {
   if (!executionId || !userId || !meetingId || !transcriptId) return "";
   // Resolve absolute URL of this CancelProcessing request, then swap the path.
   // request.url is absolute on Azure Functions runtime.
   let restartUrl;
   try {
     const url = new URL(request.url);
-    url.pathname = url.pathname.replace(/\/CancelProcessing$/, "/RestartProcessing");
+    url.pathname = url.pathname.replace(
+      /\/CancelProcessing$/,
+      "/RestartProcessing",
+    );
     url.search = "";
     restartUrl = url.toString();
   } catch {
@@ -43,10 +55,6 @@ function createResponse(request, success, message, statusCode, details = {}) {
   const detailsHtml = details.executionName
     ? `<div class="details"><strong>Execution:</strong> ${details.executionName}</div>`
     : "";
-  const actionHtml =
-    success && details.restartUrl
-      ? `<a href="${details.restartUrl}" class="action-button">↻ Restart Processing</a>`
-      : "";
 
   return buildResponse(request, statusCode, {
     success,
@@ -57,7 +65,6 @@ function createResponse(request, success, message, statusCode, details = {}) {
       icon: success ? "✅" : "❌",
       title: success ? "Processing Cancelled" : "Cancel Failed",
       detailsHtml,
-      actionHtml,
     },
   });
 }
@@ -123,7 +130,12 @@ function executionIdMatches(executionId, meetingId, transcriptId) {
  * JOB_EXECUTION_ID also prevents an old cancel link from stopping a later
  * restart for the same meeting+transcript.
  */
-function executionMatchesRequest(execution, executionId, meetingId, transcriptId) {
+function executionMatchesRequest(
+  execution,
+  executionId,
+  meetingId,
+  transcriptId,
+) {
   const containers = execution?.template?.containers;
   if (!Array.isArray(containers)) return false;
   for (const c of containers) {
@@ -151,6 +163,10 @@ app.http("CancelProcessing", {
     const userId = request.query.get("userId");
     const meetingId = request.query.get("meetingId");
     const transcriptId = request.query.get("transcriptId");
+    const sourceIp =
+      request.headers.get("x-forwarded-for") ||
+      request.headers.get("x-azure-clientip") ||
+      "(unknown)";
 
     // Server-side configuration (not user-controllable)
     const subscriptionId = process.env.SUBSCRIPTION_ID;
@@ -162,6 +178,8 @@ app.http("CancelProcessing", {
       userId,
       meetingId,
       transcriptId,
+      method: request.method,
+      sourceIp,
     });
 
     // Validate required parameters
@@ -211,6 +229,26 @@ app.http("CancelProcessing", {
         "This cancel link is invalid.",
         400,
       );
+    }
+
+    // For GET requests: return a confirmation page rather than executing immediately.
+    // Teams (and other bots) automatically prefetch URLs in notification cards via GET
+    // for link-preview generation. Without this guard, a "started" Teams notification
+    // with the cancel URL would be automatically fetched by Teams, cancelling the job
+    // without any user interaction and triggering the cancel→restart→cancel loop.
+    if (request.method === "GET") {
+      return {
+        status: 200,
+        headers: { "Content-Type": "text/html" },
+        body: renderConfirmationCard({
+          icon: "⚠️",
+          title: "Cancel Processing?",
+          message:
+            "This will stop the current meeting analysis. You can restart it afterwards.",
+          actionUrl: request.url,
+          confirmLabel: "✋ Confirm Cancel",
+        }),
+      };
     }
 
     // Mark as cancelled BEFORE issuing the stop. The container's SIGTERM trap

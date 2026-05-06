@@ -149,4 +149,97 @@ function buildResponse(request, statusCode, options) {
   };
 }
 
-module.exports = { renderCard, buildResponse };
+/**
+ * Render a confirmation page with a POST form button.
+ *
+ * Used by CancelProcessing and RestartProcessing to handle GET requests
+ * safely. Teams (and other bots) automatically prefetch URLs in notifications
+ * via GET for link-preview generation. Returning an HTML confirmation page
+ * instead of executing the action breaks the auto-cancel / auto-restart loop
+ * that would otherwise occur.
+ *
+ * @param {Object} options
+ * @param {string} options.icon - emoji shown above the title
+ * @param {string} options.title - bold heading
+ * @param {string} options.message - descriptive text inside the coloured panel
+ * @param {string} options.actionUrl - form action (same URL that was GET'd)
+ * @param {string} options.confirmLabel - text on the submit button
+ */
+function renderConfirmationCard({
+  icon,
+  title,
+  message,
+  actionUrl,
+  confirmLabel,
+}) {
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${title} - SSW Tiger</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      background: #f5f5f5;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      padding: 40px;
+      text-align: center;
+      max-width: 400px;
+    }
+    .icon { font-size: 64px; line-height: 1; margin-bottom: 20px; }
+    .title { font-size: 24px; font-weight: 600; margin-bottom: 12px; color: #333; }
+    .message {
+      padding: 16px;
+      border-radius: 8px;
+      background: #fff3cd;
+      color: #856404;
+      border: 1px solid #ffeaa7;
+      margin-bottom: 20px;
+    }
+    .action-button {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 12px 24px;
+      background: #cc0000;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .action-button:hover { background: #a30000; }
+    .back-link {
+      display: block;
+      margin-top: 16px;
+      color: #999;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">${icon}</div>
+    <div class="title">${title}</div>
+    <div class="message">${message}</div>
+    <form method="POST" action="${actionUrl}">
+      <button type="submit" class="action-button">${confirmLabel}</button>
+    </form>
+    <div class="back-link">Otherwise, you can close this window.</div>
+  </div>
+</body>
+</html>`;
+}
+
+module.exports = { renderCard, renderConfirmationCard, buildResponse };
