@@ -6,6 +6,7 @@ const {
   structuredLog,
   LOG_PREFIX,
 } = require("./ProcessTranscriptQueue");
+const { buildResponse } = require("../htmlResponseCard");
 
 /**
  * Build the URL for the RestartProcessing endpoint based on the current
@@ -34,107 +35,31 @@ function buildRestartUrl(request, executionId, userId, meetingId, transcriptId) 
 }
 
 /**
- * Generate HTML response page for browser requests
- */
-function generateHtmlResponse(success, message, details = {}) {
-  const icon = success ? "✅" : "❌";
-  const title = success ? "Processing Cancelled" : "Cancel Failed";
-  const bgColor = success ? "#d4edda" : "#f8d7da";
-  const textColor = success ? "#155724" : "#721c24";
-  const borderColor = success ? "#c3e6cb" : "#f5c6cb";
-
-  // Restart button is only shown on the success page (when we know the
-  // run was just cancelled and no longer running).
-  const restartButton =
-    success && details.restartUrl
-      ? `<a href="${details.restartUrl}" class="restart-button">↻ Restart Processing</a>`
-      : "";
-
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${title} - SSW Tiger</title>
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
-      margin: 0;
-      background: #f5f5f5;
-    }
-    .card {
-      background: white;
-      border-radius: 12px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-      padding: 40px;
-      text-align: center;
-      max-width: 400px;
-    }
-    .icon { font-size: 64px; margin-bottom: 20px; }
-    .title { font-size: 24px; font-weight: 600; margin-bottom: 12px; color: #333; }
-    .message {
-      padding: 16px;
-      border-radius: 8px;
-      background: ${bgColor};
-      color: ${textColor};
-      border: 1px solid ${borderColor};
-      margin-bottom: 20px;
-    }
-    .details { font-size: 12px; color: #666; text-align: left; }
-    .close-hint { margin-top: 20px; color: #999; font-size: 14px; }
-    .restart-button {
-      display: inline-block;
-      margin-top: 8px;
-      padding: 12px 24px;
-      background: #cc0000;
-      color: white;
-      text-decoration: none;
-      border-radius: 6px;
-      font-weight: 600;
-      transition: background 0.2s;
-    }
-    .restart-button:hover { background: #a30000; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="icon">${icon}</div>
-    <div class="title">${title}</div>
-    <div class="message">${message}</div>
-    ${details.executionName ? `<div class="details"><strong>Execution:</strong> ${details.executionName}</div>` : ""}
-    ${restartButton}
-    <div class="close-hint">You can close this window now.</div>
-  </div>
-</body>
-</html>`;
-}
-
-/**
- * Return response based on request type (HTML for browser, JSON for API)
+ * Wrap the shared buildResponse with this endpoint's outcome labels.
+ * The Restart button is only attached on the success page (run was just
+ * cancelled and is no longer running).
  */
 function createResponse(request, success, message, statusCode, details = {}) {
-  const acceptHeader = request.headers.get("accept") || "";
-  const isJsonRequest = acceptHeader.includes("application/json");
+  const detailsHtml = details.executionName
+    ? `<div class="details"><strong>Execution:</strong> ${details.executionName}</div>`
+    : "";
+  const actionHtml =
+    success && details.restartUrl
+      ? `<a href="${details.restartUrl}" class="action-button">↻ Restart Processing</a>`
+      : "";
 
-  if (isJsonRequest) {
-    return {
-      status: statusCode,
-      jsonBody: success
-        ? { success: true, message, ...details }
-        : { error: true, message, ...details },
-    };
-  }
-
-  // Return HTML for browser requests
-  return {
-    status: statusCode,
-    headers: { "Content-Type": "text/html" },
-    body: generateHtmlResponse(success, message, details),
-  };
+  return buildResponse(request, statusCode, {
+    success,
+    message,
+    json: details,
+    card: {
+      status: success ? "success" : "error",
+      icon: success ? "✅" : "❌",
+      title: success ? "Processing Cancelled" : "Cancel Failed",
+      detailsHtml,
+      actionHtml,
+    },
+  });
 }
 
 /**
@@ -179,183 +104,202 @@ function isCancelled(executionId) {
   return cancelledExecutions.has(executionId);
 }
 
+/**
+ * Validate that the URL-supplied meetingId/transcriptId are consistent with
+ * the executionId. ProcessTranscriptQueue generates executionId as
+ * `${meetingId}-${transcriptId}-${Date.now()}` — a tampered URL where these
+ * IDs don't align is rejected immediately, before any Azure API call.
+ */
+function executionIdMatches(executionId, meetingId, transcriptId) {
+  if (!executionId || !meetingId || !transcriptId) return false;
+  return executionId.startsWith(`${meetingId}-${transcriptId}-`);
+}
+
+/**
+ * Inspect a JobExecution's env vars to confirm it belongs to the requested
+ * meeting+transcript. Used to safely identify the right execution when the
+ * in-memory mapping cache is missing (e.g., after Function App restart),
+ * without falling back to "stop the only running one" — which could stop
+ * an unrelated meeting that happens to be the only one running.
+ */
+function executionMatchesMeeting(execution, meetingId, transcriptId) {
+  const containers = execution?.template?.containers;
+  if (!Array.isArray(containers)) return false;
+  for (const c of containers) {
+    if (!Array.isArray(c.env)) continue;
+    const envMap = new Map(c.env.map((e) => [e.name, e.value]));
+    if (
+      envMap.get("GRAPH_MEETING_ID") === meetingId &&
+      envMap.get("GRAPH_TRANSCRIPT_ID") === transcriptId
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 app.http("CancelProcessing", {
   methods: ["POST", "GET"],
-  authLevel: "anonymous", // No authentication required (simpler setup)
-  // Note: The executionId acts as a pseudo-authentication token
-  // Only users who received the notification have access to the cancel URL
+  authLevel: "anonymous", // The long executionId in the URL acts as a pseudo-token.
+  // Only users who received the original Teams notification have access to it.
+  // Infrastructure identifiers (subscriptionId, resourceGroup, jobName) are NOT
+  // trusted from the URL — they're read from server-side env vars instead.
   handler: async (request, context) => {
     const executionId = request.query.get("executionId");
-    const jobName = request.query.get("jobName");
-    const resourceGroup = request.query.get("resourceGroup");
-    const subscriptionIdParam = request.query.get("subscriptionId");
     const userId = request.query.get("userId");
     const meetingId = request.query.get("meetingId");
     const transcriptId = request.query.get("transcriptId");
 
+    // Server-side configuration (not user-controllable)
+    const subscriptionId = process.env.SUBSCRIPTION_ID;
+    const resourceGroup = process.env.CONTAINER_APP_JOB_RESOURCE_GROUP;
+    const jobName = process.env.CONTAINER_APP_JOB_NAME;
+
     structuredLog(context, "info", "Cancel request received", {
       executionId,
-      jobName,
-      resourceGroup,
-      subscriptionId: subscriptionIdParam,
       userId,
       meetingId,
       transcriptId,
     });
 
     // Validate required parameters
-    if (!executionId || !jobName || !resourceGroup || !subscriptionIdParam) {
+    const missing = [];
+    if (!executionId) missing.push("executionId");
+    if (!meetingId) missing.push("meetingId");
+    if (!transcriptId) missing.push("transcriptId");
+    if (missing.length > 0) {
       return createResponse(
         request,
         false,
-        "Missing required parameters: executionId, jobName, resourceGroup, subscriptionId",
+        `Missing required parameter(s): ${missing.join(", ")}`,
         400,
       );
     }
 
-    // Try to look up from in-memory cache first (works if same instance)
+    if (!subscriptionId || !resourceGroup || !jobName) {
+      structuredLog(
+        context,
+        "error",
+        "Server-side env vars missing for cancel",
+        {
+          hasSubscriptionId: !!subscriptionId,
+          hasResourceGroup: !!resourceGroup,
+          hasJobName: !!jobName,
+        },
+      );
+      return createResponse(
+        request,
+        false,
+        "Cancel is not available: server is missing required configuration.",
+        500,
+      );
+    }
+
+    // Reject tampered URLs where executionId doesn't encode the same
+    // meetingId/transcriptId pair. Cheap integrity check before any Azure call.
+    if (!executionIdMatches(executionId, meetingId, transcriptId)) {
+      structuredLog(context, "warn", "executionId/meeting mismatch", {
+        executionId,
+        meetingId,
+        transcriptId,
+      });
+      return createResponse(
+        request,
+        false,
+        "This cancel link is invalid.",
+        400,
+      );
+    }
+
+    // Mark as cancelled BEFORE issuing the stop. The container's SIGTERM trap
+    // calls CheckCancellation to decide whether to send a "cancelled" Teams
+    // notification — if we marked AFTER the stop, Azure could SIGTERM the
+    // container before this flag flips and the trap would treat it as a
+    // platform shutdown, suppressing the notification.
+    markAsCancelled(executionId);
+
+    // Try the in-memory mapping first (same instance, recent job)
     const mapping = getExecutionMapping(executionId);
     let executionName = mapping?.executionName;
 
     try {
-      // Get the Container Apps client
-      const client = getContainerAppsClient(subscriptionIdParam);
+      const client = getContainerAppsClient(subscriptionId);
 
-      // If no mapping found, list running executions and find/stop them
       if (!executionName) {
+        // Fallback path: in-memory mapping is gone (Function restart, cross-instance).
+        // We must NOT just stop "the only running execution" — that could stop an
+        // unrelated meeting. Instead, find the running execution whose env vars
+        // match this meetingId+transcriptId.
         structuredLog(
           context,
           "info",
-          "Mapping not found, listing running executions",
-          {
-            executionId,
-            jobName,
-          },
+          "Mapping not found, searching running executions by env vars",
+          { executionId, meetingId, transcriptId },
         );
 
-        // List all executions for this job
-        const executions = [];
-        for await (const execution of client.jobsExecutions.list(
+        let matched = null;
+        let runningCount = 0;
+        for await (const exec of client.jobsExecutions.list(
           resourceGroup,
           jobName,
         )) {
-          executions.push(execution);
+          if (exec.status !== "Running" && exec.status !== "Processing") {
+            continue;
+          }
+          runningCount += 1;
+          if (executionMatchesMeeting(exec, meetingId, transcriptId)) {
+            matched = exec;
+            break;
+          }
         }
 
-        // Find running executions
-        const runningExecutions = executions.filter(
-          (e) => e.status === "Running" || e.status === "Processing",
-        );
-
-        structuredLog(context, "info", "Found executions", {
-          total: executions.length,
-          running: runningExecutions.length,
+        structuredLog(context, "info", "Fallback search complete", {
+          runningCount,
+          matched: !!matched,
         });
 
-        if (runningExecutions.length === 0) {
+        if (!matched) {
+          // Nothing running for this meeting. The job may have already finished
+          // or been stopped. Mark-as-cancelled was still set above so a
+          // late-poll from a still-living container will pick it up.
           return createResponse(
             request,
             false,
-            "No running job executions found. It may have already completed.",
+            "No running job execution found for this meeting. It may have already completed.",
             404,
           );
         }
 
-        // Safety check: only stop if exactly 1 running execution
-        // If multiple running, we can't safely determine which one to stop
-        if (runningExecutions.length > 1) {
-          structuredLog(
-            context,
-            "warn",
-            "Multiple running executions found, cannot safely cancel",
-            {
-              runningCount: runningExecutions.length,
-              executions: runningExecutions.map((e) => e.name),
-            },
-          );
-          return createResponse(
-            request,
-            false,
-            `Multiple jobs running (${runningExecutions.length}). Cannot safely determine which one to cancel. Please wait for them to complete or cancel manually.`,
-            409,
-          );
-        }
-
-        // Stop the single running execution
-        const targetExecution = runningExecutions[0];
-        try {
-          await client.jobsExecutions.delete(
-            resourceGroup,
-            jobName,
-            targetExecution.name,
-          );
-          structuredLog(context, "info", "Job execution stopped", {
-            executionName: targetExecution.name,
-            previousStatus: targetExecution.status,
-          });
-          executionName = targetExecution.name;
-        } catch (stopError) {
-          structuredLog(context, "warn", "Could not stop job execution", {
-            executionName: targetExecution.name,
-            error: stopError.message,
-          });
-          return createResponse(
-            request,
-            false,
-            `Failed to stop execution: ${stopError.message}`,
-            500,
-          );
-        }
-      } else {
-        // Found in cache, stop specific execution
-        structuredLog(context, "info", "Stopping job execution from cache", {
-          jobName,
-          executionName,
-          resourceGroup,
-        });
-
-        try {
-          const execution = await client.jobsExecutions.get(
-            resourceGroup,
-            jobName,
-            executionName,
-          );
-
-          if (
-            execution.status === "Running" ||
-            execution.status === "Processing"
-          ) {
-            await client.jobsExecutions.delete(
-              resourceGroup,
-              jobName,
-              executionName,
-            );
-            structuredLog(context, "info", "Job execution stopped", {
-              executionName,
-              previousStatus: execution.status,
-            });
-          } else {
-            structuredLog(context, "info", "Job already completed", {
-              executionName,
-              status: execution.status,
-            });
-          }
-        } catch (stopError) {
-          structuredLog(context, "warn", "Could not stop job execution", {
-            executionName,
-            error: stopError.message,
-          });
-        }
-
-        // Remove from mapping cache
-        removeExecutionMapping(executionId);
+        executionName = matched.name;
       }
 
-      // Mark as cancelled (for job to check)
-      markAsCancelled(executionId);
+      // We have a verified executionName at this point.
+      structuredLog(context, "info", "Stopping job execution", {
+        jobName,
+        executionName,
+      });
 
-      // Build a Restart link to show on the success page (best-effort —
-      // omitted if any required ID is missing, e.g. older cancel URLs)
+      try {
+        await client.jobs.beginStopExecutionAndWait(
+          resourceGroup,
+          jobName,
+          executionName,
+        );
+        structuredLog(context, "info", "Job execution stopped", {
+          executionName,
+        });
+      } catch (stopError) {
+        structuredLog(context, "warn", "Could not stop job execution", {
+          executionName,
+          error: stopError.message,
+        });
+        // Still report success at the user level — the cancel mark is set,
+        // so the container will self-terminate via its cancel checker if
+        // the API stop didn't take effect.
+      }
+
+      removeExecutionMapping(executionId);
+
       const restartUrl = buildRestartUrl(
         request,
         executionId,

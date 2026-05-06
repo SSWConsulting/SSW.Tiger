@@ -154,7 +154,7 @@ app.storageQueue("ProcessTranscriptQueue", {
       data = message;
     }
 
-    const { userId, meetingId, transcriptId, skipSubjectFilter, manualTrigger, restartTrigger, restartedFromExecutionId } = data;
+    const { userId, meetingId, transcriptId, skipSubjectFilter, manualTrigger, restartTrigger, restartId, restartedFromExecutionId } = data;
 
     if (!userId || !meetingId || !transcriptId) {
       structuredLog(context, "error", "Missing IDs in queue message", { userId, meetingId, transcriptId });
@@ -174,12 +174,16 @@ app.storageQueue("ProcessTranscriptQueue", {
     }
 
     // Check for duplicate (Graph may send same notification multiple times).
-    // Each trigger source uses its own dedup key so prior entries don't block
-    // a fresh request from a different source. Within a key, dedup still
-    // prevents double-clicks from spawning duplicate containers.
+    // Webhook/manual: dedup on meetingId+transcriptId (10 min) — covers
+    //   Graph webhook retries and accidental UI double-clicks.
+    // Restart: dedup on a per-click unique restartId — only prevents Azure
+    //   Queue redelivery of the same message; multiple legit restart clicks
+    //   each get their own restartId and aren't blocked here.
+    //   (The HTTP RestartProcessing endpoint provides the user-side dedup
+    //   via Layer 1 Azure-API check + Layer 2 in-flight set.)
     let dedupKey;
     if (restartTrigger) {
-      dedupKey = `restart-${meetingId}-${transcriptId}`;
+      dedupKey = `restart-${restartId || `${meetingId}-${transcriptId}-${Date.now()}`}`;
     } else if (manualTrigger) {
       dedupKey = `manual-${meetingId}-${transcriptId}`;
     } else {
@@ -244,12 +248,12 @@ async function triggerContainerAppJob(params, context) {
   // Generate a unique execution ID for this job run
   const executionId = `${meetingId}-${transcriptId}-${Date.now()}`;
 
-  // Build cancel URL if cancel function is configured
-  // Include subscriptionId so cancel can work without in-memory cache (cross-instance)
-  // Include userId so cancelled notification can be sent to the organizer
-  // Include meetingId/transcriptId so the cancel-success page can build a Restart link
+  // Build cancel URL if cancel function is configured.
+  // Only application-level identifiers go in the URL — infrastructure IDs
+  // (subscriptionId, resourceGroup, jobName) are read server-side from env
+  // vars to avoid trusting them from a publicly-clickable URL.
   const cancelUrl = cancelFunctionUrl
-    ? `${cancelFunctionUrl}?executionId=${encodeURIComponent(executionId)}&jobName=${encodeURIComponent(jobName)}&resourceGroup=${encodeURIComponent(resourceGroup)}&subscriptionId=${encodeURIComponent(subscriptionId)}&userId=${encodeURIComponent(userId)}&meetingId=${encodeURIComponent(meetingId)}&transcriptId=${encodeURIComponent(transcriptId)}`
+    ? `${cancelFunctionUrl}?executionId=${encodeURIComponent(executionId)}&userId=${encodeURIComponent(userId)}&meetingId=${encodeURIComponent(meetingId)}&transcriptId=${encodeURIComponent(transcriptId)}`
     : "";
 
   // Build restart URL (same Function host, different endpoint)

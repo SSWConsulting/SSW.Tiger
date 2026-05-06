@@ -1,9 +1,11 @@
 const { app, output } = require("@azure/functions");
+const crypto = require("crypto");
 const {
   getContainerAppsClient,
   findActiveExecutionForMeeting,
   structuredLog,
 } = require("./ProcessTranscriptQueue");
+const { buildResponse } = require("../htmlResponseCard");
 
 /**
  * HTTP trigger to restart a transcript processing job for the same meeting.
@@ -63,85 +65,33 @@ function isRestartInFlight(meetingId, transcriptId) {
   return true;
 }
 
-function generateHtmlResponse(success, message, details = {}) {
-  // Three states: success (green), conflict (amber), error (red)
-  const isConflict = details.conflict === true;
-  const icon = success ? "🐯" : isConflict ? "⏳" : "❌";
-  const title = success
-    ? "Restart Queued"
-    : isConflict
-      ? "Already Running"
-      : "Restart Failed";
-  const bgColor = success ? "#d4edda" : isConflict ? "#fff3cd" : "#f8d7da";
-  const textColor = success ? "#155724" : isConflict ? "#856404" : "#721c24";
-  const borderColor = success ? "#c3e6cb" : isConflict ? "#ffeaa7" : "#f5c6cb";
+// SSW Tiger logo URL (optionally overridable via env var for environment swaps)
+const TIGER_LOGO_URL =
+  process.env.TIGER_LOGO_URL ||
+  "https://satigerstagingweb.blob.core.windows.net/assets/Logo.png";
 
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${title} - SSW Tiger</title>
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
-      margin: 0;
-      background: #f5f5f5;
-    }
-    .card {
-      background: white;
-      border-radius: 12px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-      padding: 40px;
-      text-align: center;
-      max-width: 400px;
-    }
-    .icon { font-size: 64px; margin-bottom: 20px; }
-    .title { font-size: 24px; font-weight: 600; margin-bottom: 12px; color: #333; }
-    .message {
-      padding: 16px;
-      border-radius: 8px;
-      background: ${bgColor};
-      color: ${textColor};
-      border: 1px solid ${borderColor};
-      margin-bottom: 20px;
-    }
-    .close-hint { margin-top: 20px; color: #999; font-size: 14px; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="icon">${icon}</div>
-    <div class="title">${title}</div>
-    <div class="message">${message}</div>
-    <div class="close-hint">You can close this window now.</div>
-  </div>
-</body>
-</html>`;
-}
-
+/**
+ * Wrap the shared buildResponse with this endpoint's outcome labels.
+ * Three states: success (green), conflict (amber), error (red).
+ */
 function createResponse(request, success, message, statusCode, details = {}) {
-  const acceptHeader = request.headers.get("accept") || "";
-  const isJsonRequest = acceptHeader.includes("application/json");
-
-  if (isJsonRequest) {
-    return {
-      status: statusCode,
-      jsonBody: success
-        ? { success: true, message, ...details }
-        : { error: true, message, ...details },
-    };
-  }
-
-  return {
-    status: statusCode,
-    headers: { "Content-Type": "text/html" },
-    body: generateHtmlResponse(success, message, details),
-  };
+  const isConflict = details.conflict === true;
+  return buildResponse(request, statusCode, {
+    success,
+    message,
+    json: details,
+    card: {
+      status: success ? "success" : isConflict ? "conflict" : "error",
+      // Brand image on success; expressive emoji for conflict / error states
+      iconImageUrl: success ? TIGER_LOGO_URL : undefined,
+      icon: success ? "" : isConflict ? "⏳" : "❌",
+      title: success
+        ? "Restart Queued"
+        : isConflict
+          ? "Already Running"
+          : "Restart Failed",
+    },
+  });
 }
 
 // Same queue used by TranscriptWebhook and TriggerProcessing
@@ -202,17 +152,24 @@ app.http("RestartProcessing", {
         );
 
         if (cachedActive) {
-          // Verify it's actually still running via Azure (cache could be stale)
+          // Verify it's actually still running via Azure (cache could be stale).
+          // SDK only exposes list() on jobsExecutions — no direct get().
           try {
             const client = getContainerAppsClient(subscriptionId);
-            const liveExec = await client.jobsExecutions.get(
+            let liveExec = null;
+            for await (const exec of client.jobsExecutions.list(
               resourceGroup,
               jobName,
-              cachedActive.executionName,
-            );
+            )) {
+              if (exec.name === cachedActive.executionName) {
+                liveExec = exec;
+                break;
+              }
+            }
             if (
-              liveExec.status === "Running" ||
-              liveExec.status === "Processing"
+              liveExec &&
+              (liveExec.status === "Running" ||
+                liveExec.status === "Processing")
             ) {
               structuredLog(
                 context,
@@ -277,14 +234,18 @@ app.http("RestartProcessing", {
 
     markRestartInFlight(meetingId, transcriptId);
 
-    // Re-enqueue the queue message. ProcessTranscriptQueue has its own dedup
-    // (Layer 3) keyed by `restart-${meetingId}-${transcriptId}`.
+    // Re-enqueue the queue message. The unique restartId acts as the dedup
+    // key in ProcessTranscriptQueue — this lets two distinct restart clicks
+    // both reach the queue handler (each with its own restartId), while
+    // genuine queue redelivery (same message replayed) still gets dedup'd.
+    const restartId = crypto.randomUUID();
     const queueMessage = {
       userId,
       meetingId,
       transcriptId,
       skipSubjectFilter: true,
       restartTrigger: true,
+      restartId,
       restartedFromExecutionId: executionId,
       restartedAt: new Date().toISOString(),
     };
