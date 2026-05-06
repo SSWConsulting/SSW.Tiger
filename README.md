@@ -9,6 +9,10 @@
 
 </div>
 
+SSW.Tiger - see insights from a meeting
+
+![SSW.Tiger dashboard example](docs/images/tiger-example.png)
+
 ---
 
 ## 🎯 What This Does
