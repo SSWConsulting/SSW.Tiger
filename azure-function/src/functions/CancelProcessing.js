@@ -103,7 +103,8 @@ function generateCancelConfirmation(request, details = {}) {
     }
     .title { font-size: 24px; font-weight: 600; margin-bottom: 12px; }
     .message { color: #555; line-height: 1.5; margin-bottom: 24px; }
-    .details { font-size: 12px; color: #666; text-align: left; margin-bottom: 24px; overflow-wrap: anywhere; }
+    .details { font-size: 11px; color: #888; margin-top: 24px; overflow-wrap: anywhere; }
+    .details strong { color: #777; font-weight: 600; }
     .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
     button, .secondary {
       border-radius: 8px;
@@ -120,15 +121,15 @@ function generateCancelConfirmation(request, details = {}) {
 </head>
 <body>
   <div class="card">
-    <div class="title">Cancel Processing?</div>
-    <div class="message">This will stop the current T.I.G.E.R. meeting analysis job. Link previews and security scans cannot cancel it from this page.</div>
-    ${details.executionName ? `<div class="details"><strong>Execution:</strong> ${escapeHtml(details.executionName)}</div>` : ""}
+    <div class="title">Stop analyzing this meeting?</div>
+    <div class="message">If you stop, the meeting will not be analyzed and no dashboard will be generated.</div>
     <div class="actions">
-      <form method="POST" action="${escapeHtml(request.url)}">
-        <button type="submit">Cancel Processing</button>
-      </form>
       <a class="secondary" href="javascript:window.close()">Keep Running</a>
+      <form method="POST" action="${escapeHtml(request.url)}">
+        <button type="submit">Stop Analysis</button>
+      </form>
     </div>
+    ${details.executionName ? `<div class="details"><strong>Execution:</strong> ${escapeHtml(details.executionName)}</div>` : ""}
   </div>
 </body>
 </html>`;
@@ -146,12 +147,38 @@ function createConfirmationResponse(request, details = {}) {
   };
 }
 
+function isRunningStatus(status) {
+  return status === "Running" || status === "Processing";
+}
+
+async function getExecutionSnapshot(client, resourceGroup, jobName, executionName) {
+  const executions = [];
+  for await (const execution of client.jobsExecutions.list(
+    resourceGroup,
+    jobName,
+  )) {
+    executions.push(execution);
+  }
+
+  const runningExecutions = executions.filter((e) => isRunningStatus(e.status));
+  const targetExecution = executionName
+    ? executions.find((e) => e.name === executionName)
+    : null;
+
+  return {
+    total: executions.length,
+    runningExecutions,
+    targetExecution,
+  };
+}
+
 function getRequestDiagnostics(request) {
   return {
     method: request.method,
     userAgent: request.headers.get("user-agent") || "",
     forwardedFor: request.headers.get("x-forwarded-for") || "",
-    referer: request.headers.get("referer") || request.headers.get("referrer") || "",
+    referer:
+      request.headers.get("referer") || request.headers.get("referrer") || "",
   };
 }
 
@@ -233,6 +260,9 @@ app.http("CancelProcessing", {
     const userId = request.query.get("userId");
 
     if (request.method === "GET") {
+      const mapping = getExecutionMapping(executionId);
+      const executionName = mapping?.executionName;
+
       structuredLog(context, "info", "Cancel confirmation viewed", {
         ...getRequestDiagnostics(request),
         executionId,
@@ -242,9 +272,94 @@ app.http("CancelProcessing", {
         userId,
       });
 
-      return createConfirmationResponse(request, {
-        executionName: getExecutionMapping(executionId)?.executionName,
-      });
+      if (!executionId || !jobName || !resourceGroup || !subscriptionIdParam) {
+        return createResponse(
+          request,
+          false,
+          "Missing required parameters: executionId, jobName, resourceGroup, subscriptionId",
+          400,
+        );
+      }
+
+      try {
+        const client = getContainerAppsClient(subscriptionIdParam);
+        const snapshot = await getExecutionSnapshot(
+          client,
+          resourceGroup,
+          jobName,
+          executionName,
+        );
+
+        structuredLog(context, "info", "Cancel confirmation job status checked", {
+          executionId,
+          executionName,
+          total: snapshot.total,
+          running: snapshot.runningExecutions.length,
+          targetStatus: snapshot.targetExecution?.status,
+        });
+
+        if (snapshot.targetExecution && !isRunningStatus(snapshot.targetExecution.status)) {
+          return createResponse(
+            request,
+            false,
+            "No running job executions found. It may have already completed.",
+            404,
+            { executionId, executionName },
+          );
+        }
+
+        if (!snapshot.targetExecution && executionName) {
+          return createResponse(
+            request,
+            false,
+            "No running job executions found. It may have already completed.",
+            404,
+            { executionId, executionName },
+          );
+        }
+
+        if (!executionName) {
+          if (snapshot.runningExecutions.length === 0) {
+            return createResponse(
+              request,
+              false,
+              "No running job executions found. It may have already completed.",
+              404,
+              { executionId },
+            );
+          }
+
+          if (snapshot.runningExecutions.length > 1) {
+            return createResponse(
+              request,
+              false,
+              `Multiple jobs running (${snapshot.runningExecutions.length}). Cannot safely determine which one to cancel.`,
+              409,
+              { executionId },
+            );
+          }
+
+          return createConfirmationResponse(request, {
+            executionName: snapshot.runningExecutions[0].name,
+          });
+        }
+
+        return createConfirmationResponse(request, { executionName });
+      } catch (err) {
+        structuredLog(context, "warn", "Could not verify job status for cancel confirmation", {
+          executionId,
+          executionName,
+          error: err.message,
+        });
+
+        return createResponse(
+          request,
+          false,
+          "Could not verify whether the job is still running. Please try again.",
+          500,
+          { executionId, executionName },
+        );
+      }
     }
 
     structuredLog(context, "info", "Cancel request submitted", {
@@ -289,22 +404,15 @@ app.http("CancelProcessing", {
           },
         );
 
-        // List all executions for this job
-        const executions = [];
-        for await (const execution of client.jobsExecutions.list(
+        const snapshot = await getExecutionSnapshot(
+          client,
           resourceGroup,
           jobName,
-        )) {
-          executions.push(execution);
-        }
-
-        // Find running executions
-        const runningExecutions = executions.filter(
-          (e) => e.status === "Running" || e.status === "Processing",
         );
+        const { runningExecutions } = snapshot;
 
         structuredLog(context, "info", "Found executions", {
-          total: executions.length,
+          total: snapshot.total,
           running: runningExecutions.length,
         });
 
@@ -364,11 +472,16 @@ app.http("CancelProcessing", {
         }
       } else {
         // Found in cache, let the container's cancellation checker stop itself.
-        structuredLog(context, "info", "Marked job execution for cooperative cancellation", {
-          jobName,
-          executionName,
-          resourceGroup,
-        });
+        structuredLog(
+          context,
+          "info",
+          "Marked job execution for cooperative cancellation",
+          {
+            jobName,
+            executionName,
+            resourceGroup,
+          },
+        );
 
         // Remove from mapping cache
         removeExecutionMapping(executionId);
