@@ -103,6 +103,7 @@ function generateCancelConfirmation(request, details = {}) {
     }
     .title { font-size: 24px; font-weight: 600; margin-bottom: 12px; }
     .message { color: #555; line-height: 1.5; margin-bottom: 24px; }
+    .keep-hint { color: #777; font-size: 14px; margin-bottom: 16px; }
     .details { font-size: 11px; color: #888; margin-top: 24px; overflow-wrap: anywhere; }
     .details strong { color: #777; font-weight: 600; }
     .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
@@ -123,8 +124,8 @@ function generateCancelConfirmation(request, details = {}) {
   <div class="card">
     <div class="title">Stop analyzing this meeting?</div>
     <div class="message">If you stop, the meeting will not be analyzed and no dashboard will be generated.</div>
+    <div class="keep-hint">To keep it running, close this tab.</div>
     <div class="actions">
-      <a class="secondary" href="javascript:window.close()">Keep Running</a>
       <form method="POST" action="${escapeHtml(request.url)}">
         <button type="submit">Stop Analysis</button>
       </form>
@@ -222,31 +223,13 @@ function createResponse(request, success, message, statusCode, details = {}) {
  *   - subscriptionId: Azure subscription ID
  *
  * This function:
- *   1. Marks the execution as cancelled so the container can exit cleanly
- *   2. If execution tracking is unavailable, falls back to stopping the running job
+ *   1. Validates that the target job execution is still running
+ *   2. Stops the execution through the Container Apps API after explicit confirmation
  */
 
-// In-memory store of cancelled executionIds (for check endpoint)
-// Note: This is per-instance, but cancellation is best-effort
+// Legacy in-memory store for CheckCancellation.
+// Explicit cancellation now stops the Container App Job execution directly.
 const cancelledExecutions = new Set();
-const CANCELLED_TTL_MS = 30 * 60 * 1000; // 30 minutes
-const cancelledTimestamps = new Map();
-
-function markAsCancelled(executionId) {
-  cancelledExecutions.add(executionId);
-  cancelledTimestamps.set(executionId, Date.now());
-
-  // Cleanup old entries
-  if (cancelledExecutions.size > 100) {
-    const now = Date.now();
-    for (const [id, ts] of cancelledTimestamps) {
-      if (now - ts > CANCELLED_TTL_MS) {
-        cancelledExecutions.delete(id);
-        cancelledTimestamps.delete(id);
-      }
-    }
-  }
-}
 
 function isCancelled(executionId) {
   return cancelledExecutions.has(executionId);
@@ -404,11 +387,10 @@ app.http("CancelProcessing", {
     let executionName = mapping?.executionName;
 
     try {
+      const client = getContainerAppsClient(subscriptionIdParam);
+
       // If no mapping found, list running executions and find/stop them
       if (!executionName) {
-        // Get the Container Apps client only for the force-stop fallback.
-        const client = getContainerAppsClient(subscriptionIdParam);
-
         structuredLog(
           context,
           "info",
@@ -473,8 +455,6 @@ app.http("CancelProcessing", {
             previousStatus: targetExecution.status,
           });
           executionName = targetExecution.name;
-          // Mark as cancelled only after the force-stop succeeded
-          markAsCancelled(executionId);
         } catch (stopError) {
           structuredLog(context, "warn", "Could not stop job execution", {
             executionName: targetExecution.name,
@@ -488,20 +468,40 @@ app.http("CancelProcessing", {
           );
         }
       } else {
-        // Found in cache, let the container's cancellation checker stop itself.
+        const snapshot = await getExecutionSnapshot(
+          client,
+          resourceGroup,
+          jobName,
+          executionName,
+        );
+
+        if (
+          !snapshot.targetExecution ||
+          !isRunningStatus(snapshot.targetExecution.status)
+        ) {
+          removeExecutionMapping(executionId);
+          return createResponse(
+            request,
+            false,
+            "No running job executions found. It may have already completed.",
+            404,
+            { executionId, executionName },
+          );
+        }
+
+        await client.jobsExecutions.delete(resourceGroup, jobName, executionName);
         structuredLog(
           context,
           "info",
-          "Marked job execution for cooperative cancellation",
+          "Job execution stopped from cache",
           {
             jobName,
             executionName,
             resourceGroup,
+            previousStatus: snapshot.targetExecution.status,
           },
         );
 
-        // Mark as cancelled only after confirming the cooperative path is valid
-        markAsCancelled(executionId);
         // Remove from mapping cache
         removeExecutionMapping(executionId);
       }

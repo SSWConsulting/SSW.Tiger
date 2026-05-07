@@ -18,13 +18,16 @@ CANCEL_CHECKER_PID=""
 CANCELLED_FILE="/tmp/tiger-cancelled"
 
 handle_termination() {
+    local signal_name="$1"
+    local exit_code="$2"
+
     if [ -f "$CANCELLED_FILE" ]; then
         log "info" "Cancellation signal received, exiting successfully"
         exit 0
     fi
 
-    log "warn" "Termination signal received"
-    exit 143
+    log "warn" "$signal_name signal received"
+    exit "$exit_code"
 }
 
 start_cancel_checker() {
@@ -58,7 +61,8 @@ stop_cancel_checker() {
 
 # Cleanup on exit
 trap stop_cancel_checker EXIT
-trap handle_termination TERM INT
+trap 'handle_termination TERM 143' TERM
+trap 'handle_termination INT 130' INT
 
 # Setup Claude CLI authentication
 setup_claude_auth() {
