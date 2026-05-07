@@ -151,7 +151,12 @@ function isRunningStatus(status) {
   return status === "Running" || status === "Processing";
 }
 
-async function getExecutionSnapshot(client, resourceGroup, jobName, executionName) {
+async function getExecutionSnapshot(
+  client,
+  resourceGroup,
+  jobName,
+  executionName,
+) {
   const executions = [];
   for await (const execution of client.jobsExecutions.list(
     resourceGroup,
@@ -290,15 +295,23 @@ app.http("CancelProcessing", {
           executionName,
         );
 
-        structuredLog(context, "info", "Cancel confirmation job status checked", {
-          executionId,
-          executionName,
-          total: snapshot.total,
-          running: snapshot.runningExecutions.length,
-          targetStatus: snapshot.targetExecution?.status,
-        });
+        structuredLog(
+          context,
+          "info",
+          "Cancel confirmation job status checked",
+          {
+            executionId,
+            executionName,
+            total: snapshot.total,
+            running: snapshot.runningExecutions.length,
+            targetStatus: snapshot.targetExecution?.status,
+          },
+        );
 
-        if (snapshot.targetExecution && !isRunningStatus(snapshot.targetExecution.status)) {
+        if (
+          snapshot.targetExecution &&
+          !isRunningStatus(snapshot.targetExecution.status)
+        ) {
           return createResponse(
             request,
             false,
@@ -346,11 +359,16 @@ app.http("CancelProcessing", {
 
         return createConfirmationResponse(request, { executionName });
       } catch (err) {
-        structuredLog(context, "warn", "Could not verify job status for cancel confirmation", {
-          executionId,
-          executionName,
-          error: err.message,
-        });
+        structuredLog(
+          context,
+          "warn",
+          "Could not verify job status for cancel confirmation",
+          {
+            executionId,
+            executionName,
+            error: err.message,
+          },
+        );
 
         return createResponse(
           request,
@@ -380,9 +398,6 @@ app.http("CancelProcessing", {
         400,
       );
     }
-
-    // Mark immediately so the job's cancellation checker can terminate cleanly.
-    markAsCancelled(executionId);
 
     // Try to look up from in-memory cache first (works if same instance)
     const mapping = getExecutionMapping(executionId);
@@ -458,6 +473,8 @@ app.http("CancelProcessing", {
             previousStatus: targetExecution.status,
           });
           executionName = targetExecution.name;
+          // Mark as cancelled only after the force-stop succeeded
+          markAsCancelled(executionId);
         } catch (stopError) {
           structuredLog(context, "warn", "Could not stop job execution", {
             executionName: targetExecution.name,
@@ -483,6 +500,8 @@ app.http("CancelProcessing", {
           },
         );
 
+        // Mark as cancelled only after confirming the cooperative path is valid
+        markAsCancelled(executionId);
         // Remove from mapping cache
         removeExecutionMapping(executionId);
       }
