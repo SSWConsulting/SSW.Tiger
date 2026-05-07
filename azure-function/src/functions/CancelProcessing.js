@@ -67,6 +67,94 @@ function generateHtmlResponse(success, message, details = {}) {
 </html>`;
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function generateCancelConfirmation(request, details = {}) {
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Confirm Cancel - SSW Tiger</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      background: #f5f5f5;
+      color: #333;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      padding: 40px;
+      text-align: center;
+      max-width: 420px;
+    }
+    .title { font-size: 24px; font-weight: 600; margin-bottom: 12px; }
+    .message { color: #555; line-height: 1.5; margin-bottom: 24px; }
+    .details { font-size: 12px; color: #666; text-align: left; margin-bottom: 24px; overflow-wrap: anywhere; }
+    .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    button, .secondary {
+      border-radius: 8px;
+      border: 0;
+      padding: 12px 18px;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    button { background: #CC4141; color: white; }
+    .secondary { background: #eee; color: #333; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="title">Cancel Processing?</div>
+    <div class="message">This will stop the current T.I.G.E.R. meeting analysis job. Link previews and security scans cannot cancel it from this page.</div>
+    ${details.executionName ? `<div class="details"><strong>Execution:</strong> ${escapeHtml(details.executionName)}</div>` : ""}
+    <div class="actions">
+      <form method="POST" action="${escapeHtml(request.url)}">
+        <button type="submit">Cancel Processing</button>
+      </form>
+      <a class="secondary" href="javascript:window.close()">Keep Running</a>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+function createConfirmationResponse(request, details = {}) {
+  return {
+    status: 200,
+    headers: {
+      "Content-Type": "text/html",
+      "Cache-Control": "no-store",
+      "X-Robots-Tag": "noindex, nofollow",
+    },
+    body: generateCancelConfirmation(request, details),
+  };
+}
+
+function getRequestDiagnostics(request) {
+  return {
+    method: request.method,
+    userAgent: request.headers.get("user-agent") || "",
+    forwardedFor: request.headers.get("x-forwarded-for") || "",
+    referer: request.headers.get("referer") || request.headers.get("referrer") || "",
+  };
+}
+
 /**
  * Return response based on request type (HTML for browser, JSON for API)
  */
@@ -102,9 +190,8 @@ function createResponse(request, success, message, statusCode, details = {}) {
  *   - subscriptionId: Azure subscription ID
  *
  * This function:
- *   1. Tries to look up execution from in-memory cache (same instance)
- *   2. If not found, lists running executions and stops them (cross-instance)
- *   3. Sends a "cancelled" notification to participants
+ *   1. Marks the execution as cancelled so the container can exit cleanly
+ *   2. If execution tracking is unavailable, falls back to stopping the running job
  */
 
 // In-memory store of cancelled executionIds (for check endpoint)
@@ -145,7 +232,23 @@ app.http("CancelProcessing", {
     const subscriptionIdParam = request.query.get("subscriptionId");
     const userId = request.query.get("userId");
 
-    structuredLog(context, "info", "Cancel request received", {
+    if (request.method === "GET") {
+      structuredLog(context, "info", "Cancel confirmation viewed", {
+        ...getRequestDiagnostics(request),
+        executionId,
+        jobName,
+        resourceGroup,
+        subscriptionId: subscriptionIdParam,
+        userId,
+      });
+
+      return createConfirmationResponse(request, {
+        executionName: getExecutionMapping(executionId)?.executionName,
+      });
+    }
+
+    structuredLog(context, "info", "Cancel request submitted", {
+      ...getRequestDiagnostics(request),
       executionId,
       jobName,
       resourceGroup,
@@ -163,16 +266,19 @@ app.http("CancelProcessing", {
       );
     }
 
+    // Mark immediately so the job's cancellation checker can terminate cleanly.
+    markAsCancelled(executionId);
+
     // Try to look up from in-memory cache first (works if same instance)
     const mapping = getExecutionMapping(executionId);
     let executionName = mapping?.executionName;
 
     try {
-      // Get the Container Apps client
-      const client = getContainerAppsClient(subscriptionIdParam);
-
       // If no mapping found, list running executions and find/stop them
       if (!executionName) {
+        // Get the Container Apps client only for the force-stop fallback.
+        const client = getContainerAppsClient(subscriptionIdParam);
+
         structuredLog(
           context,
           "info",
@@ -257,52 +363,16 @@ app.http("CancelProcessing", {
           );
         }
       } else {
-        // Found in cache, stop specific execution
-        structuredLog(context, "info", "Stopping job execution from cache", {
+        // Found in cache, let the container's cancellation checker stop itself.
+        structuredLog(context, "info", "Marked job execution for cooperative cancellation", {
           jobName,
           executionName,
           resourceGroup,
         });
 
-        try {
-          const execution = await client.jobsExecutions.get(
-            resourceGroup,
-            jobName,
-            executionName,
-          );
-
-          if (
-            execution.status === "Running" ||
-            execution.status === "Processing"
-          ) {
-            await client.jobsExecutions.delete(
-              resourceGroup,
-              jobName,
-              executionName,
-            );
-            structuredLog(context, "info", "Job execution stopped", {
-              executionName,
-              previousStatus: execution.status,
-            });
-          } else {
-            structuredLog(context, "info", "Job already completed", {
-              executionName,
-              status: execution.status,
-            });
-          }
-        } catch (stopError) {
-          structuredLog(context, "warn", "Could not stop job execution", {
-            executionName,
-            error: stopError.message,
-          });
-        }
-
         // Remove from mapping cache
         removeExecutionMapping(executionId);
       }
-
-      // Mark as cancelled (for job to check)
-      markAsCancelled(executionId);
 
       return createResponse(
         request,

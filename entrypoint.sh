@@ -13,8 +13,19 @@ log() {
 }
 
 # Background cancellation checker
-# Polls CHECK_CANCELLATION_URL every 5 seconds and exits if cancelled
+# Polls CHECK_CANCELLATION_URL every 15 seconds and exits if cancelled
 CANCEL_CHECKER_PID=""
+CANCELLED_FILE="/tmp/tiger-cancelled"
+
+handle_termination() {
+    if [ -f "$CANCELLED_FILE" ]; then
+        log "info" "Cancellation signal received, exiting successfully"
+        exit 0
+    fi
+
+    log "warn" "Termination signal received"
+    exit 143
+}
 
 start_cancel_checker() {
     if [ -z "$CHECK_CANCELLATION_URL" ]; then
@@ -28,7 +39,9 @@ start_cancel_checker() {
             IS_CANCELLED=$(echo "$CANCEL_CHECK" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).cancelled" 2>/dev/null || echo "false")
             if [ "$IS_CANCELLED" = "true" ]; then
                 log "info" "Job cancelled by user, terminating..."
-                # Kill the parent process group
+                touch "$CANCELLED_FILE"
+                # Kill the process group so any foreground Node/Claude child exits too.
+                # The main shell traps this and exits 0 for user-requested cancellation.
                 kill -TERM -$$ 2>/dev/null || true
                 exit 0
             fi
@@ -45,6 +58,7 @@ stop_cancel_checker() {
 
 # Cleanup on exit
 trap stop_cancel_checker EXIT
+trap handle_termination TERM INT
 
 # Setup Claude CLI authentication
 setup_claude_auth() {
@@ -86,7 +100,7 @@ send_failure_notification() {
 
 # Main pipeline
 run_pipeline() {
-    # Start background cancellation checker (polls every 5s)
+    # Start background cancellation checker (polls every 15s)
     start_cancel_checker
 
     # Step 1: Download transcript
