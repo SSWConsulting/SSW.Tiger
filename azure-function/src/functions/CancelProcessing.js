@@ -227,9 +227,29 @@ function createResponse(request, success, message, statusCode, details = {}) {
  *   2. Stops the execution through the Container Apps API after explicit confirmation
  */
 
-// Legacy in-memory store for CheckCancellation.
-// Explicit cancellation now stops the Container App Job execution directly.
+// Best-effort in-memory cancellation marker used only so the running container
+// can classify the SIGTERM as user-cancelled and send a "cancelled" Teams
+// notification with the same participant metadata as failed/completed notices.
+// TODO: Move this marker to shared storage (Cosmos/Table/Blob) so
+// CheckCancellation works reliably across multiple Azure Function instances.
 const cancelledExecutions = new Set();
+const cancelledTimestamps = new Map();
+const CANCELLED_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+function markAsCancelled(executionId) {
+  cancelledExecutions.add(executionId);
+  cancelledTimestamps.set(executionId, Date.now());
+
+  if (cancelledExecutions.size > 100) {
+    const now = Date.now();
+    for (const [id, ts] of cancelledTimestamps) {
+      if (now - ts > CANCELLED_TTL_MS) {
+        cancelledExecutions.delete(id);
+        cancelledTimestamps.delete(id);
+      }
+    }
+  }
+}
 
 function isCancelled(executionId) {
   return cancelledExecutions.has(executionId);
@@ -445,7 +465,8 @@ app.http("CancelProcessing", {
         // Stop the single running execution
         const targetExecution = runningExecutions[0];
         try {
-          await client.jobsExecutions.delete(
+          markAsCancelled(executionId);
+          await client.jobs.beginStopExecutionAndWait(
             resourceGroup,
             jobName,
             targetExecution.name,
@@ -489,18 +510,18 @@ app.http("CancelProcessing", {
           );
         }
 
-        await client.jobsExecutions.delete(resourceGroup, jobName, executionName);
-        structuredLog(
-          context,
-          "info",
-          "Job execution stopped from cache",
-          {
-            jobName,
-            executionName,
-            resourceGroup,
-            previousStatus: snapshot.targetExecution.status,
-          },
+        markAsCancelled(executionId);
+        await client.jobs.beginStopExecutionAndWait(
+          resourceGroup,
+          jobName,
+          executionName,
         );
+        structuredLog(context, "info", "Job execution stopped from cache", {
+          jobName,
+          executionName,
+          resourceGroup,
+          previousStatus: snapshot.targetExecution.status,
+        });
 
         // Remove from mapping cache
         removeExecutionMapping(executionId);

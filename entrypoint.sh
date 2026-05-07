@@ -16,13 +16,44 @@ log() {
 # Polls CHECK_CANCELLATION_URL every 15 seconds and exits if cancelled
 CANCEL_CHECKER_PID=""
 CANCELLED_FILE="/tmp/tiger-cancelled"
+CANCELLED_NOTIFIED_FILE="/tmp/tiger-cancelled-notified"
+
+send_cancelled_notification() {
+    if [ -f "$CANCELLED_NOTIFIED_FILE" ]; then
+        return
+    fi
+
+    if [ -z "$LOGIC_APP_URL" ] || [ -z "$PARTICIPANTS_JSON" ]; then
+        return
+    fi
+
+    touch "$CANCELLED_NOTIFIED_FILE"
+    NOTIFICATION_TYPE="cancelled" node processor/sendNotification.js >/dev/null || true
+}
+
+is_user_cancelled() {
+    if [ -f "$CANCELLED_FILE" ]; then
+        echo "true"
+        return
+    fi
+
+    if [ -z "$CHECK_CANCELLATION_URL" ]; then
+        echo "false"
+        return
+    fi
+
+    local cancel_check
+    cancel_check=$(curl -s --max-time 3 "$CHECK_CANCELLATION_URL" 2>/dev/null || echo '{"cancelled":false}')
+    echo "$cancel_check" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).cancelled" 2>/dev/null || echo "false"
+}
 
 handle_termination() {
     local signal_name="$1"
     local exit_code="$2"
 
-    if [ -f "$CANCELLED_FILE" ]; then
+    if [ "$signal_name" = "TERM" ] && [ "$(is_user_cancelled)" = "true" ]; then
         log "info" "Cancellation signal received, exiting successfully"
+        send_cancelled_notification
         exit 0
     fi
 
