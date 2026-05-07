@@ -40,9 +40,9 @@ start_cancel_checker() {
             if [ "$IS_CANCELLED" = "true" ]; then
                 log "info" "Job cancelled by user, terminating..."
                 touch "$CANCELLED_FILE"
-                # Kill the process group so any foreground Node/Claude child exits too.
+                # Kill the current process group so any foreground Node/Claude child exits too.
                 # The main shell traps this and exits 0 for user-requested cancellation.
-                kill -TERM -$$ 2>/dev/null || true
+                kill -TERM 0 2>/dev/null || true
                 exit 0
             fi
         done
