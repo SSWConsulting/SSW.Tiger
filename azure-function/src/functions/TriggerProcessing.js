@@ -18,11 +18,17 @@ const { app, output } = require("@azure/functions");
 
 const LOG_PREFIX = "[TIGER]";
 
+const TIGER_LOGO_URL =
+  process.env.TIGER_LOGO_URL ||
+  "https://satigerstagingweb.blob.core.windows.net/assets/Logo.png";
+
 /**
  * Generate HTML response page for browser requests
  */
 function generateHtmlResponse(success, message, details = {}) {
-  const icon = success ? "🐯" : "❌";
+  const iconHtml = success
+    ? `<img src="${TIGER_LOGO_URL}" alt="" class="icon icon-img">`
+    : `<div class="icon">❌</div>`;
   const title = success ? "Processing Queued" : "Trigger Failed";
   const bgColor = success ? "#d4edda" : "#f8d7da";
   const textColor = success ? "#155724" : "#721c24";
@@ -59,7 +65,13 @@ function generateHtmlResponse(success, message, details = {}) {
       text-align: center;
       max-width: 400px;
     }
-    .icon { font-size: 64px; margin-bottom: 20px; }
+    .icon { font-size: 64px; line-height: 1; margin-bottom: 20px; }
+    .icon-img {
+      display: inline-block;
+      width: 64px;
+      height: 64px;
+      object-fit: contain;
+    }
     .title { font-size: 24px; font-weight: 600; margin-bottom: 12px; color: #333; }
     .message {
       padding: 16px;
@@ -76,7 +88,7 @@ function generateHtmlResponse(success, message, details = {}) {
 </head>
 <body>
   <div class="card">
-    <div class="icon">${icon}</div>
+    ${iconHtml}
     <div class="title">${title}</div>
     <div class="message">${message}</div>
     ${detailsHtml}
