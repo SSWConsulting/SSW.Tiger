@@ -12,25 +12,8 @@ log() {
     echo "{\"level\":\"$level\",\"message\":\"$message\"}" >&2
 }
 
-# Send a "cancelled" Teams notification with a Restart button.
-# Safe to call repeatedly — the sentinel file prevents duplicate dispatch
-# even across the parent shell and any subshells.
-NOTIFIED_SENTINEL="/tmp/.tiger-cancelled-notified"
-send_cancelled_notification() {
-    if [ -e "$NOTIFIED_SENTINEL" ]; then
-        return
-    fi
-    if [ -z "$LOGIC_APP_URL" ] || [ -z "$PARTICIPANTS_JSON" ]; then
-        return
-    fi
-    : > "$NOTIFIED_SENTINEL"
-    NOTIFICATION_TYPE="cancelled" node processor/sendNotification.js >/dev/null 2>&1 || true
-}
-
 # Background cancellation checker
-# Polls CHECK_CANCELLATION_URL every 15s. On cancellation: signal the parent
-# group with SIGTERM — the on_sigterm trap (below) sends the notification and
-# exits. Single dispatch path keeps duplicate handling simple.
+# Polls CHECK_CANCELLATION_URL every 5 seconds and exits if cancelled
 CANCEL_CHECKER_PID=""
 
 start_cancel_checker() {
@@ -45,7 +28,7 @@ start_cancel_checker() {
             IS_CANCELLED=$(echo "$CANCEL_CHECK" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).cancelled" 2>/dev/null || echo "false")
             if [ "$IS_CANCELLED" = "true" ]; then
                 log "info" "Job cancelled by user, terminating..."
-                # Signal the parent process group; on_sigterm trap handles the rest
+                # Kill the parent process group
                 kill -TERM -$$ 2>/dev/null || true
                 exit 0
             fi
@@ -60,38 +43,7 @@ stop_cancel_checker() {
     fi
 }
 
-# SIGTERM trap — fires for any SIGTERM, including:
-#   1. The cancel checker calling `kill -TERM -$$` after detecting cancellation
-#   2. Azure Container Apps issuing `delete` (cancel from CancelProcessing)
-#   3. Platform-issued signals (scale-in, replica timeout, maintenance) that are
-#      NOT user cancellations
-# Only send the cancelled notification when CheckCancellation actually confirms
-# cancellation — otherwise we'd mislabel platform shutdowns as user cancels.
-on_sigterm() {
-    log "info" "SIGTERM received — checking cancellation status"
-    local exit_code=143
-    if [ -n "$CHECK_CANCELLATION_URL" ]; then
-        local check_result
-        check_result=$(curl -s --max-time 3 "$CHECK_CANCELLATION_URL" 2>/dev/null || echo '{"cancelled":false}')
-        local is_cancelled
-        is_cancelled=$(echo "$check_result" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).cancelled" 2>/dev/null || echo "false")
-        if [ "$is_cancelled" = "true" ]; then
-            log "info" "Cancellation confirmed — sending cancelled notification"
-            send_cancelled_notification
-            # User cancellation is an expected stop, not a processing failure.
-            # Exit 0 so Container Apps Jobs do not retry the same cancelled run
-            # and create a second stopped execution with the same env vars.
-            exit_code=0
-        else
-            log "info" "SIGTERM was not a user cancellation — exiting silently"
-        fi
-    fi
-    stop_cancel_checker
-    exit "$exit_code"
-}
-trap on_sigterm TERM
-
-# Cleanup on normal exit
+# Cleanup on exit
 trap stop_cancel_checker EXIT
 
 # Setup Claude CLI authentication
@@ -134,7 +86,7 @@ send_failure_notification() {
 
 # Main pipeline
 run_pipeline() {
-    # Start background cancellation checker (polls every 15s)
+    # Start background cancellation checker (polls every 5s)
     start_cancel_checker
 
     # Step 1: Download transcript
