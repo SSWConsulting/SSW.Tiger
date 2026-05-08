@@ -177,13 +177,17 @@ function createResponse(request, success, message, statusCode, details = {}) {
 function generateConfirmationResponse(request) {
   return {
     status: 200,
-    headers: { "Content-Type": "text/html" },
+    headers: {
+      "Content-Type": "text/html",
+      "Cache-Control": "no-store",
+      "X-Robots-Tag": "noindex, nofollow",
+    },
     body: `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Restart Processing - SSW Tiger</title>
+  <title>Re-run Analysis</title>
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -193,6 +197,7 @@ function generateConfirmationResponse(request) {
       min-height: 100vh;
       margin: 0;
       background: #f5f5f5;
+      color: #333;
     }
     .card {
       background: white;
@@ -200,42 +205,31 @@ function generateConfirmationResponse(request) {
       box-shadow: 0 4px 20px rgba(0,0,0,0.1);
       padding: 40px;
       text-align: center;
-      max-width: 400px;
+      max-width: 420px;
     }
-    .icon { font-size: 64px; margin-bottom: 20px; }
-    .title { font-size: 24px; font-weight: 600; margin-bottom: 12px; color: #333; }
-    .message {
-      padding: 16px;
+    .title { font-size: 24px; font-weight: 600; margin-bottom: 12px; }
+    .message { color: #555; line-height: 1.5; margin-bottom: 24px; }
+    .keep-hint { color: #777; font-size: 14px; margin-bottom: 16px; }
+    button {
       border-radius: 8px;
-      background: #fff3cd;
-      color: #856404;
-      border: 1px solid #ffeaa7;
-      margin-bottom: 20px;
-    }
-    .action-button {
-      display: inline-block;
-      margin-top: 8px;
-      padding: 12px 24px;
-      background: #cc0000;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      font-size: 16px;
+      border: 0;
+      padding: 12px 18px;
+      font: inherit;
       font-weight: 600;
       cursor: pointer;
+      background: #CC4141;
+      color: white;
     }
-    .close-hint { margin-top: 20px; color: #999; font-size: 14px; }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="icon">↻</div>
-    <div class="title">Restart Processing?</div>
-    <div class="message">This will re-run the meeting analysis from scratch.</div>
+    <div class="title">Re-run this meeting analysis?</div>
+    <div class="message">The previous results will be replaced. A full re-analysis will run and you'll receive a new Teams notification when it's ready.</div>
     <form method="POST" action="${request.url}">
-      <button type="submit" class="action-button">↻ Confirm Restart</button>
+      <button type="submit">Re-run Analysis</button>
     </form>
-    <div class="close-hint">You can close this window if you do not want to restart.</div>
+    <div class="keep-hint">To keep the existing results, close this tab.</div>
   </div>
 </body>
 </html>`,
@@ -289,17 +283,18 @@ app.http("RestartProcessing", {
 
     // Teams and security scanners can prefetch links with GET. GET must be
     // side-effect free; only the confirmation form's POST may enqueue a run.
-    if (request.method === "GET") {
-      return generateConfirmationResponse(request);
-    }
-
-    // Layer 1: Live check via Container Apps API + in-memory mapping cache.
-    // If a recent execution for this meeting is still Running, refuse.
+    // However, we do a live running-check on GET so the user sees "Already
+    // Running" immediately instead of hitting it after clicking confirm.
     const subscriptionId = process.env.SUBSCRIPTION_ID;
     const resourceGroup = process.env.CONTAINER_APP_JOB_RESOURCE_GROUP;
     const jobName = process.env.CONTAINER_APP_JOB_NAME;
 
-    if (subscriptionId && resourceGroup && jobName) {
+    /**
+     * Check whether a job for this meeting is already running.
+     * Returns true if a running execution was found (and logs it).
+     */
+    async function isAlreadyRunning() {
+      if (!subscriptionId || !resourceGroup || !jobName) return false;
       try {
         const client = getContainerAppsClient(subscriptionId);
         const cachedActive = findActiveExecutionForMeeting(
@@ -308,8 +303,6 @@ app.http("RestartProcessing", {
         );
 
         if (cachedActive) {
-          // Verify it's actually still running via Azure (cache could be stale).
-          // SDK only exposes list() on jobsExecutions in this package version.
           try {
             let liveExec = null;
             for await (const exec of client.jobsExecutions.list(
@@ -326,29 +319,14 @@ app.http("RestartProcessing", {
               (liveExec.status === "Running" ||
                 liveExec.status === "Processing")
             ) {
-              structuredLog(
-                context,
-                "info",
-                "Restart blocked: already running",
-                {
-                  meetingId,
-                  transcriptId,
-                  runningExecutionName: cachedActive.executionName,
-                  runningExecutionId: cachedActive.executionId,
-                  userId,
-                },
-              );
-              return createResponse(
-                request,
-                false,
-                "A processing run for this meeting is already in progress. Please wait for it to complete or cancel it before restarting.",
-                409,
-                { conflict: true },
-              );
+              structuredLog(context, "info", "Already running (cache hit)", {
+                meetingId,
+                transcriptId,
+                runningExecutionName: cachedActive.executionName,
+              });
+              return true;
             }
           } catch (liveCheckErr) {
-            // If the live check fails (e.g. execution was deleted), fall
-            // through. The cached entry was stale.
             structuredLog(
               context,
               "warn",
@@ -361,8 +339,7 @@ app.http("RestartProcessing", {
           }
         }
 
-        // Cross-instance / cold-start fallback: cache may be empty, but Azure
-        // can still show a running execution for the same meeting.
+        // Cross-instance / cold-start fallback
         for await (const exec of client.jobsExecutions.list(
           resourceGroup,
           jobName,
@@ -373,35 +350,62 @@ app.http("RestartProcessing", {
           if (!executionMatchesMeeting(exec, meetingId, transcriptId)) {
             continue;
           }
-
-          structuredLog(
-            context,
-            "info",
-            "Restart blocked: live execution already running",
-            {
-              meetingId,
-              transcriptId,
-              runningExecutionName: exec.name,
-              userId,
-            },
-          );
-          return createResponse(
-            request,
-            false,
-            "A processing run for this meeting is already in progress. Please wait for it to complete or cancel it before restarting.",
-            409,
-            { conflict: true },
-          );
+          structuredLog(context, "info", "Already running (live API scan)", {
+            meetingId,
+            transcriptId,
+            runningExecutionName: exec.name,
+          });
+          return true;
         }
       } catch (err) {
-        // Don't block restart on a check failure; log and proceed.
         structuredLog(
           context,
           "warn",
-          "Layer 1 concurrency check failed, proceeding without it",
+          "Running-check failed, assuming not running",
           { error: err.message },
         );
       }
+      return false;
+    }
+
+    if (request.method === "GET") {
+      if (await isAlreadyRunning()) {
+        structuredLog(
+          context,
+          "info",
+          "GET: already running, showing conflict page",
+          {
+            meetingId,
+            transcriptId,
+            userId,
+          },
+        );
+        return createResponse(
+          request,
+          false,
+          "A processing run for this meeting is already in progress. Please wait for it to complete or cancel it before restarting.",
+          409,
+          { conflict: true },
+        );
+      }
+      return generateConfirmationResponse(request);
+    }
+
+    // POST: repeat the check (user may have left the confirm page open while
+    // a new run was triggered by someone else, or via a double-click race).
+    if (await isAlreadyRunning()) {
+      structuredLog(context, "info", "Restart blocked: already running", {
+        meetingId,
+        transcriptId,
+        userId,
+      });
+      return createResponse(
+        request,
+        false,
+        "A processing run for this meeting is already in progress. Please wait for it to complete or cancel it before restarting.",
+        409,
+        { conflict: true },
+      );
     }
 
     // Layer 2: in-process restart-in-flight set
