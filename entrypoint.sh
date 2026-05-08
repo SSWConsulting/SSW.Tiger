@@ -13,8 +13,53 @@ log() {
 }
 
 # Background cancellation checker
-# Polls CHECK_CANCELLATION_URL every 5 seconds and exits if cancelled
+# Polls CHECK_CANCELLATION_URL every 15 seconds and exits if cancelled
 CANCEL_CHECKER_PID=""
+CANCELLED_FILE="/tmp/tiger-cancelled"
+CANCELLED_NOTIFIED_FILE="/tmp/tiger-cancelled-notified"
+
+send_cancelled_notification() {
+    if [ -f "$CANCELLED_NOTIFIED_FILE" ]; then
+        return
+    fi
+
+    if [ -z "$LOGIC_APP_URL" ] || [ -z "$PARTICIPANTS_JSON" ]; then
+        return
+    fi
+
+    touch "$CANCELLED_NOTIFIED_FILE"
+    NOTIFICATION_TYPE="cancelled" node processor/sendNotification.js >/dev/null || true
+}
+
+is_user_cancelled() {
+    if [ -f "$CANCELLED_FILE" ]; then
+        echo "true"
+        return
+    fi
+
+    if [ -z "$CHECK_CANCELLATION_URL" ]; then
+        echo "false"
+        return
+    fi
+
+    local cancel_check
+    cancel_check=$(curl -s --max-time 3 "$CHECK_CANCELLATION_URL" 2>/dev/null || echo '{"cancelled":false}')
+    echo "$cancel_check" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).cancelled" 2>/dev/null || echo "false"
+}
+
+handle_termination() {
+    local signal_name="$1"
+    local exit_code="$2"
+
+    if [ "$signal_name" = "TERM" ] && [ "$(is_user_cancelled)" = "true" ]; then
+        log "info" "Cancellation signal received, exiting successfully"
+        send_cancelled_notification
+        exit 0
+    fi
+
+    log "warn" "$signal_name signal received"
+    exit "$exit_code"
+}
 
 start_cancel_checker() {
     if [ -z "$CHECK_CANCELLATION_URL" ]; then
@@ -28,8 +73,10 @@ start_cancel_checker() {
             IS_CANCELLED=$(echo "$CANCEL_CHECK" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).cancelled" 2>/dev/null || echo "false")
             if [ "$IS_CANCELLED" = "true" ]; then
                 log "info" "Job cancelled by user, terminating..."
-                # Kill the parent process group
-                kill -TERM -$$ 2>/dev/null || true
+                touch "$CANCELLED_FILE"
+                # Kill the current process group so any foreground Node/Claude child exits too.
+                # The main shell traps this and exits 0 for user-requested cancellation.
+                kill -TERM 0 2>/dev/null || true
                 exit 0
             fi
         done
@@ -45,6 +92,8 @@ stop_cancel_checker() {
 
 # Cleanup on exit
 trap stop_cancel_checker EXIT
+trap 'handle_termination TERM 143' TERM
+trap 'handle_termination INT 130' INT
 
 # Setup Claude CLI authentication
 setup_claude_auth() {
@@ -86,7 +135,7 @@ send_failure_notification() {
 
 # Main pipeline
 run_pipeline() {
-    # Start background cancellation checker (polls every 5s)
+    # Start background cancellation checker (polls every 15s)
     start_cancel_checker
 
     # Step 1: Download transcript
