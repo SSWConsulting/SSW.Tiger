@@ -62,6 +62,6 @@ AzuriteConfig
 # Bicep outputs
 infra/main.json
 
-# AI agents folders
-.agents
-.codex
+# AI agent folders
+.agents/
+.codex/
