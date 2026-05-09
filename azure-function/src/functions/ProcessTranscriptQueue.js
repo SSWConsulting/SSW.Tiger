@@ -1,6 +1,7 @@
 const { app } = require("@azure/functions");
 const { DefaultAzureCredential } = require("@azure/identity");
 const { ContainerAppsAPIClient } = require("@azure/arm-appcontainers");
+const crypto = require("crypto");
 
 /**
  * Processes transcript notifications from the queue.
@@ -84,6 +85,7 @@ function removeFromCache(meetingId, transcriptId) {
  */
 const executionMappingCache = new Map();
 const EXECUTION_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+const RESTART_TOKEN_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
 
 function storeExecutionMapping(executionId, data) {
   executionMappingCache.set(executionId, data);
@@ -133,6 +135,63 @@ function getContainerAppsClient(subscriptionId) {
     );
   }
   return containerAppsClient;
+}
+
+function getRestartTokenSecret() {
+  return (
+    process.env.RESTART_TOKEN_SECRET ||
+    process.env.WEBHOOK_CLIENT_STATE ||
+    process.env.GRAPH_CLIENT_SECRET
+  );
+}
+
+function createRestartSignature({
+  executionId,
+  userId,
+  meetingId,
+  transcriptId,
+  expiresAt,
+}) {
+  const secret = getRestartTokenSecret();
+  if (!secret) {
+    throw new Error(
+      "Missing restart token signing secret. Configure RESTART_TOKEN_SECRET, WEBHOOK_CLIENT_STATE, or GRAPH_CLIENT_SECRET.",
+    );
+  }
+
+  return crypto
+    .createHmac("sha256", secret)
+    .update(
+      [executionId, userId, meetingId, transcriptId, String(expiresAt)].join(
+        "|",
+      ),
+    )
+    .digest("hex");
+}
+
+function appendQueryParams(url, params) {
+  const parsedUrl = new URL(url);
+  for (const [key, value] of Object.entries(params)) {
+    parsedUrl.searchParams.set(key, value);
+  }
+  return parsedUrl.toString();
+}
+
+function buildSiblingFunctionUrl(sourceFunctionUrl, targetFunctionName) {
+  const parsedUrl = new URL(sourceFunctionUrl);
+  const normalizedPath = parsedUrl.pathname.replace(/\/+$/, "");
+  if (!normalizedPath.endsWith("/CancelProcessing")) {
+    throw new Error(
+      `CANCEL_FUNCTION_URL must end with /CancelProcessing to derive ${targetFunctionName}`,
+    );
+  }
+  parsedUrl.pathname = `${normalizedPath.slice(
+    0,
+    -"/CancelProcessing".length,
+  )}/${targetFunctionName}`;
+  parsedUrl.search = "";
+  parsedUrl.hash = "";
+  return parsedUrl.toString();
 }
 
 app.storageQueue("ProcessTranscriptQueue", {
@@ -246,24 +305,57 @@ async function triggerContainerAppJob(params, context) {
 
   // Generate a unique execution ID for this job run
   const executionId = `${meetingId}-${transcriptId}-${Date.now()}`;
+  const restartTokenExpiresAt = cancelFunctionUrl
+    ? Date.now() + RESTART_TOKEN_TTL_MS
+    : null;
+  const restartToken = cancelFunctionUrl
+    ? createRestartSignature({
+        executionId,
+        userId,
+        meetingId,
+        transcriptId,
+        expiresAt: restartTokenExpiresAt,
+      })
+    : "";
 
   // Build cancel URL if cancel function is configured
   // Include subscriptionId so cancel can work without in-memory cache (cross-instance)
   // Include userId so cancelled notification can be sent to the organizer
-  // Include meetingId/transcriptId so the cancel-success page can build a Restart link
   const cancelUrl = cancelFunctionUrl
-    ? `${cancelFunctionUrl}?executionId=${encodeURIComponent(executionId)}&jobName=${encodeURIComponent(jobName)}&resourceGroup=${encodeURIComponent(resourceGroup)}&subscriptionId=${encodeURIComponent(subscriptionId)}&userId=${encodeURIComponent(userId)}&meetingId=${encodeURIComponent(meetingId)}&transcriptId=${encodeURIComponent(transcriptId)}`
+    ? appendQueryParams(cancelFunctionUrl, {
+        executionId,
+        jobName,
+        resourceGroup,
+        subscriptionId,
+        userId,
+        meetingId,
+        transcriptId,
+      })
     : "";
 
   // Build restart URL (same Function host, different endpoint)
   const restartUrl = cancelFunctionUrl
-    ? cancelFunctionUrl.replace("/CancelProcessing", "/RestartProcessing") +
-      `?executionId=${encodeURIComponent(executionId)}&userId=${encodeURIComponent(userId)}&meetingId=${encodeURIComponent(meetingId)}&transcriptId=${encodeURIComponent(transcriptId)}`
+    ? appendQueryParams(
+        buildSiblingFunctionUrl(cancelFunctionUrl, "RestartProcessing"),
+        {
+          executionId,
+          userId,
+          meetingId,
+          transcriptId,
+          expiresAt: String(restartTokenExpiresAt),
+          token: restartToken,
+        },
+      )
     : "";
 
   // Build check cancellation URL (same host, different endpoint)
   const checkCancellationUrl = cancelFunctionUrl
-    ? cancelFunctionUrl.replace("/CancelProcessing", "/CheckCancellation") + `?executionId=${encodeURIComponent(executionId)}`
+    ? appendQueryParams(
+        buildSiblingFunctionUrl(cancelFunctionUrl, "CheckCancellation"),
+        {
+          executionId,
+        },
+      )
     : "";
 
   // Use singleton client for better performance

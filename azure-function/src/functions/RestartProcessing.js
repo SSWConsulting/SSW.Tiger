@@ -13,13 +13,15 @@ const TIGER_LOGO_URL =
 /**
  * HTTP trigger to restart a transcript processing job for the same meeting.
  * Called when the user clicks "Restart processing" on a "cancelled" or
- * "failed" Teams card, or on the cancel-success HTML page.
+ * "failed" Teams card.
  *
  * Query parameters:
  *   - executionId   : original execution ID (for audit/correlation; pseudo-token)
  *   - userId        : Graph user ID of the meeting organizer
  *   - meetingId     : Graph meeting ID
  *   - transcriptId  : Graph transcript ID
+ *   - expiresAt     : token expiry timestamp in milliseconds
+ *   - token         : HMAC signature for the restart request
  *
  * Concurrency defence:
  *   1. List Container App Job executions and check if one is already running
@@ -27,7 +29,7 @@ const TIGER_LOGO_URL =
  *   2. In-process restart-in-flight set blocks rapid double-clicks within the
  *      window between this endpoint and ProcessTranscriptQueue picking up the
  *      message.
- *   3. ProcessTranscriptQueue has its own dedup keyed by `restart-${meetingId}-${transcriptId}`.
+ *   3. ProcessTranscriptQueue dedups Azure Queue redelivery by restartId.
  */
 
 // In-memory tracking of restart requests issued in the last 30 seconds.
@@ -84,12 +86,78 @@ function executionMatchesMeeting(execution, meetingId, transcriptId) {
   return false;
 }
 
+function escapeHtml(value = "") {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function getRestartTokenSecret() {
+  return (
+    process.env.RESTART_TOKEN_SECRET ||
+    process.env.WEBHOOK_CLIENT_STATE ||
+    process.env.GRAPH_CLIENT_SECRET
+  );
+}
+
+function createRestartSignature({
+  executionId,
+  userId,
+  meetingId,
+  transcriptId,
+  expiresAt,
+}) {
+  const secret = getRestartTokenSecret();
+  if (!secret) return "";
+
+  return crypto
+    .createHmac("sha256", secret)
+    .update(
+      [executionId, userId, meetingId, transcriptId, String(expiresAt)].join(
+        "|",
+      ),
+    )
+    .digest("hex");
+}
+
+function isValidRestartToken({
+  executionId,
+  userId,
+  meetingId,
+  transcriptId,
+  expiresAt,
+  token,
+}) {
+  if (!token || !expiresAt) return false;
+
+  const expiry = Number(expiresAt);
+  if (!Number.isFinite(expiry) || expiry <= Date.now()) {
+    return false;
+  }
+
+  const expected = createRestartSignature({
+    executionId,
+    userId,
+    meetingId,
+    transcriptId,
+    expiresAt,
+  });
+  if (!expected || expected.length !== token.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(token));
+}
+
 function generateHtmlResponse(success, message, details = {}) {
   // Three states: success (green), conflict (amber), error (red)
   const isConflict = details.conflict === true;
   const icon = isConflict ? "⏳" : "❌";
   const iconHtml = success
-    ? `<img src="${TIGER_LOGO_URL}" alt="" class="icon icon-img">`
+    ? `<img src="${escapeHtml(TIGER_LOGO_URL)}" alt="" class="icon icon-img">`
     : `<div class="icon">${icon}</div>`;
   const title = success
     ? "Restart Queued"
@@ -105,7 +173,7 @@ function generateHtmlResponse(success, message, details = {}) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${title} - SSW Tiger</title>
+  <title>${escapeHtml(title)} - SSW Tiger</title>
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -146,8 +214,8 @@ function generateHtmlResponse(success, message, details = {}) {
 <body>
   <div class="card">
     ${iconHtml}
-    <div class="title">${title}</div>
-    <div class="message">${message}</div>
+    <div class="title">${escapeHtml(title)}</div>
+    <div class="message">${escapeHtml(message)}</div>
     <div class="close-hint">You can close this window now.</div>
   </div>
 </body>
@@ -175,6 +243,8 @@ function createResponse(request, success, message, statusCode, details = {}) {
 }
 
 function generateConfirmationResponse(request) {
+  const formAction = escapeHtml(request.url);
+
   return {
     status: 200,
     headers: {
@@ -226,7 +296,7 @@ function generateConfirmationResponse(request) {
   <div class="card">
     <div class="title">Re-run this meeting analysis?</div>
     <div class="message">The previous results will be replaced. A full re-analysis will run and you'll receive a new Teams notification when it's ready.</div>
-    <form method="POST" action="${request.url}">
+    <form method="POST" action="${formAction}">
       <button type="submit">Re-run Analysis</button>
     </form>
     <div class="keep-hint">To keep the existing results, close this tab.</div>
@@ -251,6 +321,8 @@ app.http("RestartProcessing", {
     const userId = request.query.get("userId");
     const meetingId = request.query.get("meetingId");
     const transcriptId = request.query.get("transcriptId");
+    const expiresAt = request.query.get("expiresAt");
+    const token = request.query.get("token");
     const sourceIp =
       request.headers.get("x-forwarded-for") ||
       request.headers.get("x-azure-clientip") ||
@@ -271,6 +343,8 @@ app.http("RestartProcessing", {
     if (!userId) missing.push("userId");
     if (!meetingId) missing.push("meetingId");
     if (!transcriptId) missing.push("transcriptId");
+    if (!expiresAt) missing.push("expiresAt");
+    if (!token) missing.push("token");
 
     if (missing.length > 0) {
       return createResponse(
@@ -278,6 +352,31 @@ app.http("RestartProcessing", {
         false,
         `Missing required parameter(s): ${missing.join(", ")}`,
         400,
+      );
+    }
+
+    if (
+      !isValidRestartToken({
+        executionId,
+        userId,
+        meetingId,
+        transcriptId,
+        expiresAt,
+        token,
+      })
+    ) {
+      structuredLog(context, "warn", "Restart rejected: invalid token", {
+        executionId,
+        meetingId,
+        transcriptId,
+        userId,
+        sourceIp,
+      });
+      return createResponse(
+        request,
+        false,
+        "This restart link is invalid or has expired. Please use the latest Teams notification link.",
+        403,
       );
     }
 
@@ -290,11 +389,13 @@ app.http("RestartProcessing", {
     const jobName = process.env.CONTAINER_APP_JOB_NAME;
 
     /**
-     * Check whether a job for this meeting is already running.
-     * Returns true if a running execution was found (and logs it).
+     * Check whether a job for this meeting is already running. Returns:
+     * - true: running execution found
+     * - false: no running execution found
+     * - null: status unknown because config/API lookup failed
      */
-    async function isAlreadyRunning() {
-      if (!subscriptionId || !resourceGroup || !jobName) return false;
+    async function checkAlreadyRunning() {
+      if (!subscriptionId || !resourceGroup || !jobName) return null;
       try {
         const client = getContainerAppsClient(subscriptionId);
         const cachedActive = findActiveExecutionForMeeting(
@@ -361,15 +462,25 @@ app.http("RestartProcessing", {
         structuredLog(
           context,
           "warn",
-          "Running-check failed, assuming not running",
+          "Running-check failed",
           { error: err.message },
         );
+        return null;
       }
       return false;
     }
 
     if (request.method === "GET") {
-      if (await isAlreadyRunning()) {
+      const runningStatus = await checkAlreadyRunning();
+      if (runningStatus === null) {
+        return createResponse(
+          request,
+          false,
+          "Restart status is temporarily unavailable. Please try again in a minute.",
+          503,
+        );
+      }
+      if (runningStatus) {
         structuredLog(
           context,
           "info",
@@ -393,7 +504,16 @@ app.http("RestartProcessing", {
 
     // POST: repeat the check (user may have left the confirm page open while
     // a new run was triggered by someone else, or via a double-click race).
-    if (await isAlreadyRunning()) {
+    const runningStatus = await checkAlreadyRunning();
+    if (runningStatus === null) {
+      return createResponse(
+        request,
+        false,
+        "Restart status is temporarily unavailable. Please try again in a minute.",
+        503,
+      );
+    }
+    if (runningStatus) {
       structuredLog(context, "info", "Restart blocked: already running", {
         meetingId,
         transcriptId,
