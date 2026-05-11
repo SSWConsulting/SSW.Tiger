@@ -63,5 +63,5 @@ AzuriteConfig
 infra/main.json
 
 # AI agent folders
-.agents
-.codex
+.agents/
+.codex/

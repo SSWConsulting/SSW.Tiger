@@ -1,6 +1,7 @@
 const { app } = require("@azure/functions");
 const { DefaultAzureCredential } = require("@azure/identity");
 const { ContainerAppsAPIClient } = require("@azure/arm-appcontainers");
+const crypto = require("crypto");
 
 /**
  * Processes transcript notifications from the queue.
@@ -84,6 +85,7 @@ function removeFromCache(meetingId, transcriptId) {
  */
 const executionMappingCache = new Map();
 const EXECUTION_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+const RESTART_TOKEN_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
 
 function storeExecutionMapping(executionId, data) {
   executionMappingCache.set(executionId, data);
@@ -107,6 +109,23 @@ function removeExecutionMapping(executionId) {
   executionMappingCache.delete(executionId);
 }
 
+/**
+ * Find a cached execution mapping for a given meeting + transcript.
+ * Used by RestartProcessing to detect a job already running for the meeting.
+ *
+ * Per-instance only — if the running job was started by a different Function
+ * instance, this returns undefined. Caller should treat that as "no match" and
+ * rely on the live Container Apps API check + queue-level dedup as backstops.
+ */
+function findActiveExecutionForMeeting(meetingId, transcriptId) {
+  for (const [executionId, data] of executionMappingCache) {
+    if (data.meetingId === meetingId && data.transcriptId === transcriptId) {
+      return { executionId, ...data };
+    }
+  }
+  return undefined;
+}
+
 function getContainerAppsClient(subscriptionId) {
   if (!containerAppsClient) {
     azureCredential = new DefaultAzureCredential();
@@ -116,6 +135,63 @@ function getContainerAppsClient(subscriptionId) {
     );
   }
   return containerAppsClient;
+}
+
+function getRestartTokenSecret() {
+  return (
+    process.env.RESTART_TOKEN_SECRET ||
+    process.env.WEBHOOK_CLIENT_STATE ||
+    process.env.GRAPH_CLIENT_SECRET
+  );
+}
+
+function createRestartSignature({
+  executionId,
+  userId,
+  meetingId,
+  transcriptId,
+  expiresAt,
+}) {
+  const secret = getRestartTokenSecret();
+  if (!secret) {
+    throw new Error(
+      "Missing restart token signing secret. Configure RESTART_TOKEN_SECRET, WEBHOOK_CLIENT_STATE, or GRAPH_CLIENT_SECRET.",
+    );
+  }
+
+  return crypto
+    .createHmac("sha256", secret)
+    .update(
+      [executionId, userId, meetingId, transcriptId, String(expiresAt)].join(
+        "|",
+      ),
+    )
+    .digest("hex");
+}
+
+function appendQueryParams(url, params) {
+  const parsedUrl = new URL(url);
+  for (const [key, value] of Object.entries(params)) {
+    parsedUrl.searchParams.set(key, value);
+  }
+  return parsedUrl.toString();
+}
+
+function buildSiblingFunctionUrl(sourceFunctionUrl, targetFunctionName) {
+  const parsedUrl = new URL(sourceFunctionUrl);
+  const normalizedPath = parsedUrl.pathname.replace(/\/+$/, "");
+  if (!normalizedPath.endsWith("/CancelProcessing")) {
+    throw new Error(
+      `CANCEL_FUNCTION_URL must end with /CancelProcessing to derive ${targetFunctionName}`,
+    );
+  }
+  parsedUrl.pathname = `${normalizedPath.slice(
+    0,
+    -"/CancelProcessing".length,
+  )}/${targetFunctionName}`;
+  parsedUrl.search = "";
+  parsedUrl.hash = "";
+  return parsedUrl.toString();
 }
 
 app.storageQueue("ProcessTranscriptQueue", {
@@ -137,7 +213,7 @@ app.storageQueue("ProcessTranscriptQueue", {
       data = message;
     }
 
-    const { userId, meetingId, transcriptId, skipSubjectFilter, manualTrigger } = data;
+    const { userId, meetingId, transcriptId, skipSubjectFilter, manualTrigger, restartTrigger, restartId, restartedFromExecutionId } = data;
 
     if (!userId || !meetingId || !transcriptId) {
       structuredLog(context, "error", "Missing IDs in queue message", { userId, meetingId, transcriptId });
@@ -148,12 +224,36 @@ app.storageQueue("ProcessTranscriptQueue", {
       structuredLog(context, "info", "Manual trigger - subject filter will be skipped", { meetingId });
     }
 
-    // Check for duplicate (Graph may send same notification multiple times)
-    // Manual triggers use a separate dedup key so they aren't blocked by webhook entries,
-    // but still dedup against each other (prevents double-click spawning two containers)
-    const dedupKey = manualTrigger ? `manual-${meetingId}-${transcriptId}` : `${meetingId}-${transcriptId}`;
+    if (restartTrigger) {
+      structuredLog(context, "info", "Restart job starting", {
+        meetingId,
+        transcriptId,
+        restartedFromExecutionId: restartedFromExecutionId || "(unknown)",
+      });
+    }
+
+    // Check for duplicate (Graph may send same notification multiple times).
+    // Webhook/manual: dedup on meetingId+transcriptId (10 min) — covers
+    //   Graph webhook retries and accidental UI double-clicks.
+    // Restart: dedup on a per-click unique restartId — only prevents Azure
+    //   Queue redelivery of the same message; multiple legitimate restart
+    //   clicks each get their own restartId. RestartProcessing blocks rapid
+    //   user double-clicks before enqueueing.
+    let dedupKey;
+    if (restartTrigger) {
+      dedupKey = `restart-${restartId || `${meetingId}-${transcriptId}-${Date.now()}`}`;
+    } else if (manualTrigger) {
+      dedupKey = `manual-${meetingId}-${transcriptId}`;
+    } else {
+      dedupKey = `${meetingId}-${transcriptId}`;
+    }
     if (processedCache.has(dedupKey) && Date.now() - processedCache.get(dedupKey) < CACHE_TTL_MS) {
-      structuredLog(context, "info", "SKIP: Duplicate notification", { meetingId, transcriptId, manualTrigger: !!manualTrigger });
+      structuredLog(context, "info", "SKIP: Duplicate notification", {
+        meetingId,
+        transcriptId,
+        manualTrigger: !!manualTrigger,
+        restartTrigger: !!restartTrigger,
+      });
       return;
     }
 
@@ -205,17 +305,57 @@ async function triggerContainerAppJob(params, context) {
 
   // Generate a unique execution ID for this job run
   const executionId = `${meetingId}-${transcriptId}-${Date.now()}`;
+  const restartTokenExpiresAt = cancelFunctionUrl
+    ? Date.now() + RESTART_TOKEN_TTL_MS
+    : null;
+  const restartToken = cancelFunctionUrl
+    ? createRestartSignature({
+        executionId,
+        userId,
+        meetingId,
+        transcriptId,
+        expiresAt: restartTokenExpiresAt,
+      })
+    : "";
 
   // Build cancel URL if cancel function is configured
   // Include subscriptionId so cancel can work without in-memory cache (cross-instance)
   // Include userId so cancelled notification can be sent to the organizer
   const cancelUrl = cancelFunctionUrl
-    ? `${cancelFunctionUrl}?executionId=${encodeURIComponent(executionId)}&jobName=${encodeURIComponent(jobName)}&resourceGroup=${encodeURIComponent(resourceGroup)}&subscriptionId=${encodeURIComponent(subscriptionId)}&userId=${encodeURIComponent(userId)}`
+    ? appendQueryParams(cancelFunctionUrl, {
+        executionId,
+        jobName,
+        resourceGroup,
+        subscriptionId,
+        userId,
+        meetingId,
+        transcriptId,
+      })
+    : "";
+
+  // Build restart URL (same Function host, different endpoint)
+  const restartUrl = cancelFunctionUrl
+    ? appendQueryParams(
+        buildSiblingFunctionUrl(cancelFunctionUrl, "RestartProcessing"),
+        {
+          executionId,
+          userId,
+          meetingId,
+          transcriptId,
+          expiresAt: String(restartTokenExpiresAt),
+          token: restartToken,
+        },
+      )
     : "";
 
   // Build check cancellation URL (same host, different endpoint)
   const checkCancellationUrl = cancelFunctionUrl
-    ? cancelFunctionUrl.replace("/CancelProcessing", "/CheckCancellation") + `?executionId=${encodeURIComponent(executionId)}`
+    ? appendQueryParams(
+        buildSiblingFunctionUrl(cancelFunctionUrl, "CheckCancellation"),
+        {
+          executionId,
+        },
+      )
     : "";
 
   // Use singleton client for better performance
@@ -242,6 +382,8 @@ async function triggerContainerAppJob(params, context) {
               { name: "JOB_EXECUTION_ID", value: executionId },
               { name: "CANCEL_URL", value: cancelUrl },
               { name: "CHECK_CANCELLATION_URL", value: checkCancellationUrl },
+              // Restart URL — sent in failed/cancelled Teams cards so users can re-run
+              { name: "RESTART_URL", value: restartUrl },
               // Manual trigger: skip subject filter when explicitly requested
               ...(skipSubjectFilter
                 ? [{ name: "SKIP_SUBJECT_FILTER", value: "true" }]
@@ -272,12 +414,16 @@ async function triggerContainerAppJob(params, context) {
     const executionName = initialResult?.name || "unknown";
 
     // Store mapping of executionId -> executionName for cancel functionality
-    // This allows the cancel endpoint to find the actual job execution
+    // This allows the cancel endpoint to find the actual job execution.
+    // meetingId/transcriptId enable findActiveExecutionForMeeting() (used by RestartProcessing
+    // to detect a job already running for the same meeting).
     storeExecutionMapping(executionId, {
       executionName,
       jobName,
       resourceGroup,
       subscriptionId,
+      meetingId,
+      transcriptId,
       startedAt: Date.now(),
     });
 
@@ -302,11 +448,12 @@ async function triggerContainerAppJob(params, context) {
   }
 }
 
-// Export shared utilities for CancelProcessing function
+// Export shared utilities for CancelProcessing and RestartProcessing functions
 module.exports = {
   getContainerAppsClient,
   getExecutionMapping,
   removeExecutionMapping,
+  findActiveExecutionForMeeting,
   structuredLog,
   LOG_PREFIX,
 };
