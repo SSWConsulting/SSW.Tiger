@@ -9,11 +9,16 @@ const { app, output } = require("@azure/functions");
  * This bypasses the automatic subject filter (e.g. "sprint" keyword)
  * but still respects external participant checks.
  *
+ * GET is non-destructive (shows a confirmation page). Only POST enqueues.
+ * Teams link previews, Defender Safe Links, and other URL scanners issue GETs,
+ * so the destructive action must sit behind an explicit form submission.
+ *
  * Usage:
  *   POST /api/TriggerProcessing
  *   Body: { "joinUrl": "https://teams.microsoft.com/l/meetup-join/..." }
+ *   (or POST with the same ?joinUrl=... query string)
  *
- *   GET /api/TriggerProcessing?joinUrl=https://teams.microsoft.com/l/meetup-join/...
+ *   GET /api/TriggerProcessing?joinUrl=... renders a confirmation page.
  */
 
 const LOG_PREFIX = "[TIGER]";
@@ -118,6 +123,89 @@ function createResponse(request, success, message, statusCode, details = {}) {
     status: statusCode,
     headers: { "Content-Type": "text/html" },
     body: generateHtmlResponse(success, message, details),
+  };
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function generateConfirmationResponse(request) {
+  const formAction = escapeHtml(request.url);
+
+  return {
+    status: 200,
+    headers: {
+      "Content-Type": "text/html",
+      "Cache-Control": "no-store",
+      "X-Robots-Tag": "noindex, nofollow",
+    },
+    body: `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Process Meeting - SSW Tiger</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      background: #f5f5f5;
+      color: #333;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      padding: 40px;
+      text-align: center;
+      max-width: 420px;
+    }
+    .title { font-size: 24px; font-weight: 600; margin-bottom: 12px; }
+    .message { color: #555; line-height: 1.5; margin-bottom: 24px; }
+    .keep-hint { color: #777; font-size: 14px; margin-top: 16px; }
+    button {
+      border-radius: 8px;
+      border: 0;
+      padding: 12px 18px;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      background: #CC4141;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="title">Process this meeting anyway?</div>
+    <div class="message">This meeting did not match the automatic processing criteria. Confirm to run the full analysis and generate a dashboard. You'll receive a Teams notification when it's ready.</div>
+    <form method="POST" action="${formAction}">
+      <button type="submit">Process Anyway</button>
+    </form>
+    <div class="keep-hint">To skip processing, close this tab.</div>
+  </div>
+</body>
+</html>`,
+  };
+}
+
+function getRequestDiagnostics(request) {
+  return {
+    method: request.method,
+    userAgent: request.headers.get("user-agent") || "",
+    forwardedFor: request.headers.get("x-forwarded-for") || "",
+    referer:
+      request.headers.get("referer") || request.headers.get("referrer") || "",
   };
 }
 
@@ -276,7 +364,7 @@ app.http("TriggerProcessing", {
   authLevel: "anonymous",
   extraOutputs: [queueOutput],
   handler: async (request, context) => {
-    // Extract joinUrl from query string (GET) or request body (POST)
+    // Extract joinUrl from query string (GET/POST) or POST body
     let joinUrl = request.query.get("joinUrl");
 
     if (!joinUrl && request.method === "POST") {
@@ -297,7 +385,20 @@ app.http("TriggerProcessing", {
       );
     }
 
+    // GET is non-destructive. Teams previews, Defender Safe Links, and other
+    // URL scanners issue GETs against this endpoint - any of them could
+    // silently trigger processing if GET enqueued. The confirmation form's
+    // POST is the only path that enqueues.
+    if (request.method === "GET") {
+      structuredLog(context, "info", "Trigger confirmation viewed", {
+        ...getRequestDiagnostics(request),
+        joinUrl: joinUrl.substring(0, 80) + "...",
+      });
+      return generateConfirmationResponse(request);
+    }
+
     structuredLog(context, "info", "Manual trigger requested", {
+      ...getRequestDiagnostics(request),
       joinUrl: joinUrl.substring(0, 80) + "...",
     });
 
