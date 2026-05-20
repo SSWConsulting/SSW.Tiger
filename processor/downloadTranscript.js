@@ -859,8 +859,12 @@ function hasExternalParticipants(participants) {
 }
 
 async function main() {
-  // Track meeting context for error reporting
+  // Track meeting context for error reporting. Hoisted to the outer scope so
+  // that the catch block below can surface them in the error output, allowing
+  // entrypoint.sh to send a "failed" notification even when the pipeline dies
+  // before saving the transcript.
   let meetingSubject = null;
+  let chatParticipants = [];
 
   try {
     // Validate configuration (checks mock mode or Graph API config)
@@ -893,7 +897,6 @@ async function main() {
     const callId = transcriptMeta.callId;
 
     // Get actual participants from chat messages
-    let chatParticipants = [];
     const chatId = meeting.chatInfo?.threadId;
     if (chatId && callId) {
       const chatResult = await fetchActualParticipantsFromChat(
@@ -1017,12 +1020,15 @@ async function main() {
     }
     log("error", error.message, errorContext);
 
-    // Include meeting subject in output for entrypoint.sh to capture
+    // Include meeting subject and any participants we managed to fetch before
+    // failing, so entrypoint.sh can route a "failed" notification to them.
     const errorOutput = {
       error: true,
       message: meetingSubject
         ? `[${meetingSubject}] ${error.message}`
         : error.message,
+      meetingSubject: meetingSubject || "",
+      participants: chatParticipants,
     };
     outputResult(errorOutput);
     process.exit(1);
