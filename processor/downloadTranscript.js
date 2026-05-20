@@ -614,27 +614,54 @@ function formatDuration(seconds) {
   return `${hrs} hr ${remainMins} min`;
 }
 
+// Delays before each transcript-content fetch attempt, in milliseconds.
+// Transcript-only meetings (no video recording) sometimes notify the webhook
+// before Graph's content endpoint can serve the VTT bytes, returning 5xx until
+// the storage read path catches up. Three tries over ~60s covers the lag
+// without dragging the pipeline.
+const TRANSCRIPT_FETCH_DELAYS_MS = [0, 15000, 45000];
+
 async function downloadTranscriptContent(token) {
   // Graph API endpoint for transcript content
   // GET /users/{userId}/onlineMeetings/{meetingId}/transcripts/{transcriptId}/content?$format=text/vtt
   const graphUrl = `https://graph.microsoft.com/v1.0/users/${CONFIG.userId}/onlineMeetings/${CONFIG.meetingId}/transcripts/${CONFIG.transcriptId}/content?$format=text/vtt`;
 
-  const response = await fetch(graphUrl, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  let lastError;
+  for (let attempt = 0; attempt < TRANSCRIPT_FETCH_DELAYS_MS.length; attempt++) {
+    const delay = TRANSCRIPT_FETCH_DELAYS_MS[attempt];
+    if (delay > 0) {
+      log("warn", "Transcript not ready, retrying after backoff", {
+        attempt: attempt + 1,
+        delayMs: delay,
+      });
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
 
-  if (!response.ok) {
+    const response = await fetch(graphUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (response.ok) {
+      return await response.text();
+    }
+
     const errorText = await response.text();
-    throw new Error(
+    lastError = new Error(
       `Failed to download transcript: ${response.status} - ${errorText}`,
     );
+
+    // Only retry on transient server errors (5xx) and rate limits (429).
+    // 4xx auth/permission/not-found errors will not heal on retry.
+    const isTransient = response.status >= 500 || response.status === 429;
+    if (!isTransient) {
+      break;
+    }
   }
 
-  const vttContent = await response.text();
-  return vttContent;
+  throw lastError;
 }
 
 function parseSubject(subject) {
