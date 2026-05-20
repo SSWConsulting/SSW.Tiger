@@ -614,12 +614,12 @@ function formatDuration(seconds) {
   return `${hrs} hr ${remainMins} min`;
 }
 
-// Delays before each transcript-content fetch attempt, in milliseconds.
+// Number of times to attempt the transcript-content fetch. Each retry waits
+// 2^attempt seconds (2s, 4s, 8s ... 128s), totalling ~4 minutes worst-case.
 // Transcript-only meetings (no video recording) sometimes notify the webhook
 // before Graph's content endpoint can serve the VTT bytes, returning 5xx until
-// the storage read path catches up. Three tries over ~60s covers the lag
-// without dragging the pipeline.
-const TRANSCRIPT_FETCH_DELAYS_MS = [0, 15000, 45000];
+// the storage read path catches up.
+const TRANSCRIPT_FETCH_ATTEMPTS = 8;
 
 async function downloadTranscriptContent(token) {
   // Graph API endpoint for transcript content
@@ -627,14 +627,14 @@ async function downloadTranscriptContent(token) {
   const graphUrl = `https://graph.microsoft.com/v1.0/users/${CONFIG.userId}/onlineMeetings/${CONFIG.meetingId}/transcripts/${CONFIG.transcriptId}/content?$format=text/vtt`;
 
   let lastError;
-  for (let attempt = 0; attempt < TRANSCRIPT_FETCH_DELAYS_MS.length; attempt++) {
-    const delay = TRANSCRIPT_FETCH_DELAYS_MS[attempt];
-    if (delay > 0) {
+  for (let attempt = 0; attempt < TRANSCRIPT_FETCH_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      const delayMs = Math.pow(2, attempt) * 1000;
       log("warn", "Transcript not ready, retrying after backoff", {
         attempt: attempt + 1,
-        delayMs: delay,
+        delayMs,
       });
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
 
     const response = await fetch(graphUrl, {
