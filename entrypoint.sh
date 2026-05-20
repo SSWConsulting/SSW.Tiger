@@ -150,6 +150,20 @@ run_pipeline() {
         ERROR_MSG=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).message" 2>/dev/null || echo "Unknown error")
         # Log with meeting identifiers for debugging
         log "error" "Failed to download transcript [user=$GRAPH_USER_ID, meeting=$GRAPH_MEETING_ID]: $ERROR_MSG"
+
+        # Best-effort "failed" notification. The download script emits the
+        # meeting subject and any participants it managed to fetch before
+        # erroring; fall back to notifying the meeting organizer ($GRAPH_USER_ID)
+        # so a failure during transcript fetch is never silent.
+        FAILED_SUBJECT=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).meetingSubject || ''" 2>/dev/null || echo "")
+        FAILED_PARTICIPANTS=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.stringify(JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).participants || [])" 2>/dev/null || echo "[]")
+        if [ "$FAILED_PARTICIPANTS" = "[]" ] && [ -n "$GRAPH_USER_ID" ]; then
+            FAILED_PARTICIPANTS="[{\"userId\":\"$GRAPH_USER_ID\"}]"
+        fi
+        export MEETING_SUBJECT="$FAILED_SUBJECT"
+        export PARTICIPANTS_JSON="$FAILED_PARTICIPANTS"
+        send_failure_notification
+
         exit 1
     fi
 

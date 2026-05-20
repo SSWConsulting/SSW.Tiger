@@ -614,27 +614,54 @@ function formatDuration(seconds) {
   return `${hrs} hr ${remainMins} min`;
 }
 
+// Number of times to attempt the transcript-content fetch. Each retry waits
+// 2^attempt seconds (2s, 4s, 8s ... 128s), totalling ~4 minutes worst-case.
+// Transcript-only meetings (no video recording) sometimes notify the webhook
+// before Graph's content endpoint can serve the VTT bytes, returning 5xx until
+// the storage read path catches up.
+const TRANSCRIPT_FETCH_ATTEMPTS = 8;
+
 async function downloadTranscriptContent(token) {
   // Graph API endpoint for transcript content
   // GET /users/{userId}/onlineMeetings/{meetingId}/transcripts/{transcriptId}/content?$format=text/vtt
   const graphUrl = `https://graph.microsoft.com/v1.0/users/${CONFIG.userId}/onlineMeetings/${CONFIG.meetingId}/transcripts/${CONFIG.transcriptId}/content?$format=text/vtt`;
 
-  const response = await fetch(graphUrl, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  let lastError;
+  for (let attempt = 0; attempt < TRANSCRIPT_FETCH_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      const delayMs = Math.pow(2, attempt) * 1000;
+      log("warn", "Transcript not ready, retrying after backoff", {
+        attempt: attempt + 1,
+        delayMs,
+      });
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
 
-  if (!response.ok) {
+    const response = await fetch(graphUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (response.ok) {
+      return await response.text();
+    }
+
     const errorText = await response.text();
-    throw new Error(
+    lastError = new Error(
       `Failed to download transcript: ${response.status} - ${errorText}`,
     );
+
+    // Only retry on transient server errors (5xx) and rate limits (429).
+    // 4xx auth/permission/not-found errors will not heal on retry.
+    const isTransient = response.status >= 500 || response.status === 429;
+    if (!isTransient) {
+      break;
+    }
   }
 
-  const vttContent = await response.text();
-  return vttContent;
+  throw lastError;
 }
 
 function parseSubject(subject) {
@@ -859,8 +886,12 @@ function hasExternalParticipants(participants) {
 }
 
 async function main() {
-  // Track meeting context for error reporting
+  // Track meeting context for error reporting. Hoisted to the outer scope so
+  // that the catch block below can surface them in the error output, allowing
+  // entrypoint.sh to send a "failed" notification even when the pipeline dies
+  // before saving the transcript.
   let meetingSubject = null;
+  let chatParticipants = [];
 
   try {
     // Validate configuration (checks mock mode or Graph API config)
@@ -893,7 +924,6 @@ async function main() {
     const callId = transcriptMeta.callId;
 
     // Get actual participants from chat messages
-    let chatParticipants = [];
     const chatId = meeting.chatInfo?.threadId;
     if (chatId && callId) {
       const chatResult = await fetchActualParticipantsFromChat(
@@ -1017,12 +1047,15 @@ async function main() {
     }
     log("error", error.message, errorContext);
 
-    // Include meeting subject in output for entrypoint.sh to capture
+    // Include meeting subject and any participants we managed to fetch before
+    // failing, so entrypoint.sh can route a "failed" notification to them.
     const errorOutput = {
       error: true,
       message: meetingSubject
         ? `[${meetingSubject}] ${error.message}`
         : error.message,
+      meetingSubject: meetingSubject || "",
+      participants: chatParticipants,
     };
     outputResult(errorOutput);
     process.exit(1);
