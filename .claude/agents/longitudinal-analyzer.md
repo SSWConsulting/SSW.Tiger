@@ -334,6 +334,10 @@ Answer honestly based on the data:
 }
 ```
 
+### Item product prefix (applies to any `actionItems[]` you emit)
+
+Every action item string must begin with `<Product> - ` followed by the description. Use the **short** product name: `Cheetah` not `SSW.Cheetah`, `Crystal Ball` not `SSW.CrystalBall`, `Tiger` not `SSW.Tiger`. Use `General` when no specific product applies; never omit the prefix. See the full rule in `consolidator.md` > `Item product prefix`.
+
 ## If No Historical Data
 
 ```json
