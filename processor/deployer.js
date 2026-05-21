@@ -59,6 +59,38 @@ async function copyToOutputDirectory({ sourcePath, outputDir, projectName, meeti
 }
 
 /**
+ * Copy repo-wide branding assets (e.g. logos) into the dashboard directory so
+ * relative refs in the generated HTML resolve once the dashboard is uploaded
+ * to blob storage. Best-effort - if the source folder is missing we just skip.
+ */
+async function stageBrandingAssets({ dashboardDir }) {
+  const repoRoot = path.join(__dirname, "..");
+  const logosSource = path.join(repoRoot, "docs", "images", "logos");
+  const logosDest = path.join(dashboardDir, "docs", "images", "logos");
+
+  try {
+    await fs.access(logosSource);
+  } catch {
+    log("warn", "Branding logos source not found, skipping asset staging", {
+      logosSource,
+    });
+    return;
+  }
+
+  await fs.mkdir(logosDest, { recursive: true });
+  const entries = await fs.readdir(logosSource);
+  for (const entry of entries) {
+    const src = path.join(logosSource, entry);
+    const dst = path.join(logosDest, entry);
+    await fs.copyFile(src, dst);
+  }
+  log("info", "Staged branding assets into dashboard directory", {
+    files: entries.length,
+    logosDest,
+  });
+}
+
+/**
  * Deploy dashboard to Azure Blob Storage.
  *
  * @returns {string} deployed URL
@@ -70,6 +102,10 @@ async function deployDashboard({ dashboardPath, projectName, meetingId }) {
   }
 
   const dashboardDir = path.dirname(dashboardPath);
+
+  // Stage branding assets (logos, favicon) alongside the dashboard so the
+  // relative image refs in dashboard.html resolve at the deployed URL.
+  await stageBrandingAssets({ dashboardDir });
 
   const blobDestination = `$web/${projectName}/${meetingId}`;
 
