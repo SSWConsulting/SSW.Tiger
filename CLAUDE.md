@@ -203,9 +203,9 @@ Any color NOT in this table is **forbidden** as a background. This means no `bg-
 All sections below use `<li>` bullet points inside `<ul>` — consistent style throughout.
 
 - **Meeting Summary** — **brief** factual bullet points, max 5 bullets. Each bullet is one short sentence. No commentary or analysis. Example: `<li>Sprint 98 delivered 35 points across 12 PBIs</li>`
-- **Key Decisions** — choices between alternatives, **max 3 bullets** (e.g., "Use SSW Identity Server instead of building from scratch"). Sprint goal setting is NOT a key decision — it belongs in the summary.
-- **Done This Sprint** — outcomes, features completed/demoed, issues resolved. Each item as a plain `<li>` with owner in parentheses. No emoji icons. Do NOT repeat decisions already in Key Decisions.
-- **Next Steps** — work items for next sprint and other follow-up actions, as plain `<li>` bullets with owner **(canonical names!)**. No emoji icons.
+- **Key Decisions** — choices between alternatives, **max 3 bullets** (e.g., "Use SSW Identity Server instead of building from scratch"). Sprint goal setting is NOT a key decision — it belongs in the summary. Each bullet starts with `<Product> - ` (see `consolidator.md` > `Item product prefix`).
+- **Done This Sprint** — outcomes, features completed/demoed, issues resolved. Each item as a plain `<li>` with owner in parentheses. No emoji icons. Do NOT repeat decisions already in Key Decisions. Each bullet starts with `<Product> - ` (see `consolidator.md` > `Item product prefix`).
+- **Next Steps** — work items for next sprint and other follow-up actions, as plain `<li>` bullets with owner **(canonical names!)**. No emoji icons. Each bullet starts with `<Product> - ` (see `consolidator.md` > `Item product prefix`).
 - **Hard truths** — **MAX 2 items, each max 2 sentences.** Keep them punchy and direct, not paragraph-length essays. ONLY high-level synthesis that genuinely doesn't fit in Insights, People, or Trends.
 
 ### Tab 2: Timeline

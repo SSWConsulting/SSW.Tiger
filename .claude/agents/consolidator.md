@@ -489,6 +489,20 @@ Note what's missing:
 }
 ```
 
+### Item product prefix (applies to `keyDecisions.items[]`, `doneThisSprint.items[]`, `nextSteps.items[]`, `actionItems[]`)
+
+Every item string emitted in these four fields - including action items nested inside timeline segments - must begin with the **short** name of the product or project the item is associated with, followed by ` - ` (space, hyphen, space), followed by the description you would have written anyway.
+
+Format: `<Product> - <description>`
+
+Rules (each shown as right-form not wrong-form):
+
+- **Short name, not fully-qualified.** `Cheetah` not `SSW.Cheetah`, `Crystal Ball` not `SSW.CrystalBall`, `Tiger` not `SSW.Tiger`, `YakShaver` not `SSW.YakShaver`.
+- **Multi-word product names stay multi-word.** `Crystal Ball - ...` not `CrystalBall - ...`.
+- **No-product fallback is `General`.** `General - Updated contribution guide for new joiners` not `Misc - ...`, not `Other - ...`, not an item with no prefix at all.
+- **Cross-cutting items pick the primary product.** `Cheetah - Updated shared auth flow` not `Cheetah/Crystal Ball - ...` and not `Multiple - ...`.
+- **The prefix is prepended; the rest is unchanged.** `Cheetah - Shipped onboarding flow redesign (Alice)` not `Shipped onboarding flow redesign (Alice)`. The trailing `(owner)` annotation is preserved as-is.
+
 ## Your Standards
 
 - **Consistency is non-negotiable** - Names, numbers, ratings must align
