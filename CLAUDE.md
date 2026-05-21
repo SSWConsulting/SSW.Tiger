@@ -128,6 +128,20 @@ The dashboard MUST have these tabs (all using consolidated data):
 - If any particular ceremony is skipped (e.g., retro was deferred or not held), there is no need to mention or analyse it — just omit it
 - Use Australian date format (DD/MM/YYYY) for all dates
 
+**Number formatting (applies everywhere):**
+
+Every numeric value the dashboard emits - in any field, in any tab, in any agent's prose - must be rendered as digits, not spelled out. This applies to counts, durations, points, scores, ratings, percentages, ratios, frequencies, time references, multipliers - all of them.
+
+- Correct: `2 sprints of runway`, `3 action items`, `4 people dominated`, `18% of speaking time`, `2x as long`, `6/10`, `47.3%`
+- Wrong: `two sprints of runway`, `three action items`, `four people dominated`, `eighteen percent of speaking time`, `twice as long`, `six out of ten`, `forty-seven point three percent`
+
+**Two narrow exceptions** (preserve spelled-out form):
+
+1. **Idiomatic phrases** where the word isn't really a count - `one of the team`, `for once`, `second to none`, `in two minds`, `on the one hand`. Leave these alone.
+2. **Ordinals in proper nouns or section titles** - `First Sprint Review`, `Third Wednesday of the Month`. Leave these alone.
+
+Transcript quotes are NOT an exception. If a speaker said "two sprints", paraphrase as `2 sprints` in any dashboard prose. Consistency in the dashboard output beats verbatim quote fidelity.
+
 **Content deduplication (CRITICAL — allowlist approach):**
 
 Each tab answers ONE question. Before writing content for any section, ask: "Which tab's question does this answer?" Put it there and NOWHERE else.
