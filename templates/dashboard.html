@@ -233,7 +233,7 @@
                     </div>
                 </div>
                 <div class="text-right">
-                    <p class="text-2xl font-bold text-ssw-red">{{DATE}}</p>
+                    <p class="text-2xl font-bold text-ssw-red"><span class="js-meeting-date">{{DATE}}</span></p>
                     <p class="text-sm text-ssw-gray-500 font-medium">{{MEETING_TYPE}} • {{DURATION}}</p>
                 </div>
             </div>
@@ -503,6 +503,20 @@
         
         Chart.defaults.font.family = "'Inter', 'Helvetica Neue', 'Helvetica', sans-serif";
         Chart.defaults.color = '#333333';
+
+        // Prefix the meeting date with a 3-letter weekday (e.g. "25/05/2026" -> "Mon 25/05/2026").
+        // Date format is DD/MM/YYYY per CLAUDE.md; if parsing fails the original text stays untouched.
+        document.querySelectorAll('.js-meeting-date').forEach(function (el) {
+            var match = (el.textContent || '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+            if (!match) return;
+            var day = parseInt(match[1], 10);
+            var month = parseInt(match[2], 10) - 1;
+            var year = parseInt(match[3], 10);
+            var d = new Date(year, month, day);
+            if (isNaN(d.getTime())) return;
+            var weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            el.textContent = weekdays[d.getDay()] + ' ' + el.textContent;
+        });
 
         // Handle profile image load failures - falls back to initials
         // The initials MUST come from trusted participant data (canonical names)
