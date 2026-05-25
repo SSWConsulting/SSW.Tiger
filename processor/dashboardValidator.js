@@ -1,22 +1,24 @@
 /**
  * Dashboard Validator & Repair
  *
- * Guard against LLM-generated syntax errors in the dashboard's inline
- * <script> blocks. The Tailwind config block is the highest-blast-radius
- * target: a single typo there throws a SyntaxError, the entire
- * `tailwind.config = {...}` assignment never runs, and every utility
- * built on the custom palette (`ssw-red`, `ssw-charcoal`, `ssw-gray`)
- * silently produces no CSS — leaving the dashboard mostly black-and-white
- * with invisible text.
+ * The dashboard's inline `tailwind.config` <script> block is pure static
+ * styling configuration (SSW colour palettes + font stack) with no
+ * per-meeting data. The model has no business regenerating it from
+ * scratch, but it does, and every regeneration is a chance to introduce
+ * a typo that breaks the whole palette and leaves the dashboard mostly
+ * black-and-white with invisible text (see GitHub issue #98).
  *
- * After the model writes the dashboard HTML, this module:
- *   1. Extracts every inline <script> block.
- *   2. Parses each via `new Function(body)` to surface SyntaxErrors
- *      without executing the code.
- *   3. If any block fails to parse, replaces the corrupted
- *      `tailwind.config` block with the canonical version from
- *      templates/dashboard.html.
- *   4. Re-validates after repair and writes the fixed file.
+ * Rather than detect-and-repair (PR #99's approach, which only catches
+ * SyntaxErrors and missed runtime ReferenceErrors like an unquoted
+ * `sans-serif` parsing as `sans - serif`), this module unconditionally
+ * overwrites the dashboard's `tailwind.config` block with the canonical
+ * one from templates/dashboard.html. Whatever the model emitted for
+ * that block is discarded.
+ *
+ * Other inline scripts (chart setup, profile-image fallback) are
+ * parse-checked as a non-fatal diagnostic only - we have no canonical
+ * version to stamp in for those, so we just log a warning if any of
+ * them fail to parse.
  */
 
 const fs = require("fs").promises;
@@ -55,10 +57,9 @@ function findTailwindConfigScript(html) {
 }
 
 /**
- * Try to parse a script body as a function body. Returns the SyntaxError
- * (or other Error) if parsing fails, otherwise null. `new Function` only
- * parses the body; it does not execute it, so undefined free variables
- * (like `tailwind`) do not trigger a runtime error here.
+ * Parse-check a script body via `new Function`. Returns the error if
+ * parsing fails, null otherwise. Used as a non-fatal diagnostic for
+ * non-tailwind inline scripts.
  */
 function findSyntaxError(body) {
   try {
@@ -70,10 +71,12 @@ function findSyntaxError(body) {
 }
 
 /**
- * Validate the dashboard's inline scripts. If any block has a syntax
- * error, repair by replacing the canonical `tailwind.config` block from
- * the template (which is the only block known to be a recurring
- * regeneration target). Writes the file back if repaired.
+ * Unconditionally replace the dashboard's `tailwind.config` <script>
+ * block with the canonical one from the template. Writes the file only
+ * if the block actually differed.
+ *
+ * Also parse-checks every other inline script and logs a warning if any
+ * fail (non-fatal - we cannot auto-repair those).
  *
  * @param {string} dashboardPath - absolute path to dashboard HTML
  * @param {string} templatePath - absolute path to templates/dashboard.html
@@ -81,65 +84,57 @@ function findSyntaxError(body) {
  */
 async function validateAndRepairDashboard(dashboardPath, templatePath) {
   const html = await fs.readFile(dashboardPath, "utf8");
-  const scripts = extractInlineScripts(html);
 
-  const failures = scripts
-    .map((s) => ({ ...s, error: findSyntaxError(s.body) }))
-    .filter((s) => s.error);
-
-  if (failures.length === 0) {
-    log("debug", "Dashboard inline scripts all parse cleanly", {
-      scriptCount: scripts.length,
-    });
-    return { ok: true, repaired: false };
-  }
-
-  log("warn", "Dashboard inline <script> has syntax error(s) - attempting repair", {
-    failureCount: failures.length,
-    firstError: failures[0].error.message,
-  });
-
-  const dashboardTailwindBlock = findTailwindConfigScript(html);
-  if (!dashboardTailwindBlock) {
-    log("warn", "Dashboard has no tailwind.config block to repair");
-    return { ok: false, repaired: false, reason: "no-matching-block-in-dashboard" };
+  const dashboardBlock = findTailwindConfigScript(html);
+  if (!dashboardBlock) {
+    log("warn", "Dashboard has no tailwind.config block - cannot stamp canonical version");
+    return { ok: false, repaired: false, reason: "no-tailwind-block-in-dashboard" };
   }
 
   const template = await fs.readFile(templatePath, "utf8");
   const canonicalBlock = findTailwindConfigScript(template);
   if (!canonicalBlock) {
-    log("warn", "Could not locate canonical tailwind.config block in template - skipping repair");
+    log("warn", "Template has no tailwind.config block - skipping repair");
     return { ok: false, repaired: false, reason: "template-block-not-found" };
   }
 
-  const corruptedBlockSyntaxError = findSyntaxError(dashboardTailwindBlock.body);
-  if (!corruptedBlockSyntaxError) {
-    log("warn", "Dashboard tailwind.config block parses cleanly; corruption is elsewhere - cannot auto-repair");
-    return { ok: false, repaired: false, reason: "corruption-outside-tailwind-block" };
+  const blocksMatch = dashboardBlock.full === canonicalBlock.full;
+
+  if (!blocksMatch) {
+    const repairedHtml =
+      html.slice(0, dashboardBlock.index) +
+      canonicalBlock.full +
+      html.slice(dashboardBlock.index + dashboardBlock.full.length);
+    await fs.writeFile(dashboardPath, repairedHtml);
+    log("info", "Dashboard tailwind.config block overwritten with canonical version", {
+      dashboardPath,
+    });
+    warnOnOtherScriptParseFailures(repairedHtml);
+    return { ok: true, repaired: true };
   }
 
-  const repaired =
-    html.slice(0, dashboardTailwindBlock.index) +
-    canonicalBlock.full +
-    html.slice(dashboardTailwindBlock.index + dashboardTailwindBlock.full.length);
+  warnOnOtherScriptParseFailures(html);
+  return { ok: true, repaired: false };
+}
 
-  const remainingFailures = extractInlineScripts(repaired)
+/**
+ * Parse-check every inline script *except* the tailwind.config block
+ * (which is now canonical by construction). Logs a warning if any
+ * fail - non-fatal, since we have no canonical version to stamp in
+ * for those.
+ */
+function warnOnOtherScriptParseFailures(html) {
+  const failures = extractInlineScripts(html)
+    .filter((s) => !TAILWIND_CONFIG_MARKER.test(s.body))
     .map((s) => ({ ...s, error: findSyntaxError(s.body) }))
     .filter((s) => s.error);
 
-  if (remainingFailures.length > 0) {
-    log("warn", "Repair did not eliminate all syntax errors", {
-      remaining: remainingFailures.length,
-      firstError: remainingFailures[0].error.message,
+  if (failures.length > 0) {
+    log("warn", "Non-tailwind inline <script>(s) failed to parse - cannot auto-repair", {
+      failureCount: failures.length,
+      firstError: failures[0].error.message,
     });
-    return { ok: false, repaired: false, reason: "repair-incomplete" };
   }
-
-  await fs.writeFile(dashboardPath, repaired);
-  log("info", "Dashboard tailwind.config block repaired from template", {
-    dashboardPath,
-  });
-  return { ok: true, repaired: true };
 }
 
 module.exports = {
