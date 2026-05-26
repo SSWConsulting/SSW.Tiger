@@ -71,9 +71,14 @@ function findSyntaxError(body) {
 }
 
 /**
- * Unconditionally replace the dashboard's `tailwind.config` <script>
- * block with the canonical one from the template. Writes the file only
- * if the block actually differed.
+ * Overwrite the dashboard's `tailwind.config` <script> block with the
+ * canonical one from the template, unconditionally. Whatever the model
+ * emitted for that block is discarded. Writes the file only when the
+ * block actually differs from canonical (no spurious churn).
+ *
+ * Despite the name, this function no longer "validates" or "repairs"
+ * conditionally - it stamps. The name is preserved for call-site
+ * compatibility with processor/index.js.
  *
  * Also parse-checks every other inline script and logs a warning if any
  * fail (non-fatal - we cannot auto-repair those).

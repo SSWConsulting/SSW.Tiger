@@ -145,6 +145,20 @@ describe("findSyntaxError", () => {
   });
 });
 
+describe("templates/dashboard.html canonical block", () => {
+  it("parses cleanly - this is the source of truth the validator stamps in", async () => {
+    const templatePath = path.join(__dirname, "..", "templates", "dashboard.html");
+    const template = await fs.readFile(templatePath, "utf8");
+    const block = findTailwindConfigScript(template);
+    assert.ok(block, "template must contain a tailwind.config block");
+    assert.equal(
+      findSyntaxError(block.body),
+      null,
+      "the canonical block is what every dashboard ships with - if this fails, every future dashboard ships broken",
+    );
+  });
+});
+
 describe("validateAndRepairDashboard", () => {
   let tmpDir;
 
