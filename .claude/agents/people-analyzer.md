@@ -92,6 +92,19 @@ For each participant, provide:
 #### Scrum Role Specific Feedback
 - Tips on how to become a better Product Owner/Scrum Master/Software Developer etc.
 
+#### Point Prefixes (for scannability)
+
+Every item in `whatTheyDidWell` and `whatTheyNeedToHear` MUST begin with a **short topic label** (1-3 words) that captures what the point is about, followed by ` - ` (space, hyphen, space), then the point itself. This lets a reader scan the card and tell what each point covers at a glance, the same way Overview items are prefixed with their product.
+
+Format: `<Topic> - <the point you would have written anyway>`
+
+Rules (each shown as right-form not wrong-form):
+
+- **The label names the theme, not the verdict.** `Facilitation - ran the meeting but skipped key moments` not `Bad - skipped key moments`, not `Issue 1 - ...`.
+- **Keep labels short and concrete.** `Filler cues`, `Interruptions`, `Preparation`, `Buffer policy`, `Communication`, `Technical depth`. Not full sentences, not single vague words like `Improvement`.
+- **The prefix is prepended; the point is unchanged.** `Interruptions - you talked over Bob 3 times in 10 minutes` not just `you talked over Bob 3 times in 10 minutes`.
+- **Distinct labels within a card.** Don't reuse the same label for two points on the same person; pick the more specific theme for each.
+
 ### 5. Team Dysfunction Analysis
 
 #### Power Imbalances
@@ -153,14 +166,14 @@ For each participant, provide:
       },
       
       "whatTheyDidWell": [
-        "Summarized sprint goals clearly at 45:00",
-        "Asked the right question about the dependency at 52:00"
+        "Facilitation - summarized sprint goals clearly at 45:00",
+        "Good questions - asked the right question about the dependency at 52:00"
       ],
       
       "whatTheyNeedToHear": [
-        "You interrupted Bob 3 times in 10 minutes - he had valid points you missed",
-        "You answered questions directed at others - let the experts speak",
-        "Your 'quick clarifications' averaged 3 minutes each - that's not quick"
+        "Interruptions - you interrupted Bob 3 times in 10 minutes; he had valid points you missed",
+        "Airtime - you answered questions directed at others; let the experts speak",
+        "Time discipline - your 'quick clarifications' averaged 3 minutes each, that's not quick"
       ],
       
       "uncomfortableQuestion": "Would this meeting have been better if you'd spoken 40% less?",
@@ -193,14 +206,14 @@ For each participant, provide:
       },
       
       "whatTheyDidWell": [
-        "Their one question at 34:00 exposed a critical flaw nobody else caught",
-        "Efficient - every word counted"
+        "Sharp questions - their one question at 34:00 exposed a critical flaw nobody else caught",
+        "Efficiency - every word counted, no filler"
       ],
       
       "whatTheyNeedToHear": [
-        "You have expertise the team needs - your silence is costing them",
-        "When Alice talked over you at 28:00, push back - your point was important",
-        "You don't need permission to contribute"
+        "Speak up - you have expertise the team needs; your silence is costing them",
+        "Push back - when Alice talked over you at 28:00, hold your ground, your point was important",
+        "Permission - you don't need it to contribute"
       ],
       
       "costOfTheirSilence": "The team made a decision without Charlie's input on the auth flow - Charlie is the auth expert",
