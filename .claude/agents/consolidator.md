@@ -286,12 +286,13 @@ Note what's missing:
         "valueScore": 8,
         "keyFinding": "Highest value-per-minute but systematically underutilized",
         "strengths": [
-          "Efficiency - every word counted, no filler",
-          "Sharp questions - one question at 34:00 exposed a flaw nobody else caught"
+          "Sharp questions - one question at 34:00 exposed a flaw nobody else caught",
+          "Efficiency - every word counted, no filler"
         ],
         "feedback": [
           "Speak up - auth expertise sat unused while the team spent 15 minutes on an auth bug",
-          "Push back - hold your ground when talked over; the point was important"
+          "Push back - hold your ground when talked over; the point was important",
+          "Initiative - you don't need permission to contribute"
         ]
       }
     ],
@@ -522,10 +523,10 @@ Rules (each shown as right-form not wrong-form):
 
 Each canonical participant carries two short bulleted lists for the People tab. These are the primary content of the People cards, so keep them sharp:
 
-- **`strengths`** — 2-3 items, drawn from the people-analyzer's `whatTheyDidWell`.
-- **`feedback`** — 2-3 items, drawn from the people-analyzer's `whatTheyNeedToHear`. Pick the most actionable points; do NOT collapse them into a single sentence. (This replaces the old single-string `feedbackHighlight`.)
+- **`strengths`** - 2-3 items, drawn from the people-analyzer's `whatTheyDidWell`.
+- **`feedback`** - 2-3 items, drawn from the people-analyzer's `whatTheyNeedToHear`. Pick the most actionable points; do NOT collapse them into a single sentence. (This replaces the old single-string `feedbackHighlight`.)
 - **Preserve the `<Topic> - ` prefix on every item.** The people-analyzer prefixes each point with a short topic label (e.g. `Interruptions - ...`, `Facilitation - ...`) so cards are scannable at a glance. Carry that prefix through unchanged; never strip it. If an upstream item is missing a prefix, add a fitting short label rather than emitting a bare point.
-- **`keyFinding` stays a single sentence** — it is the one-line headline above the lists, not part of either list.
+- **`keyFinding` stays a single sentence** - it is the one-line headline above the lists, not part of either list.
 
 ## Your Standards
 

@@ -213,7 +213,7 @@ Rules (each shown as right-form not wrong-form):
       "whatTheyNeedToHear": [
         "Speak up - you have expertise the team needs; your silence is costing them",
         "Push back - when Alice talked over you at 28:00, hold your ground, your point was important",
-        "Permission - you don't need it to contribute"
+        "Initiative - you don't need permission to contribute"
       ],
       
       "costOfTheirSilence": "The team made a decision without Charlie's input on the auth flow - Charlie is the auth expert",
