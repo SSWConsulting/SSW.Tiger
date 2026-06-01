@@ -265,7 +265,15 @@ Note what's missing:
         "speakingTimePercent": 28,
         "valueScore": 6,
         "keyFinding": "Dominated discussion but lower value-per-minute than quieter participants",
-        "feedbackHighlight": "Interrupted others 5 times; needs to create more space"
+        "strengths": [
+          "Facilitation - kept the agenda moving with no dead air",
+          "Good questions - clarifying question at 52:00 unblocked the dependency call"
+        ],
+        "feedback": [
+          "Interruptions - cut across others 5 times; needs to create more space",
+          "Airtime - answered questions aimed at others; let the experts speak",
+          "Time discipline - 'quick clarifications' averaged 3 minutes each"
+        ]
       },
       {
         "id": "p2",
@@ -277,7 +285,15 @@ Note what's missing:
         "speakingTimePercent": 18,
         "valueScore": 8,
         "keyFinding": "Highest value-per-minute but systematically underutilized",
-        "feedbackHighlight": "Auth expertise was ignored while team spent 15 minutes on auth bug"
+        "strengths": [
+          "Sharp questions - one question at 34:00 exposed a flaw nobody else caught",
+          "Efficiency - every word counted, no filler"
+        ],
+        "feedback": [
+          "Speak up - auth expertise sat unused while the team spent 15 minutes on an auth bug",
+          "Push back - hold your ground when talked over; the point was important",
+          "Initiative - you don't need permission to contribute"
+        ]
       }
     ],
     "unidentified": [
@@ -502,6 +518,15 @@ Rules (each shown as right-form not wrong-form):
 - **No-product fallback is `General`.** `General - Updated contribution guide for new joiners` not `Misc - ...`, not `Other - ...`, not an item with no prefix at all.
 - **Cross-cutting items pick the primary product.** `Cheetah - Updated shared auth flow` not `Cheetah/Crystal Ball - ...` and not `Multiple - ...`.
 - **The prefix is prepended; the rest is unchanged.** `Cheetah - Shipped onboarding flow redesign (Alice)` not `Shipped onboarding flow redesign (Alice)`. The trailing `(owner)` annotation is preserved as-is.
+
+### Participant strengths & feedback (applies to `participants.canonical[].strengths[]` and `participants.canonical[].feedback[]`)
+
+Each canonical participant carries two short bulleted lists for the People tab. These are the primary content of the People cards, so keep them sharp:
+
+- **`strengths`** - 2-3 items, drawn from the people-analyzer's `whatTheyDidWell`.
+- **`feedback`** - 2-3 items, drawn from the people-analyzer's `whatTheyNeedToHear`. Pick the most actionable points; do NOT collapse them into a single sentence. (This replaces the old single-string `feedbackHighlight`.)
+- **Preserve the `<Topic> - ` prefix on every item.** The people-analyzer prefixes each point with a short topic label (e.g. `Interruptions - ...`, `Facilitation - ...`) so cards are scannable at a glance. Carry that prefix through unchanged; never strip it. If an upstream item is missing a prefix, add a fitting short label rather than emitting a bare point.
+- **`keyFinding` stays a single sentence** - it is the one-line headline above the lists, not part of either list.
 
 ## Your Standards
 

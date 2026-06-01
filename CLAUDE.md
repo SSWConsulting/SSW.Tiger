@@ -196,7 +196,7 @@ A single topic (e.g., "John departing") must NOT appear as:
 | **Red-50** | Critical issues only (Hard Truths section, critical risks) | `bg-ssw-red-50` or `bg-red-50` |
 | **SSW Gray** | Neutral info, headers, team dynamics cards | `bg-ssw-gray-50` to `bg-ssw-gray-700` |
 
-Any color NOT in this table is **forbidden** as a background. This means no `bg-blue-*`, no `bg-purple-*`, no `bg-indigo-*`, no `bg-teal-*`, etc. `border-l-4` accent colors may use `border-ssw-red`, `border-amber-400/500`, or `border-ssw-gray-300` for priority indicators.
+Any color NOT in this table is **forbidden** as a background. This means no `bg-blue-*`, no `bg-purple-*`, no `bg-indigo-*`, no `bg-teal-*`, etc. `border-l-4` accent colors may use `border-ssw-red`, `border-amber-400/500`, `border-green-400/500` (positive bands, e.g. People Strengths), or `border-ssw-gray-300` for priority indicators.
 
 ### Tab 1: Overview
 
@@ -221,8 +221,11 @@ All sections below use `<li>` bullet points inside `<ul>` — consistent style t
 - Card for each participant **(canonical name with role as subtitle)**
 - **Profile photo from SSW People** (with fallback for non-SSW participants)
 - Speaking time vs. value contribution
-- Strengths and constructive feedback
-- Value scores are whole numbers out of 10 — no decimals. Avoid 7/10 (too average/non-committal); be more decisive with 6 or 8. Bar color: 8-10 = GREEN, 4-6 = YELLOW, 3 and below = RED
+- **Written feedback is the focus of each card.** Strengths and Feedback are the primary content, rendered as prominent coloured bands (green for Strengths, amber for Feedback - including the band heading) in larger text below the rating, NOT as small grey footnotes. Render each from the participant's `strengths[]` and `feedback[]` lists in `consolidated.json` (2-3 bullets each). Feedback is a bulleted list, not a single paragraph.
+  - **Every bullet leads with a bold topic prefix** so the card is scannable at a glance, e.g. `<span class="font-semibold">Interruptions</span> - cut across others 5 times`. The prefix comes from the consolidated data (`<Topic> - point`); render only the text before the **first** ` - ` bold, leaving any later hyphens in the point unbolded. This mirrors the `<Product> -` prefix on Overview bullets.
+  - Keep band body text black (`text-ssw-charcoal`); only the heading and left border use accent colours.
+  - **Thin-feedback fallback:** render only the points that exist (1 is fine if that's all there is). If a participant has no strengths or no feedback at all (e.g. a boardroom attendee with minimal individual signal), omit that band entirely rather than render an empty coloured box.
+- Value scores are whole numbers out of 10, no decimals. Avoid 7/10 (too average/non-committal); be more decisive with 6 or 8. Bar color: 8-10 = GREEN, 4-6 = YELLOW, 3 and below = RED. **The rating/bar stays as-is - it is not de-emphasized, just no longer the only thing that stands out.**
 - **Boardroom participants** (identified from invite list + transcript mentions, but no `<v>` tags): include cards with correct names/photos, but note that individual speaking metrics are unavailable
 
 ### Tab 4: Insights
@@ -369,9 +372,9 @@ For each participant card, look up the slug in this order:
                 <div class="flex items-center gap-2">
                     <span class="text-sm text-ssw-gray-600">Value Score:</span>
                     <div class="flex-1 bg-ssw-gray-100 rounded-full h-2">
-                        <div class="bg-ssw-red h-2 rounded-full" style="width: 85%"></div>
+                        <div class="bg-ssw-red h-2 rounded-full" style="width: 80%"></div>
                     </div>
-                    <span class="text-sm font-semibold text-ssw-charcoal">8.5/10</span>
+                    <span class="text-sm font-semibold text-ssw-charcoal">8/10</span>
                 </div>
             </div>
 
@@ -381,21 +384,21 @@ For each participant card, look up the slug in this order:
                 Highest value-per-minute but systematically underutilized
             </p>
 
-            <!-- Strengths -->
-            <div class="mb-2">
-                <p class="text-xs font-semibold text-green-700 uppercase tracking-wide mb-1">Strengths</p>
-                <ul class="text-sm text-ssw-gray-600 space-y-1">
-                    <li>• Efficient communication - every word counted</li>
-                    <li>• Technical expertise highly valuable when consulted</li>
+            <!-- Strengths (prominent band - the written feedback is the focus of the card) -->
+            <div class="border-l-4 border-green-400 bg-green-50 rounded-r-lg px-4 py-3 mb-3">
+                <p class="text-sm font-semibold text-green-700 uppercase tracking-wide mb-2">Strengths</p>
+                <ul class="text-base text-ssw-charcoal space-y-2 leading-snug">
+                    <li>• <span class="font-semibold">Efficiency</span> - every word counted, no filler</li>
+                    <li>• <span class="font-semibold">Technical depth</span> - highly valuable when consulted</li>
                 </ul>
             </div>
 
-            <!-- Feedback -->
-            <div>
-                <p class="text-xs font-semibold text-ssw-red uppercase tracking-wide mb-1">Feedback</p>
-                <ul class="text-sm text-ssw-gray-600 space-y-1">
-                    <li>• Push back when interrupted - your points are important</li>
-                    <li>• Don't wait for permission to contribute</li>
+            <!-- Feedback (prominent band) -->
+            <div class="border-l-4 border-amber-400 bg-amber-50 rounded-r-lg px-4 py-3">
+                <p class="text-sm font-semibold text-amber-700 uppercase tracking-wide mb-2">Feedback</p>
+                <ul class="text-base text-ssw-charcoal space-y-2 leading-snug">
+                    <li>• <span class="font-semibold">Push back</span> - when interrupted, hold your ground; your points matter</li>
+                    <li>• <span class="font-semibold">Initiative</span> - you don't need permission to contribute</li>
                 </ul>
             </div>
         </div>
