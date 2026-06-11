@@ -25,13 +25,16 @@ The script (`processor/deploy-local.js`) reuses the same `deployer.js` as the Az
 
 1. Uploads dashboard files to Azure Blob Storage
 2. Persists meeting metadata + consolidated analysis to Cosmos DB (if `COSMOS_ENDPOINT` is set)
-3. Returns the public URL
+3. Regenerates and uploads the per-project index page (`{project}/index.html`) listing all of that project's meeting dashboards
+4. Returns the public URL
 
 ## Deployment URL Convention
 
 URLs follow the pattern: `https://dashboards.sswtiger.com/{project}/{meeting-id}`
 
 Example: `https://dashboards.sswtiger.com/yakshaver/2026-01-22-094557`
+
+The project index page lists every meeting: `https://dashboards.sswtiger.com/{project}/`
 
 ## Prerequisites
 

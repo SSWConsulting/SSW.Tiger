@@ -65,3 +65,6 @@ infra/main.json
 # AI agent folders
 .agents/
 .codex/
+
+# ARMADA logbook tooling (walkthrough video recipes, recordings, demo sites)
+.armada/

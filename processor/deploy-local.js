@@ -18,7 +18,7 @@
 
 require("dotenv").config({ path: require("path").join(__dirname, "..", ".env") });
 const path = require("path");
-const { checkOutputExists, deployDashboard, persistToCosmos } = require("./deployer");
+const { checkOutputExists, deployDashboard, persistToCosmos, deployProjectIndex } = require("./deployer");
 
 const ROOT_DIR = path.join(__dirname, "..");
 
@@ -61,6 +61,13 @@ async function main() {
     meetingPath,
   });
   console.log("Saved to Cosmos DB");
+
+  // Update the per-project index page
+  const indexUrl = await deployProjectIndex({
+    projectName,
+    currentMeeting: { meetingId, meetingDate },
+  });
+  console.log(`Project index updated: ${indexUrl}`);
 }
 
 main().catch((err) => {
