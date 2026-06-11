@@ -148,7 +148,7 @@ Each tab answers ONE question. Before writing content for any section, ask: "Whi
 
 | Tab | The ONE Question It Answers | Owns exclusively |
 |---|---|---|
-| **Overview** | "What happened, what's done, and what's next?" | Factual summary, done items, next steps |
+| **Overview** | "What happened, what's done, and what's next?" | Factual summary, done items, next steps, cross-team announcements (an audience digest — the ONE permitted re-statement of items already in this tab) |
 | **Timeline** | "When did things happen and how was time spent?" | Chronological flow, time allocation, pacing |
 | **People** | "How did each individual contribute?" | Individual performance, feedback, person-specific issues |
 | **Insights** | "What's hidden beneath the surface?" | Risks, elephants, patterns, opportunities, hard truths |
@@ -204,6 +204,7 @@ All sections below use `<li>` bullet points inside `<ul>` — consistent style t
 
 - **Meeting Summary** — **brief** factual bullet points, max 5 bullets. Each bullet is one short sentence. No commentary or analysis. Example: `<li>Sprint 98 delivered 35 points across 12 PBIs</li>`
 - **Key Decisions** — choices between alternatives, **max 3 bullets** (e.g., "Use SSW Identity Server instead of building from scratch"). Sprint goal setting is NOT a key decision — it belongs in the summary. Each bullet starts with `<Product> - ` (see `consolidator.md` > `Item product prefix`).
+- **Cross-Team Announcements** — rendered from `consolidated.json -> crossTeamAnnouncements.items[]` into the `{{CROSS_TEAM_ANNOUNCEMENTS}}` placeholder. Each item is a `<li>` with the announcement, followed by the impact in smaller gray text: `<li>📣 TinaCMS - Rate limiting now returns 429 instead of 503 <span class="text-sm text-ssw-gray-500">— check retry logic keyed on 503</span></li>`. These items are a plain-language digest for developers outside the team — this is the ONE permitted overlap with Key Decisions / Done This Sprint / Next Steps (see `consolidator.md` > `Cross-team announcements`). **If the list is empty, REMOVE the entire Cross-Team Announcements `<section>` from the output HTML** — do not render an empty box.
 - **Done This Sprint** — outcomes, features completed/demoed, issues resolved. Each item as a plain `<li>` with owner in parentheses. No emoji icons. Do NOT repeat decisions already in Key Decisions. Each bullet starts with `<Product> - ` (see `consolidator.md` > `Item product prefix`).
 - **Next Steps** — work items for next sprint and other follow-up actions, as plain `<li>` bullets with owner **(canonical names!)**. No emoji icons. Each bullet starts with `<Product> - ` (see `consolidator.md` > `Item product prefix`).
 - **Hard truths** — **MAX 2 items, each max 2 sentences.** Keep them punchy and direct, not paragraph-length essays. ONLY high-level synthesis that genuinely doesn't fit in Insights, People, or Trends.

@@ -112,6 +112,7 @@ Each output section has a **single question it answers**. Content goes in whiche
 | `keyDecisions` | "What were the top 1-3 decisions made in this meeting?" |
 | `doneThisSprint` | "What was accomplished or resolved THIS sprint? (excluding decisions)" |
 | `nextSteps` | "What specific tasks must be done NEXT, by whom, by when?" |
+| `crossTeamAnnouncements` | "What from this meeting must developers OUTSIDE this team hear about?" — **audience digest; the ONE permitted exception to single-section placement** (see rules below) |
 | `consolidatedTimeline` | "What happened chronologically and how was time spent?" |
 | `participants` | "How did each individual contribute?" |
 | `consolidatedInsights` | "What hidden patterns, risks, or elephants exist beneath the surface?" |
@@ -461,6 +462,19 @@ Note what's missing:
       "Previous completion rate suggests 4-5 of these will not get done"
     ]
   },
+
+  "crossTeamAnnouncements": {
+    "NOTE": "Audience digest for developers OUTSIDE this team. Max 5 items. Each item re-states a decision/done/next item in plain language - this is the ONE permitted duplication. Empty items array is valid and common.",
+    "items": [
+      {
+        "id": "xt1",
+        "announcement": "Cheetah - API rate limiting now returns 429 instead of 503",
+        "impact": "Check any retry/error-handling logic keyed on 503 responses",
+        "category": "api-change",
+        "sourceId": "kd3"
+      }
+    ]
+  },
   
   "hardTruths": [
     "Max 3 items. Each is 1-2 sentences. Punchy, direct, no essays.",
@@ -518,6 +532,30 @@ Rules (each shown as right-form not wrong-form):
 - **No-product fallback is `General`.** `General - Updated contribution guide for new joiners` not `Misc - ...`, not `Other - ...`, not an item with no prefix at all.
 - **Cross-cutting items pick the primary product.** `Cheetah - Updated shared auth flow` not `Cheetah/Crystal Ball - ...` and not `Multiple - ...`.
 - **The prefix is prepended; the rest is unchanged.** `Cheetah - Shipped onboarding flow redesign (Alice)` not `Shipped onboarding flow redesign (Alice)`. The trailing `(owner)` annotation is preserved as-is.
+
+### Cross-team announcements (applies to `crossTeamAnnouncements.items[]`)
+
+This section is a **digest for a different audience** - developers who are NOT on this team and do not attend these meetings. It is the ONE exception to the "each topic appears in exactly one section" rule: every announcement here is a plain-language re-statement of an item that ALSO lives in `keyDecisions`, `doneThisSprint`, or `nextSteps` (link it via `sourceId`).
+
+**Include an item ONLY if an outside developer would change something or be caught out by not knowing.** Qualifying categories:
+
+- `api-change` - API/runtime behavior changes (status codes, rate limits, response shapes, timeouts)
+- `auth` - authentication/authorization changes (provider migrations, token handling, login flows)
+- `runtime` - version bumps with compatibility impact (Node/framework/LTS alignment)
+- `rename` - renames and moves (templates, packages, repos, commands) that break links or muscle memory
+- `deprecation` - anything being sunset, with the replacement
+- `release` - new tools/features now available to other teams (CLIs, rollouts to all users)
+- `direction` - strategic direction changes that affect what outsiders should build on
+- `security` - security patches outsiders should pick up
+
+**Exclude:** internal task assignments, sprint goals, team process changes, progress percentages, anything an outsider cannot act on.
+
+**Writing rules:**
+
+- Keep the `<Product> - ` prefix (same rule as the other item lists).
+- **Plain language, no team shorthand.** An outside reader has not heard of internal epic names, PBI numbers, or nicknames. `TinaCMS - The starter template formerly called "bare bones" is now "React starter"` not `Renamed bare bones per kd1`.
+- `impact` says what the outside dev should DO or CHECK - one sentence, imperative.
+- Max 5 items. **An empty list is the normal case** - most meetings produce none. Never pad.
 
 ### Participant strengths & feedback (applies to `participants.canonical[].strengths[]` and `participants.canonical[].feedback[]`)
 
