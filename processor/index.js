@@ -19,7 +19,7 @@ const path = require("path");
 const { log } = require("../lib/logger");
 const { validateTranscriptFilename, setupProjectStructure } = require("./projectSetup");
 const { validateCredentials, invokeClaude } = require("./claudeRunner");
-const { checkOutputExists, copyToOutputDirectory, deployDashboard, persistToCosmos } = require("./deployer");
+const { checkOutputExists, copyToOutputDirectory, deployDashboard, persistToCosmos, deployProjectIndex } = require("./deployer");
 const { validateAndRepairDashboard } = require("./dashboardValidator");
 
 const ROOT_DIR = path.join(__dirname, "..");
@@ -104,6 +104,19 @@ async function processTranscript(transcriptPath, projectSlug) {
     }
   } else {
     log("warn", "COSMOS_ENDPOINT not set, skipping Cosmos DB persistence");
+  }
+
+  // Update the per-project index page (non-fatal)
+  try {
+    await deployProjectIndex({
+      projectName: projectSlug,
+      displayName,
+      currentMeeting: { meetingId, meetingDate },
+    });
+  } catch (err) {
+    log("error", "Failed to deploy project index (non-fatal)", {
+      error: err.message,
+    });
   }
 
   // Copy to output directory for convenience

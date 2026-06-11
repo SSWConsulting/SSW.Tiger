@@ -13,9 +13,11 @@
  */
 
 const fs = require("fs").promises;
+const os = require("os");
 const path = require("path");
 const { log } = require("../lib/logger");
-const { upsertMeeting } = require("../lib/cosmosClient");
+const { upsertMeeting, queryMeetings } = require("../lib/cosmosClient");
+const { mergeCurrentMeeting, renderProjectIndex } = require("./projectIndex");
 
 /**
  * Check that the dashboard HTML exists at the canonical location.
@@ -173,4 +175,80 @@ async function persistToCosmos({ projectName, meetingId, meetingDate, dashboardP
   return result;
 }
 
-module.exports = { checkOutputExists, copyToOutputDirectory, deployDashboard, persistToCosmos };
+/**
+ * Generate and deploy the per-project index page listing all meeting
+ * dashboards, so https://{host}/{project}/ shows a landing page.
+ *
+ * Meeting list comes from Cosmos DB; the just-deployed meeting is merged
+ * in so the index is complete even if persistence failed or was skipped.
+ *
+ * Must run after deployDashboard in the same process — it reuses the
+ * az CLI session established there (no separate login).
+ *
+ * @returns {string} deployed index URL (without hostname lookup, path only on fallback)
+ */
+async function deployProjectIndex({ projectName, displayName, currentMeeting }) {
+  const storageAccount = process.env.DASHBOARD_STORAGE_ACCOUNT;
+  if (!storageAccount) {
+    throw new Error("DASHBOARD_STORAGE_ACCOUNT not set");
+  }
+
+  // Gather the project's meetings
+  let meetings = [];
+  if (process.env.COSMOS_ENDPOINT) {
+    try {
+      meetings = await queryMeetings({ projectName, excludeConsolidated: true });
+    } catch (err) {
+      log("warn", "Could not query meetings for project index, using current meeting only", {
+        error: err.message,
+      });
+    }
+  }
+  meetings = mergeCurrentMeeting(meetings, currentMeeting);
+
+  // Render from template
+  const templatePath = path.join(__dirname, "..", "templates", "project-index.html");
+  const template = await fs.readFile(templatePath, "utf-8");
+  const html = renderProjectIndex({
+    template,
+    displayName: displayName || projectName,
+    meetings,
+    generatedAt: new Date().toISOString(),
+  });
+
+  const localPath = path.join(os.tmpdir(), `tiger-project-index-${projectName}.html`);
+  await fs.writeFile(localPath, html, "utf-8");
+
+  // Upload as {project}/index.html in the static website container
+  const blobName = `${projectName}/index.html`;
+  log("info", "Deploying project index to blob storage", {
+    storageAccount,
+    blobName,
+    meetingCount: meetings.length,
+  });
+
+  const { execFileSync } = require("child_process");
+  const isWindows = process.platform === "win32";
+  try {
+    execFileSync("az", [
+      "storage", "blob", "upload",
+      "--file", localPath,
+      "--container-name", "$web",
+      "--name", blobName,
+      "--account-name", storageAccount,
+      "--auth-mode", "login",
+      "--content-type", "text/html; charset=utf-8",
+      "--overwrite",
+    ], { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], shell: isWindows });
+  } catch (err) {
+    log("error", "Project index upload failed", { stderr: err.stderr });
+    throw err;
+  }
+
+  const host = process.env.DASHBOARD_BASE_URL;
+  const indexUrl = host ? `https://${host.replace(/^https?:\/\//, "").replace(/\/$/, "")}/${projectName}/` : `/${projectName}/`;
+  log("info", "Project index deployed", { url: indexUrl });
+  return indexUrl;
+}
+
+module.exports = { checkOutputExists, copyToOutputDirectory, deployDashboard, persistToCosmos, deployProjectIndex };

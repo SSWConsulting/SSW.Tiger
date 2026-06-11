@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{PROJECT_NAME}} - Meeting Dashboards</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SSW Brand: Inter font for web -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        // SSW Brand Colors Configuration
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        // SSW Primary Red: #CC4141
+                        'ssw-red': {
+                            DEFAULT: '#CC4141',
+                            50: '#FCE9E9',
+                            100: '#F8D4D4',
+                            200: '#F1A9A9',
+                            300: '#E97D7D',
+                            400: '#E25252',
+                            500: '#CC4141',
+                            600: '#A33434',
+                            700: '#7A2727',
+                            800: '#521A1A',
+                            900: '#290D0D'
+                        },
+                        // SSW Charcoal: #333333
+                        'ssw-charcoal': {
+                            DEFAULT: '#333333',
+                            50: '#F5F5F5',
+                            100: '#E8E8E8',
+                            200: '#D1D1D1',
+                            300: '#B0B0B0',
+                            400: '#888888',
+                            500: '#666666',
+                            600: '#4D4D4D',
+                            700: '#333333',
+                            800: '#1A1A1A',
+                            900: '#0D0D0D'
+                        },
+                        // SSW Gray palette
+                        'ssw-gray': {
+                            50: '#FAFAFA',
+                            100: '#F4F4F5',
+                            200: '#E4E4E7',
+                            300: '#D4D4D8',
+                            400: '#A1A1AA',
+                            500: '#71717A',
+                            600: '#52525B',
+                            700: '#3F3F46',
+                            800: '#27272A',
+                            900: '#18181B'
+                        }
+                    },
+                    fontFamily: {
+                        'sans': ['Inter', 'Helvetica Neue', 'Helvetica', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* SSW Brand Typography */
+        html {
+            font-size: 18px;
+        }
+        body {
+            font-family: 'Inter', 'Helvetica Neue', 'Helvetica', sans-serif;
+            font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+        }
+
+        /* Strong heading differentiation per SSW rules */
+        h1 { font-weight: 800; letter-spacing: -0.025em; }
+        h2 { font-weight: 700; letter-spacing: -0.02em; }
+        h3 { font-weight: 600; }
+
+        /* SSW-style card hover effect */
+        .ssw-card {
+            transition: all 0.2s ease;
+            border: 1px solid #E4E4E7;
+        }
+        .ssw-card:hover {
+            border-color: #CC4141;
+            box-shadow: 0 4px 12px rgba(204, 65, 65, 0.1);
+        }
+    </style>
+</head>
+<body class="bg-ssw-gray-50 min-h-screen">
+    <div class="max-w-4xl mx-auto py-8 px-4">
+
+        <!-- SSW Branded Header -->
+        <header class="mb-8">
+            <div class="flex items-center justify-between flex-wrap gap-4">
+                <div class="flex items-center gap-4">
+                    <!-- SSW Logo Squares Motif -->
+                    <div class="flex gap-0.5">
+                        <div class="w-3 h-3 bg-ssw-red"></div>
+                        <div class="w-3 h-3 bg-ssw-charcoal"></div>
+                        <div class="w-3 h-3 bg-ssw-gray-400"></div>
+                        <div class="w-3 h-3 bg-ssw-red-300"></div>
+                    </div>
+                    <div>
+                        <h1 class="text-3xl text-ssw-charcoal">
+                            <span class="font-extrabold">{{PROJECT_NAME}}</span>
+                        </h1>
+                        <p class="text-ssw-gray-500 mt-1 font-medium">Meeting Dashboards</p>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <p class="text-2xl font-bold text-ssw-red">{{MEETING_COUNT}}</p>
+                    <p class="text-sm text-ssw-gray-500 font-medium">meetings</p>
+                </div>
+            </div>
+        </header>
+
+        <!-- Meeting List -->
+        <main class="space-y-4">
+            {{MEETING_LIST}}
+        </main>
+
+        <!-- Footer -->
+        <footer class="mt-12 pt-6 border-t border-ssw-gray-200 text-center text-sm text-ssw-gray-400">
+            <p>Generated by SSW Tiger • {{GENERATED_AT}}</p>
+        </footer>
+    </div>
+</body>
+</html>

@@ -1,0 +1,47 @@
+[
+  {
+    "title": "A home page for every project",
+    "role": "Stakeholder · finding a project's meetings",
+    "spotlight": "#demo-url-bar",
+    "cursor": true,
+    "reach": [
+      { "action": "goto", "target": "/yakshaver/" },
+      { "action": "wait", "ms": 2000 }
+    ],
+    "narration": "Every Tiger project now has its own home page. Instead of needing the exact link to each meeting, you simply open the project's page and see every meeting dashboard in one place, with a live count of how many meetings the project has had."
+  },
+  {
+    "title": "Every meeting at a glance",
+    "role": "Stakeholder · scanning the history",
+    "spotlight": "main a:first-of-type",
+    "cursor": true,
+    "reach": [
+      { "action": "hover", "target": "main a:first-of-type" },
+      { "action": "wait", "ms": 1500 },
+      { "action": "hover", "target": "main a:nth-of-type(2)" },
+      { "action": "wait", "ms": 1500 }
+    ],
+    "narration": "Meetings are listed newest first, here the team's weekly sprint reviews. Each card shows the meeting date and the type of session, plus how long it ran, how many people attended, and how many action items came out of it. You can scan months of history in seconds."
+  },
+  {
+    "title": "One click to the full story",
+    "role": "Stakeholder · diving into a meeting",
+    "cursor": true,
+    "reach": [
+      { "action": "click", "target": "main a:first-of-type" },
+      { "action": "wait", "ms": 3500 }
+    ],
+    "narration": "Click any meeting and you land on its full dashboard: the summary, key decisions, what got done, and next steps, with deeper analysis across the timeline, people, insights, and trends."
+  },
+  {
+    "title": "Always up to date",
+    "role": "Team · zero maintenance",
+    "spotlight": "header .text-right",
+    "cursor": true,
+    "reach": [
+      { "action": "goto", "target": "/yakshaver/" },
+      { "action": "wait", "ms": 2500 }
+    ],
+    "narration": "Best of all, the page looks after itself. Every time a new meeting is processed, the project page is rebuilt automatically with the newest meeting at the top. Nothing to maintain, and one link the whole team can bookmark."
+  }
+]

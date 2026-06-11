@@ -65,3 +65,9 @@ infra/main.json
 # AI agent folders
 .agents/
 .codex/
+
+# Logbook walkthrough recordings (machine-specific tooling + generated media)
+.armada/logbook/bin/
+.armada/logbook/cache/
+.armada/logbook/demo-site/
+.armada/logbook/*.mp4

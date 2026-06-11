@@ -1,0 +1,17 @@
+{
+  "surface": "web",
+  "launch": {
+    "command": "node .armada/logbook/serve.mjs",
+    "extraFlags": [],
+    "readySignal": { "type": "httpUrl", "value": "http://localhost:4173/yakshaver/" },
+    "env": []
+  },
+  "stage": {
+    "seed": "node .armada/logbook/build-demo.mjs",
+    "entry": "http://localhost:4173/yakshaver/"
+  },
+  "cursor": true,
+  "reach": [
+    { "action": "goto", "target": "/yakshaver/" }
+  ]
+}
