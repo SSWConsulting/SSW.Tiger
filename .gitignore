@@ -66,8 +66,5 @@ infra/main.json
 .agents/
 .codex/
 
-# Logbook walkthrough recordings (machine-specific tooling + generated media)
-.armada/logbook/bin/
-.armada/logbook/cache/
-.armada/logbook/demo-site/
-.armada/logbook/*.mp4
+# ARMADA logbook tooling (walkthrough video recipes, recordings, demo sites)
+.armada/
