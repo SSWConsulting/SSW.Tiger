@@ -449,10 +449,22 @@ MEETING_FILTER_PATTERN=sprint      # Regex pattern (default: "sprint")
 LOGIC_APP_URL=...                  # Logic App HTTP trigger
 CHECK_CANCELLATION_URL=...         # Cancel endpoint
 
+# Raw transcript archive (private container in DASHBOARD_STORAGE_ACCOUNT)
+RAW_TRANSCRIPT_CONTAINER=transcripts  # unset = disabled
+
 # Mock Testing
 USE_MOCK_TRANSCRIPT=true
 MOCK_TRANSCRIPT_PATH=./test.vtt
 ```
+
+> **Raw transcript archive** — Tiger persists only the dashboard (Blob) and
+> analysis (Cosmos); the raw `.vtt` is discarded when the container exits. Set
+> `RAW_TRANSCRIPT_CONTAINER` to a **private** container in the same storage
+> account to also archive the raw transcript at `{projectSlug}/{meetingId}.vtt`
+> (via `uploadRawTranscript` in `deployer.js`, reusing the same managed-identity
+> session as the dashboard upload). Best-effort — a failure logs a warning and
+> never blocks the deploy. Downstream consumers read transcripts straight from
+> the container; Tiger holds no consumer-specific config.
 
 ### Bicep Parameters
 

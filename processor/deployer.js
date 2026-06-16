@@ -139,6 +139,51 @@ async function deployDashboard({ dashboardPath, projectName, meetingId }) {
 }
 
 /**
+ * Archive the raw transcript to a private blob container.
+ *
+ * Tiger otherwise keeps only the generated dashboard + analysis; the raw .vtt
+ * is discarded when the container exits. Persisting it lets downstream
+ * consumers (e.g. a team archiving its own transcripts) read the source of
+ * truth. Opt-in via RAW_TRANSCRIPT_CONTAINER.
+ *
+ * Must run after deployDashboard in the same process — it reuses the az CLI
+ * session established there (no separate login). Best-effort: a failure logs a
+ * warning and never breaks the deploy.
+ */
+async function uploadRawTranscript({ meetingPath, projectName, meetingId }) {
+  const container = process.env.RAW_TRANSCRIPT_CONTAINER;
+  if (!container) return null; // opt-in: no-op unless configured
+
+  const storageAccount = process.env.DASHBOARD_STORAGE_ACCOUNT;
+  if (!storageAccount) {
+    throw new Error("DASHBOARD_STORAGE_ACCOUNT not set");
+  }
+
+  const blobName = `${projectName}/${meetingId}.vtt`;
+  log("info", "Archiving raw transcript to blob storage", { container, blobName });
+
+  const { execFileSync } = require("child_process");
+  const isWindows = process.platform === "win32";
+  try {
+    execFileSync("az", [
+      "storage", "blob", "upload",
+      "--file", path.join(meetingPath, "transcript.vtt"),
+      "--container-name", container,
+      "--name", blobName,
+      "--account-name", storageAccount,
+      "--auth-mode", "login",
+      "--content-type", "text/vtt; charset=utf-8",
+      "--overwrite",
+    ], { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], shell: isWindows });
+  } catch (err) {
+    log("warn", "Raw transcript archive failed (non-fatal)", { stderr: err.stderr });
+    return null;
+  }
+
+  return blobName;
+}
+
+/**
  * Persist meeting metadata and consolidated JSON to Cosmos DB.
  */
 async function persistToCosmos({ projectName, meetingId, meetingDate, dashboardPath, meetingPath }) {
@@ -251,4 +296,4 @@ async function deployProjectIndex({ projectName, displayName, currentMeeting }) 
   return indexUrl;
 }
 
-module.exports = { checkOutputExists, copyToOutputDirectory, deployDashboard, persistToCosmos, deployProjectIndex };
+module.exports = { checkOutputExists, copyToOutputDirectory, deployDashboard, uploadRawTranscript, persistToCosmos, deployProjectIndex };

@@ -19,7 +19,7 @@ const path = require("path");
 const { log } = require("../lib/logger");
 const { validateTranscriptFilename, setupProjectStructure } = require("./projectSetup");
 const { validateCredentials, invokeClaude } = require("./claudeRunner");
-const { checkOutputExists, copyToOutputDirectory, deployDashboard, persistToCosmos, deployProjectIndex } = require("./deployer");
+const { checkOutputExists, copyToOutputDirectory, deployDashboard, uploadRawTranscript, persistToCosmos, deployProjectIndex } = require("./deployer");
 const { validateAndRepairDashboard } = require("./dashboardValidator");
 
 const ROOT_DIR = path.join(__dirname, "..");
@@ -86,6 +86,14 @@ async function processTranscript(transcriptPath, projectSlug) {
     projectName: projectSlug,
     meetingId,
   });
+
+  // Archive the raw transcript to a private blob container (non-fatal, opt-in).
+  // Reuses the az session from deployDashboard, so it must run after it.
+  try {
+    await uploadRawTranscript({ meetingPath, projectName: projectSlug, meetingId });
+  } catch (err) {
+    log("error", "Failed to archive raw transcript (non-fatal)", { error: err.message });
+  }
 
   // Persist to Cosmos DB (non-fatal)
   if (process.env.COSMOS_ENDPOINT) {
