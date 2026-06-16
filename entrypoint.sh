@@ -219,6 +219,19 @@ run_pipeline() {
     export INVITEES_JSON="$INVITEES_JSON"
     export VTT_INFO_JSON="$VTT_INFO_JSON"
 
+    # Step 1b: Mirror the raw transcript to an external GitHub repo (opt-in).
+    # Runs before analysis so the source-of-truth .vtt is archived even if
+    # Claude processing later fails. Best-effort: never blocks the pipeline.
+    # No-op unless MIRROR_REPO is set (see processor/mirrorTranscript.js).
+    if [ -n "$MIRROR_REPO" ]; then
+        log "info" "Mirroring raw transcript to $MIRROR_REPO..."
+        MIRROR_PROJECT_SLUG="$PROJECT_SLUG" \
+        MIRROR_PROJECT_NAME="$PROJECT_NAME" \
+        MIRROR_MEETING_SUBJECT="$MEETING_SUBJECT" \
+        node processor/mirrorTranscript.js "$TRANSCRIPT_PATH" >/dev/null \
+            || log "warn" "Transcript mirror failed (continuing)"
+    fi
+
     # Step 2: Send "started" notification (if configured)
     # Includes cancel URL if available, allowing users to cancel processing
     if [ -n "$LOGIC_APP_URL" ]; then

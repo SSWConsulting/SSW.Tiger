@@ -449,10 +449,25 @@ MEETING_FILTER_PATTERN=sprint      # Regex pattern (default: "sprint")
 LOGIC_APP_URL=...                  # Logic App HTTP trigger
 CHECK_CANCELLATION_URL=...         # Cancel endpoint
 
+# Raw transcript mirror (archive the .vtt to a GitHub content repo)
+MIRROR_REPO=tinacms/sprint-meetings  # owner/repo; unset = disabled
+MIRROR_GITHUB_TOKEN=...              # token with contents:write on MIRROR_REPO
+MIRROR_PROJECT_FILTER=tinacloud      # case-insensitive regex (default: ".*")
+MIRROR_BRANCH=main                   # target branch (default: "main")
+MIRROR_PATH_PREFIX=recordings/       # path prefix in repo (default: "recordings/")
+
 # Mock Testing
 USE_MOCK_TRANSCRIPT=true
 MOCK_TRANSCRIPT_PATH=./test.vtt
 ```
+
+> **Raw transcript mirror** — Tiger normally persists only the dashboard (Blob)
+> and analysis (Cosmos); the raw `.vtt` is discarded when the container exits.
+> Set `MIRROR_REPO` to also commit the raw transcript to a GitHub content repo
+> (the source of truth) via `processor/mirrorTranscript.js`, before analysis
+> runs. It's best-effort — a mirror failure logs a warning and never blocks the
+> pipeline. Store `MIRROR_GITHUB_TOKEN` in Key Vault and reference it from the
+> Container App Job env, the same way `GRAPH_CLIENT_SECRET` is wired.
 
 ### Bicep Parameters
 
