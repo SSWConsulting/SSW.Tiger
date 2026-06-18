@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/logos/SSWTiger-Horizontal-Darkmode.svg">
+    <img alt="SSW.Tiger" src="docs/images/logos/SSWTiger-horizontal.svg" width="320">
+  </picture>
+</p>
+
 # Meeting Summary Dashboard Generator
 
 <div align="center">
