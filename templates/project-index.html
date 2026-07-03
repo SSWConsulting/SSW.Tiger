@@ -68,10 +68,13 @@
                         'sans': ['Inter', 'Helvetica Neue', 'Helvetica', 'sans-serif'],
                     },
                     // SSW Design System typography scale (src/styles/theme.css --font-size-h1..h4).
-                    // text-2xl (24px/32px) and text-lg (18px/28px) already land exactly on the
-                    // Design System's h3 and --font-size-lg tokens via Tailwind's defaults, so
-                    // only h1/h2/h4 are added here for the one place (the page title) that didn't
-                    // already have a clean match - see the text-h2 usage on the h1 tag below.
+                    // Only text-h2 is actually applied below (on the page title, replacing the
+                    // old ad hoc text-3xl/30px) - that was the one heading with a real mismatch.
+                    // text-2xl (24px/32px) and text-lg (18px/28px) elsewhere already land exactly
+                    // on the Design System's h3 and --font-size-lg tokens via Tailwind's defaults,
+                    // so no h3-sized element needed touching. h1/h3/h4 are still defined here
+                    // (unused today) so the full token scale is documented in one place for any
+                    // future heading that needs it, rather than being invented ad hoc later.
                     fontSize: {
                         'h1': ['40px', { lineHeight: '48px', letterSpacing: '-0.5px' }],
                         'h2': ['32px', { lineHeight: '40px' }],

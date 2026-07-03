@@ -65,9 +65,18 @@ describe("dashboard template design tokens", () => {
 
     it(`${label}: rounded-full (avatars/pills/dots) is left untouched as a shape choice, not a radius token`, () => {
       const html = readTemplate(templatePath);
-      // Sanity check the audit didn't accidentally sweep up rounded-full too.
-      const hasRoundedFull = /rounded-full/.test(html);
-      assert.equal(hasRoundedFull, templatePath.includes("dashboard.html"));
+      const roundedFullCount = (html.match(/rounded-full/g) || []).length;
+      // dashboard.html has 8 rounded-full usages (logo squares, accent dots, avatar
+      // placeholders) that the radius audit intentionally left alone. project-index.html
+      // is a plainer template (header/footer only, no tab UI or avatar chrome) and has
+      // none - that's a fact about its content, not something this radius audit changed,
+      // so this test only guards against a future edit accidentally sweeping rounded-full
+      // into the rounded-xl -> rounded-lg replacement, not against a specific count.
+      const expectedRoundedFullPresent = {
+        "dashboard.html": true,
+        "project-index.html": false,
+      };
+      assert.equal(roundedFullCount > 0, expectedRoundedFullPresent[label]);
     });
 
     it(`${label}: elevated cards use the --shadow-raised literal box-shadow value, not generic shadow-sm`, () => {

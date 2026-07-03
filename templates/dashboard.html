@@ -74,10 +74,13 @@
                         'sans': ['Inter', 'Helvetica Neue', 'Helvetica', 'sans-serif'],
                     },
                     // SSW Design System typography scale (src/styles/theme.css --font-size-h1..h4).
-                    // text-2xl (24px/32px) and text-lg (18px/28px) already land exactly on the
-                    // Design System's h3 and --font-size-lg tokens via Tailwind's defaults, so
-                    // only h1/h2/h4 are added here for the one place (the page title) that didn't
-                    // already have a clean match - see the text-h2 usage on the h1 tag below.
+                    // Only text-h2 is actually applied below (on the page title, replacing the
+                    // old ad hoc text-3xl/30px) - that was the one heading with a real mismatch.
+                    // text-2xl (24px/32px) and text-lg (18px/28px) elsewhere already land exactly
+                    // on the Design System's h3 and --font-size-lg tokens via Tailwind's defaults,
+                    // so no h3-sized element needed touching. h1/h3/h4 are still defined here
+                    // (unused today) so the full token scale is documented in one place for any
+                    // future heading that needs it, rather than being invented ad hoc later.
                     fontSize: {
                         'h1': ['40px', { lineHeight: '48px', letterSpacing: '-0.5px' }],
                         'h2': ['32px', { lineHeight: '40px' }],
@@ -92,7 +95,11 @@
         [x-cloak] { display: none !important; }
 
         /* SSW Design System elevation token (--shadow-raised, src/styles/theme.css),
-           used in place of Tailwind's default small elevation utility on cards and tab buttons. */
+           used in place of Tailwind's default small elevation utility on cards and tab buttons.
+           Scoped to flat white cards/buttons only - the gradient hero banners in the People and
+           Insights tabs (Team Dynamics Summary, Team Health) deliberately keep Tailwind's default
+           shadow-lg instead, since the Design System has no distinct elevation token for that
+           heavier full-width banner role and shadow-raised would look under-weighted there. */
         .shadow-raised {
             box-shadow: 0px 2px 4px 0px rgba(0, 0, 0, 0.08), 0px 4px 8px 0px rgba(0, 0, 0, 0.04);
         }
@@ -397,7 +404,11 @@
 
             <!-- People & Roles Tab -->
             <div x-show="activeTab === 'people'" x-cloak>
-                <!-- Team Dynamics Summary -->
+                <!-- Team Dynamics Summary. Deliberately keeps Tailwind's default shadow-lg rather
+                     than shadow-raised: this is a full-width gradient hero banner, not a flat
+                     white content card, and the Design System's theme.css has no distinct
+                     elevation token for that heavier banner role - shadow-raised is scoped to
+                     cards/buttons only (see the .shadow-raised comment above). -->
                 <section class="bg-gradient-to-r from-ssw-gray-600 to-ssw-gray-700 rounded-lg shadow-lg p-6 text-white mb-6">
                     <h2 class="text-lg font-bold mb-2">Team Dynamics</h2>
                     {{TEAM_DYNAMICS}}
@@ -420,7 +431,8 @@
 
             <!-- Insights Tab -->
             <div x-show="activeTab === 'insights'" x-cloak>
-                <!-- Team Health -->
+                <!-- Team Health. Same shadow-lg exception as the Team Dynamics Summary above -
+                     a gradient hero banner, not a shadow-raised content card. -->
                 <section class="bg-gradient-to-r from-ssw-charcoal to-ssw-gray-700 rounded-lg shadow-lg p-6 text-white mb-6">
                     <h2 class="text-lg font-bold mb-2">Team Health X-Ray</h2>
                     {{TEAM_HEALTH}}
