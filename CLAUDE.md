@@ -254,11 +254,17 @@ projects/{project-name}/
 │   │   ├── analytics.json            # Raw agent output
 │   │   ├── longitudinal.json         # Raw agent output
 │   │   └── consolidated.json         # ← HARMONIZED - USE THIS FOR DASHBOARD
+│   ├── dashboard-parts/              # ← YOU write one fragment file per placeholder here
+│   │   ├── SUMMARY.html
+│   │   ├── PARTICIPANT_CARDS.html
+│   │   └── ...
 │   └── dashboard/                    # Meeting dashboard
-│       └── index.html                # THE DELIVERABLE
+│       └── index.html                # Generated deterministically by processor/index.js - do NOT write this yourself
 └── 2026-01-22-sprint-review/         # Another meeting (same day, different ID)
     ├── transcript.vtt
     ├── analysis/
+    │   └── ...
+    ├── dashboard-parts/
     │   └── ...
     └── dashboard/
         └── index.html
@@ -266,25 +272,24 @@ projects/{project-name}/
 
 ## Dashboard Generation
 
-### IMPORTANT: Use the Template
+### IMPORTANT: You write fragments, not the final HTML
 
-**You MUST use the template file at `templates/dashboard.html` as the base for generating the dashboard.**
+**You never write `dashboard/index.html` yourself.** `processor/index.js` reads `templates/dashboard.html` and deterministically substitutes each `{{PLACEHOLDER}}` with a fragment file you write - that is the only path the final HTML is produced through. This keeps the template's static chrome (SSW brand colors, `tailwind.config`, Chart.js defaults, the profile-image fallback script, tab navigation, page structure - everything that isn't a `{{PLACEHOLDER}}` region) out of your output entirely, so a typo you make can never corrupt it. See GitHub issue #125.
 
-1. Read the template file first: `templates/dashboard.html`
-2. The template contains:
-   - SSW brand colors and styling
-   - Tab navigation (Overview, Timeline, People, Insights, Analytics, Trends)
-   - Placeholder variables like `{{PROJECT_NAME}}`, `{{DATE}}`, `{{SUMMARY}}`, etc.
-   - Chart.js setup with SSW colors
-   - Speaker timeline CSS styles
-3. Replace ALL placeholders with actual content from `consolidated.json`
-4. Save the final HTML to `projects/{project}/{meeting-id}/dashboard/index.html`
+1. Read the template file first: `templates/dashboard.html`, to see the current placeholder names and what each region is for.
+2. For every `{{PLACEHOLDER}}` in the template (e.g. `{{PROJECT_NAME}}`, `{{DATE}}`, `{{SUMMARY}}`, `{{PARTICIPANT_CARDS}}`, ...), write ONE fragment file containing that placeholder's content to:
+   ```
+   projects/{project}/{meeting-id}/dashboard-parts/{PLACEHOLDER_NAME}.html
+   ```
+3. Each fragment file contains ONLY the raw HTML for that region - no `<html>`/`<head>`/`<body>` wrapper, no markdown code fences. `CHART_SCRIPTS.html` is the one exception: it contains raw JavaScript (Chart.js setup code), exactly as before.
+4. If a section legitimately has nothing to show (e.g. a ceremony was skipped - see the content rule above), write an empty file rather than inventing content. A missing or empty fragment is substituted with an empty string, not an error - so omitting a section this way is always safe.
+5. Do NOT create `projects/{project}/{meeting-id}/dashboard/index.html` yourself, and do NOT read or copy chrome (tailwind config, colors, Chart.js setup, the profile-image fallback script) into any fragment - that content lives solely in `templates/dashboard.html` and is never something you author.
 
-**DO NOT create HTML from scratch - USE THE TEMPLATE!**
+**DO NOT create a full dashboard HTML file from scratch - write fragments, one per placeholder!**
 
 ### Speaker Timeline Visualization
 
-The `{{SPEAKER_TIMELINE}}` placeholder must be populated with HTML showing horizontal bars for each speaker, visualizing when they spoke throughout the meeting.
+The `SPEAKER_TIMELINE.html` fragment (for the `{{SPEAKER_TIMELINE}}` placeholder) must be populated with HTML showing horizontal bars for each speaker, visualizing when they spoke throughout the meeting.
 
 Use data from `consolidated.json -> speakerTimeline -> participants[]` to generate:
 
@@ -425,10 +430,10 @@ The template includes a script that automatically falls back to initials (from `
 
 ## Deployment
 
-**Do NOT deploy the dashboard.** Deployment is handled automatically by `processor.js` after you generate the HTML. Your only job is to save the dashboard to:
+**Do NOT deploy the dashboard.** Deployment, and building `dashboard/index.html` itself from your fragments, are both handled automatically by `processor/index.js`. Your only job is to save the fragment files to:
 
 ```
-projects/{project}/{meeting-id}/dashboard/index.html
+projects/{project}/{meeting-id}/dashboard-parts/{PLACEHOLDER_NAME}.html
 ```
 
 ## DO NOT
@@ -440,4 +445,5 @@ projects/{project}/{meeting-id}/dashboard/index.html
 - Use inconsistent names across tabs
 - Generate a simple single-tab page
 - Deploy the dashboard (processor.js handles deployment)
+- Write `dashboard/index.html` yourself, or author any static chrome (tailwind config, colors, Chart.js setup, profile-image fallback script) - `processor/index.js` builds it deterministically from `templates/dashboard.html` plus your fragments
 - Rush through the analysis - THIS IS IMPORTANT
