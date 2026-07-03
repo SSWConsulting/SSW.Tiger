@@ -46,6 +46,7 @@ async function setupProjectStructure({ meetingPath, transcriptPath }) {
     meetingPath,
     path.join(meetingPath, "analysis"),
     path.join(meetingPath, "dashboard"),
+    path.join(meetingPath, "dashboard-parts"),
   ];
 
   for (const dir of dirs) {
@@ -129,6 +130,21 @@ async function setupProjectStructure({ meetingPath, transcriptPath }) {
     for (const file of files) {
       if (file.endsWith(".json")) {
         await fs.unlink(path.join(analysisDir, file));
+      }
+    }
+  } catch (error) {
+    // Directory might not exist or be empty - that's fine
+  }
+
+  // Clean up previous dashboard fragments for this specific meeting (if
+  // exists) so a regeneration can't leave a stale fragment from a prior run
+  // sitting alongside this run's fresh ones.
+  const dashboardPartsDir = path.join(meetingPath, "dashboard-parts");
+  try {
+    const files = await fs.readdir(dashboardPartsDir);
+    for (const file of files) {
+      if (file.endsWith(".html")) {
+        await fs.unlink(path.join(dashboardPartsDir, file));
       }
     }
   } catch (error) {

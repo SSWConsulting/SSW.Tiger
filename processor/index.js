@@ -19,8 +19,8 @@ const path = require("path");
 const { log } = require("../lib/logger");
 const { validateTranscriptFilename, setupProjectStructure } = require("./projectSetup");
 const { validateCredentials, invokeClaude } = require("./claudeRunner");
-const { checkOutputExists, copyToOutputDirectory, deployDashboard, persistToCosmos, deployProjectIndex } = require("./deployer");
-const { validateAndRepairDashboard } = require("./dashboardValidator");
+const { copyToOutputDirectory, deployDashboard, persistToCosmos, deployProjectIndex } = require("./deployer");
+const { fillDashboardTemplate } = require("./templateFiller");
 
 const ROOT_DIR = path.join(__dirname, "..");
 const OUTPUT_DIR = process.env.OUTPUT_DIR || path.join(ROOT_DIR, "output");
@@ -49,7 +49,9 @@ async function processTranscript(transcriptPath, projectSlug) {
   // Setup project structure
   await setupProjectStructure({ meetingPath, transcriptPath: resolvedPath });
 
-  // Invoke Claude Code CLI (uses display name for human-readable prompt)
+  // Invoke Claude Code CLI (uses display name for human-readable prompt).
+  // The model writes one fragment file per template placeholder under
+  // dashboard-parts/ - it never authors the full dashboard/index.html.
   await invokeClaude({
     projectName: displayName,
     projectSlug,
@@ -60,25 +62,17 @@ async function processTranscript(transcriptPath, projectSlug) {
     rootDir: ROOT_DIR,
   });
 
-  // Check output exists
-  const canonicalPath = await checkOutputExists({
-    meetingPath,
-    outputDir: OUTPUT_DIR,
-    projectName: projectSlug,
-    meetingId,
+  // Deterministically fill the template from the model's fragments. Static
+  // chrome (tailwind.config, sswColors, Chart.defaults, profile-image
+  // fallback, etc.) comes straight from templates/dashboard.html and is
+  // never touched - see GitHub issue #125. A missing/corrupted fragment
+  // degrades to an empty section rather than crashing.
+  const canonicalPath = path.join(meetingPath, "dashboard", "index.html");
+  await fillDashboardTemplate({
+    templatePath: path.join(ROOT_DIR, "templates", "dashboard.html"),
+    fragmentsDir: path.join(meetingPath, "dashboard-parts"),
+    outputPath: canonicalPath,
   });
-
-  // Guard against syntax errors in inline <script> blocks (mainly the
-  // tailwind.config block, which the model has been observed to corrupt
-  // in rare regenerations - see GitHub issue #98).
-  try {
-    await validateAndRepairDashboard(
-      canonicalPath,
-      path.join(ROOT_DIR, "templates", "dashboard.html"),
-    );
-  } catch (err) {
-    log("warn", "Dashboard validation step failed (non-fatal)", { error: err.message });
-  }
 
   // Deploy to Azure Blob Storage
   const { deployedUrl, dashboardPath: storagePath } = await deployDashboard({
