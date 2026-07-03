@@ -49,13 +49,13 @@ You are a meeting transcript processor. Your job is to convert .vtt transcripts 
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                  4. GENERATE DASHBOARD                           │
+│                  4. GENERATE DASHBOARD FRAGMENTS                 │
 │  Use consolidated.json (NOT raw agent outputs)                  │
-│  Multi-tab HTML with consistent naming throughout               │
-│  Save to: projects/{project}/{meeting-id}/dashboard/index.html  │
+│  One raw-HTML fragment per {{PLACEHOLDER}}, consistent naming    │
+│  Write to: projects/{project}/{meeting-id}/dashboard-parts/      │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
-              (Deployment handled by processor.js)
+   (dashboard/index.html assembly + deployment handled by processor/index.js)
 ```
 
 ## Participant Resolution
@@ -277,13 +277,14 @@ projects/{project-name}/
 **You never write `dashboard/index.html` yourself.** `processor/index.js` reads `templates/dashboard.html` and deterministically substitutes each `{{PLACEHOLDER}}` with a fragment file you write - that is the only path the final HTML is produced through. This keeps the template's static chrome (SSW brand colors, `tailwind.config`, Chart.js defaults, the profile-image fallback script, tab navigation, page structure - everything that isn't a `{{PLACEHOLDER}}` region) out of your output entirely, so a typo you make can never corrupt it. See GitHub issue #125.
 
 1. Read the template file first: `templates/dashboard.html`, to see the current placeholder names and what each region is for.
-2. For every `{{PLACEHOLDER}}` in the template (e.g. `{{PROJECT_NAME}}`, `{{DATE}}`, `{{SUMMARY}}`, `{{PARTICIPANT_CARDS}}`, ...), write ONE fragment file containing that placeholder's content to:
+2. For every `{{PLACEHOLDER}}` in the template (e.g. `{{PROJECT_NAME}}`, `{{DATE}}`, `{{SUMMARY}}`, `{{PARTICIPANT_CARDS}}`, ...) EXCEPT `{{GENERATED_AT}}`, write ONE fragment file containing that placeholder's content to:
    ```
    projects/{project}/{meeting-id}/dashboard-parts/{PLACEHOLDER_NAME}.html
    ```
 3. Each fragment file contains ONLY the raw HTML for that region - no `<html>`/`<head>`/`<body>` wrapper, no markdown code fences. `CHART_SCRIPTS.html` is the one exception: it contains raw JavaScript (Chart.js setup code), exactly as before.
 4. If a section legitimately has nothing to show (e.g. a ceremony was skipped - see the content rule above), write an empty file rather than inventing content. A missing or empty fragment is substituted with an empty string, not an error - so omitting a section this way is always safe.
 5. Do NOT create `projects/{project}/{meeting-id}/dashboard/index.html` yourself, and do NOT read or copy chrome (tailwind config, colors, Chart.js setup, the profile-image fallback script) into any fragment - that content lives solely in `templates/dashboard.html` and is never something you author.
+6. Do NOT write a `GENERATED_AT.html` fragment. `{{GENERATED_AT}}` is deterministic metadata (the current timestamp) filled in automatically - you have no reliable notion of "now," so this one placeholder is never your job.
 
 **DO NOT create a full dashboard HTML file from scratch - write fragments, one per placeholder!**
 

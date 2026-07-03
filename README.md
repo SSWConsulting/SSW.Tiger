@@ -140,7 +140,7 @@ Then talk naturally:
 "Process the yakshaver transcript from today"
 ```
 
-Claude generates the dashboard HTML. To deploy it afterwards:
+Claude analyses the transcript and writes the dashboard content as fragment files; the dashboard HTML itself is assembled deterministically from `templates/dashboard.html`. To deploy it afterwards:
 
 ```
 "Deploy the dashboard"           # Tell Claude (uses deploy-dashboard skill)
