@@ -820,7 +820,16 @@ function isExternalPerson(person) {
  * @returns {Array} Only the SSW-internal participants
  */
 function filterNotifiableParticipants(participants) {
-  return (participants || []).filter((p) => !isExternalPerson(p).isExternal);
+  return (participants || []).filter((p) => {
+    const check = isExternalPerson(p);
+    if (check.isExternal) {
+      log(
+        "info",
+        `Excluding external participant from notification: ${check.reason}`,
+      );
+    }
+    return !check.isExternal;
+  });
 }
 
 async function main() {
