@@ -177,26 +177,27 @@ A single topic (e.g., "John departing") must NOT appear as:
 **Privacy rules:**
 - **Client anonymization**: If client or company names are mentioned in the transcript, do NOT display them in the dashboard. Replace with "Client A", "Client B", "Client C", etc. SSW staff names are fine to show.
 
-**Styling rules:**
-- In warning/alert sections (e.g. Hard Truths, Time Waste Analysis), keep the body text black (`text-ssw-charcoal`). Only the section heading and border should use accent colors.
+**Styling rules (SSW Design System - `ds-*` classes, real component source from `SSWConsulting/SSW.DesignSystem`):**
+
+The template's static chrome already provides the card/badge/avatar/tab CSS (`.ds-card`, `.ds-badge-*`, `.ds-avatar`, `.speaker-*`, `.value-bar-*`). Every fragment you author must use these classes, NOT the old `bg-white rounded-xl shadow-sm ssw-card` / `bg-ssw-red-50` / `grade-a`..`grade-f` patterns from earlier dashboard versions.
+
+- **Cards**: any self-contained content block (a participant card, a risk card, etc.) uses `class="ds-card"` with inner padding `px-4 pt-4` (top) and `px-4 pb-4` (bottom) - see the participant card example below. Do NOT use `rounded-xl`, `shadow-sm`, `ssw-card`, or raw `bg-white` on fragment content - the template's outer chrome already places most cards; you only need `ds-card` when a fragment itself introduces a new card-like block (e.g. one risk item, one participant).
+- **Badges**: use `class="ds-badge ds-badge-<variant>"` instead of colored `bg-*-50` boxes. Variant mapping:
+  | Variant | Usage |
+  |---|---|
+  | `ds-badge-success` | Positive/on-track indicators, opportunities, Done This Sprint style callouts |
+  | `ds-badge-warning` | Caution items, elephants in the room |
+  | `ds-badge-destructive` | Critical risks, Hard Truths |
+  | `ds-badge-secondary` | Neutral info, e.g. a speaking-time percentage pill |
+  | `ds-badge-outline` | Low-emphasis metadata (e.g. the header duration badge - already handled by template chrome) |
+- Any other background color (`bg-blue-*`, `bg-purple-*`, `bg-indigo-*`, `bg-teal-*`, raw Tailwind `bg-green-50`/`bg-amber-50`/`bg-red-50`, `grade-a`..`grade-f`) is **forbidden**. `border-l-4` accent bands (e.g. People Strengths/Feedback) use inline `style="border-left: 3px solid var(--text-success)"` / `var(--text-warning)` with a matching `background: var(--fill-success-weak)` / `var(--fill-warning-weak)`, exactly as shown in the participant card example below - not Tailwind color utility classes.
+- In warning/alert content (Hard Truths, Time Waste), keep the body text `color: var(--text-strong)` (black). Only the badge/heading uses the accent color.
 - Icon usage by context:
   - ✅ for completed/positive items (Done This Sprint, Key Decisions)
   - ⚠️ for warnings, risks, caution items
   - ❌ for things that went wrong or failed — NEVER use ❌ in Next Steps (these are future plans, not failures)
   - ➡️ for all Next Steps items (they are forward-looking actions)
-- **All Overview sections use the same format:** `<li>` bullet points inside `<ul>`. This applies to Summary, Key Decisions, Done This Sprint, and Next Steps. Do NOT use `<div>` card grids or colored background cards for these — keep them as clean bullet lists.
-
-**Color allowlist (STRICT — no other background colors permitted):**
-
-| Color | Usage | Tailwind classes |
-|---|---|---|
-| **White** | Primary background, default for all cards and items | `bg-white` |
-| **Green-50** | Positive indicators (outside Overview tab only) | `bg-green-50` |
-| **Amber-50** | Warnings, caution items | `bg-amber-50` |
-| **Red-50** | Critical issues only (Hard Truths section, critical risks) | `bg-ssw-red-50` or `bg-red-50` |
-| **SSW Gray** | Neutral info, headers, team dynamics cards | `bg-ssw-gray-50` to `bg-ssw-gray-700` |
-
-Any color NOT in this table is **forbidden** as a background. This means no `bg-blue-*`, no `bg-purple-*`, no `bg-indigo-*`, no `bg-teal-*`, etc. `border-l-4` accent colors may use `border-ssw-red`, `border-amber-400/500`, `border-green-400/500` (positive bands, e.g. People Strengths), or `border-ssw-gray-300` for priority indicators.
+- **All Overview sections use the same format:** `<li>` bullet points inside `<ul>`. This applies to Summary, Key Decisions, Done This Sprint, and Next Steps. Do NOT use `<div>` card grids for these — keep them as clean bullet lists (the `<ul>`/`<li>` wrapper itself is already provided by the template chrome around each Overview card; your fragment is just the `<li>` items).
 
 ### Tab 1: Overview
 
@@ -206,40 +207,44 @@ All sections below use `<li>` bullet points inside `<ul>` — consistent style t
 - **Key Decisions** — choices between alternatives, **max 3 bullets** (e.g., "Use SSW Identity Server instead of building from scratch"). Sprint goal setting is NOT a key decision — it belongs in the summary. Each bullet starts with `<Product> - ` (see `consolidator.md` > `Item product prefix`).
 - **Done This Sprint** — outcomes, features completed/demoed, issues resolved. Each item as a plain `<li>` with owner in parentheses. No emoji icons. Do NOT repeat decisions already in Key Decisions. Each bullet starts with `<Product> - ` (see `consolidator.md` > `Item product prefix`).
 - **Next Steps** — work items for next sprint and other follow-up actions, as plain `<li>` bullets with owner **(canonical names!)**. No emoji icons. Each bullet starts with `<Product> - ` (see `consolidator.md` > `Item product prefix`).
-- **Hard truths** — **MAX 2 items, each max 2 sentences.** Keep them punchy and direct, not paragraph-length essays. ONLY high-level synthesis that genuinely doesn't fit in Insights, People, or Trends.
+- **Hard truths** — **MAX 2 items, each max 2 sentences.** Keep them punchy and direct, not paragraph-length essays. ONLY high-level synthesis that genuinely doesn't fit in Insights, People, or Trends. The `{{HARD_TRUTHS}}` fragment is one or more rows, each a `<span class="ds-badge ds-badge-destructive">Hard truth</span>` badge followed by the sentence(s) - see the Hard Truths example under "Participant Cards" styling below for the badge+text row pattern.
 
 ### Tab 2: Timeline
-- **Speaker Timeline Visualization** - Horizontal bars showing exactly when each person spoke (like Teams interface)
+- **Speaker Timeline Visualization** - Horizontal bars showing exactly when each person spoke (like Teams interface). See the `SPEAKER_TIMELINE` markup pattern below (`.speaker-row`/`.speaker-track`/`.speaker-seg`).
 - Visual timeline with participants **(canonical names!)**
 - **Boardroom handling**: If the VTT has a mix of `<v>`-tagged and untagged speech, show "Group (Boardroom)" as a speaker entry for all untagged speech. Do NOT guess individual speakers from untagged text.
 - Duration and energy level for each
 - Key moments highlighted
-- Flow Analysis: transition quality, agenda adherence, time waste inventory
+- Flow Analysis: transition quality and agenda adherence go in `{{FLOW_ANALYSIS}}`; the time waste inventory goes in the separate `{{TIME_WASTE_ANALYSIS}}` fragment (both render inside the same "Flow Analysis" card, one below the other - the template supplies the sub-heading for each, your fragment is just the content). Agenda adherence should render as a `ds-badge` (e.g. `ds-badge-success` "On track", `ds-badge-warning` "Behind schedule").
+- Chronological segments (what happened, in order) go in `{{TIMELINE_SEGMENTS}}`, rendered in its own "Meeting Timeline" card below the Speaker Timeline / Flow Analysis row.
 - **Do NOT include "Missing from Agenda" section** — that content belongs exclusively in the Insights tab (Elephants in the Room)
 
 ### Tab 3: People & Roles
+- `{{TEAM_DYNAMICS}}` and `{{POWER_DYNAMICS}}` each render as their own flat `ds-card` above the participant grid (title supplied by the template chrome) - plain prose/short bullets, no gradient banner styling; the Design System has no gradient-hero token, so these are just ordinary cards now.
 - Card for each participant **(canonical name with role as subtitle)**
 - **Profile photo from SSW People** (with fallback for non-SSW participants)
 - Speaking time vs. value contribution
 - **Written feedback is the focus of each card.** Strengths and Feedback are the primary content, rendered as prominent coloured bands (green for Strengths, amber for Feedback - including the band heading) in larger text below the rating, NOT as small grey footnotes. Render each from the participant's `strengths[]` and `feedback[]` lists in `consolidated.json` (2-3 bullets each). Feedback is a bulleted list, not a single paragraph.
   - **Every bullet leads with a bold topic prefix** so the card is scannable at a glance, e.g. `<span class="font-semibold">Interruptions</span> - cut across others 5 times`. The prefix comes from the consolidated data (`<Topic> - point`); render only the text before the **first** ` - ` bold, leaving any later hyphens in the point unbolded. This mirrors the `<Product> -` prefix on Overview bullets.
-  - Keep band body text black (`text-ssw-charcoal`); only the heading and left border use accent colours.
+  - Keep band body text `color: var(--text-strong)` (black); only the heading and left border use accent colours (`var(--text-success)` / `var(--text-warning)`) - see the participant card example below.
   - **Thin-feedback fallback:** render only the points that exist (1 is fine if that's all there is). If a participant has no strengths or no feedback at all (e.g. a boardroom attendee with minimal individual signal), omit that band entirely rather than render an empty coloured box.
-- Value scores are whole numbers out of 10, no decimals. Avoid 7/10 (too average/non-committal); be more decisive with 6 or 8. Bar color: 8-10 = GREEN, 4-6 = YELLOW, 3 and below = RED. **The rating/bar stays as-is - it is not de-emphasized, just no longer the only thing that stands out.**
+- Value scores are whole numbers out of 10, no decimals. Avoid 7/10 (too average/non-committal); be more decisive with 6 or 8. Bar color via `.value-bar-fill` inline `background`: 8-10 = `var(--text-success)`, 4-6 = `var(--text-warning)`, 3 and below = `var(--text-error)`. **The rating/bar stays as-is - it is not de-emphasized, just no longer the only thing that stands out.**
 - **Boardroom participants** (identified from invite list + transcript mentions, but no `<v>` tags): include cards with correct names/photos, but note that individual speaking metrics are unavailable
 
 ### Tab 4: Insights
+- `{{TEAM_HEALTH}}` renders as its own flat `ds-card` at the top of the tab (title supplied by template chrome) - plain prose, no gradient banner.
 - **This tab OWNS all analysis, risks, elephants, and hard truths.** If something is uncomfortable or hidden, it goes HERE, not in Overview.
 - Each finding appears in ONE sub-section only (a topic is either a risk OR an elephant OR an opportunity — never all three)
-- Risk signals with who raised them **(canonical names!)**
-- Elephants in the room — **each elephant is max 2-3 sentences**: what it is, why it matters, one-line recommendation. Do NOT write full paragraphs with background context.
-- Buried opportunities
-- Notable quotes **(attributed by canonical name!)**
+- Risk signals with who raised them **(canonical names!)** — `{{RISK_RADAR}}` fragment, one `<span class="ds-badge ds-badge-destructive">Critical risk</span>` (or similarly worded) badge + text per finding, in its own grid card
+- Elephants in the room — **each elephant is max 2-3 sentences**: what it is, why it matters, one-line recommendation. Do NOT write full paragraphs with background context. `{{ELEPHANTS}}` fragment uses `<span class="ds-badge ds-badge-warning">Elephant in the room</span>` badge + text per finding, in its own grid card.
+- Buried opportunities — `{{INSIGHTS_CARDS}}` fragment uses `<span class="ds-badge ds-badge-success">Opportunity</span>` badge + text per finding, in its own grid card.
+- Notable quotes **(attributed by canonical name!)** — `{{NOTABLE_MOMENTS}}` fragment, full-width card below the 3-card grid, each quote as `<p class="text-sm italic">"..." <span class="not-italic font-semibold">- Name</span></p>`.
 
 ### Tab 5: Trends
 - Comparison with previous meetings
-- Recurring themes
-- Improvement tracking
+- Recurring themes — `{{RECURRING_ISSUES}}` fragment renders as a row of `<span class="ds-badge ds-badge-warning">Theme</span>` (or `ds-badge-outline` for lower-signal ones) pills, not a red "graveyard" warning box.
+- Improvement tracking — `{{TRENDS_CONTENT}}` fragment is the entire "Value Score Trend" card body: a simple CSS bar visualization (styled `<div>`s with inline `height`/`width` percentages, one per historical sprint, most-recent bar tinted with `background: var(--text-success)`), plus a one-line summary of the trend in a `ds-card-footer`. No Chart.js - the Design System mockup this template is based on uses plain styled divs for this, and there is no `{{CHART_SCRIPTS}}` placeholder in this template (see below).
+- `{{PREDICTIONS}}` fragment is the full-width "Prediction" card body - plain prose.
 
 ## Project Structure
 
@@ -274,53 +279,55 @@ projects/{project-name}/
 
 ### IMPORTANT: You write fragments, not the final HTML
 
-**You never write `dashboard/index.html` yourself.** `processor/index.js` reads `templates/dashboard.html` and deterministically substitutes each `{{PLACEHOLDER}}` with a fragment file you write - that is the only path the final HTML is produced through. This keeps the template's static chrome (SSW brand colors, `tailwind.config`, Chart.js defaults, the profile-image fallback script, tab navigation, page structure - everything that isn't a `{{PLACEHOLDER}}` region) out of your output entirely, so a typo you make can never corrupt it. See GitHub issue #125.
+**You never write `dashboard/index.html` yourself.** `processor/index.js` reads `templates/dashboard.html` and deterministically substitutes each `{{PLACEHOLDER}}` with a fragment file you write - that is the only path the final HTML is produced through. This keeps the template's static chrome (SSW Design System tokens/CSS, the tab-switching script, the profile-image fallback script, page structure - everything that isn't a `{{PLACEHOLDER}}` region) out of your output entirely, so a typo you make can never corrupt it. See GitHub issue #125.
+
+This template has **no `{{CHART_SCRIPTS}}` placeholder and loads no Chart.js** - it is built directly from the real SSW.DesignSystem component source (Card, Badge, Avatar, Tabs), which favours plain styled markup over chart libraries. The Trends tab's trend visualization (`{{TRENDS_CONTENT}}`) is authored as plain CSS bar `<div>`s, not JavaScript - see Tab 5 above.
 
 1. Read the template file first: `templates/dashboard.html`, to see the current placeholder names and what each region is for.
 2. For every `{{PLACEHOLDER}}` in the template (e.g. `{{PROJECT_NAME}}`, `{{DATE}}`, `{{SUMMARY}}`, `{{PARTICIPANT_CARDS}}`, ...) EXCEPT `{{GENERATED_AT}}`, write ONE fragment file containing that placeholder's content to:
    ```
    projects/{project}/{meeting-id}/dashboard-parts/{PLACEHOLDER_NAME}.html
    ```
-3. Each fragment file contains ONLY the raw HTML for that region - no `<html>`/`<head>`/`<body>` wrapper, no markdown code fences. `CHART_SCRIPTS.html` is the one exception: it contains raw JavaScript (Chart.js setup code), exactly as before.
+3. Each fragment file contains ONLY the raw HTML for that region - no `<html>`/`<head>`/`<body>` wrapper, no markdown code fences.
 4. If a section legitimately has nothing to show (e.g. a ceremony was skipped - see the content rule above), write an empty file rather than inventing content. A missing or empty fragment is substituted with an empty string, not an error - so omitting a section this way is always safe.
-5. Do NOT create `projects/{project}/{meeting-id}/dashboard/index.html` yourself, and do NOT read or copy chrome (tailwind config, colors, Chart.js setup, the profile-image fallback script) into any fragment - that content lives solely in `templates/dashboard.html` and is never something you author.
+5. Do NOT create `projects/{project}/{meeting-id}/dashboard/index.html` yourself, and do NOT read or copy chrome (Design System tokens/CSS, tab script, the profile-image fallback script) into any fragment - that content lives solely in `templates/dashboard.html` and is never something you author.
 6. Do NOT write a `GENERATED_AT.html` fragment. `{{GENERATED_AT}}` is deterministic metadata (the current timestamp) filled in automatically - you have no reliable notion of "now," so this one placeholder is never your job.
 
 **DO NOT create a full dashboard HTML file from scratch - write fragments, one per placeholder!**
 
 ### Speaker Timeline Visualization
 
-The `SPEAKER_TIMELINE.html` fragment (for the `{{SPEAKER_TIMELINE}}` placeholder) must be populated with HTML showing horizontal bars for each speaker, visualizing when they spoke throughout the meeting.
+The `SPEAKER_TIMELINE.html` fragment (for the `{{SPEAKER_TIMELINE}}` placeholder) must be populated with HTML showing horizontal bars for each speaker, visualizing when they spoke throughout the meeting, using the Design System's `.speaker-row` / `.speaker-track` / `.speaker-seg` classes (real markup pattern, copied from the SSW.DesignSystem-based mockup - do NOT use the older `.speaker-timeline-row`/`.speaker-timeline-bar-container`/`.speaker-timeline-bar` classes, they no longer exist in this template).
 
 Use data from `consolidated.json -> speakerTimeline -> participants[]` to generate:
 
 ```html
-<div class="speaker-timeline-row">
-    <div class="font-medium text-ssw-charcoal">Alice</div>
-    <div class="speaker-timeline-bar-container">
-        <!-- Each interval becomes a positioned bar -->
-        <div class="speaker-timeline-bar medium" 
-             style="left: 2.5%; width: 12.8%;" 
+<div class="speaker-row">
+    <span class="text-sm font-medium" style="color: var(--text-strong);">Alice</span>
+    <div class="speaker-track">
+        <!-- Each interval becomes a positioned bar. Alternate speakers between
+             var(--primary) and var(--secondary); use var(--muted-foreground)
+             for a "Group (Boardroom)" row. -->
+        <div class="speaker-seg" style="left: 2.5%; width: 12.8%; background: var(--primary);"
              title="00:02:15-00:04:30 (2m 15s) - Sprint intro"></div>
-        <div class="speaker-timeline-bar medium" 
-             style="left: 5.8%; width: 14.5%;" 
+        <div class="speaker-seg" style="left: 5.8%; width: 14.5%; background: var(--primary);"
              title="00:05:10-00:07:45 (2m 35s) - Feature demo setup"></div>
         <!-- ... more intervals ... -->
     </div>
-    <div class="text-sm text-ssw-gray-600">27m 15s (25.6%)</div>
+    <span class="text-xs text-right" style="color: var(--text-weak);">27m 15s (27%)</span>
 </div>
 ```
 
 **Calculation:**
 - `left = (intervalStart / meetingDuration) * 100%`
 - `width = (intervalDuration / meetingDuration) * 100%`
-- Use class `short` for < 30s, `medium` for 30s-2m, `long` for > 2m
+- There is no `short`/`medium`/`long` segment-size class in this template (that distinction lived in the old `.speaker-timeline-bar` variants); a single `.speaker-seg` handles all interval lengths - vary only the `background` color per speaker as above.
 
 **Sort participants by total speaking time (descending)**
 
 ### Participant Cards with Profile Photos
 
-The `{{PARTICIPANT_CARDS}}` placeholder must be populated with HTML cards for each participant, including their SSW profile photo.
+The `{{PARTICIPANT_CARDS}}` placeholder must be populated with HTML cards for each participant, including their SSW profile photo, using the Design System's `ds-card`/`ds-avatar`/`ds-badge`/`value-bar-*` classes (real markup pattern, copied from the SSW.DesignSystem-based mockup).
 
 #### SSW Profile Photo URL Pattern
 
@@ -350,75 +357,75 @@ For each participant card, look up the slug in this order:
 
 #### Participant Card HTML Structure
 
+Each participant is one `ds-card` inside the `{{PARTICIPANT_CARDS}}` grid. Avatar size is 48px (`ssw/avatar.tsx` "large"). Key finding + Strengths/Feedback bands use inline `style` colors (`var(--text-success)` / `var(--text-warning)`), not Tailwind color utilities:
+
 ```html
-<div class="bg-white rounded-xl shadow-sm ssw-card p-6">
-    <div class="flex gap-4">
-        <!-- Profile Photo (fallback to initials is handled by template script) -->
-        <div class="profile-image-container">
-            <img src="https://raw.githubusercontent.com/SSWConsulting/SSW.People.Profiles/main/Bob-Northwind/Images/Bob-Northwind-Profile.jpg"
-                 alt="Bob Northwind"
-                 class="profile-image js-profile-image"
-                 data-initials="BN">
-        </div>
-
-        <!-- Info Section -->
-        <div class="flex-1">
-            <div class="flex items-start justify-between mb-2">
-                <div>
-                    <h3 class="font-bold text-ssw-charcoal text-lg">Bob Northwind</h3>
-                    <p class="text-ssw-gray-500 text-sm">Senior Developer</p>
-                </div>
-                <span class="bg-ssw-gray-100 text-ssw-gray-700 px-2 py-1 rounded text-sm font-medium">
-                    18% speaking time
-                </span>
-            </div>
-
-            <!-- Value Score -->
-            <div class="mb-3">
-                <div class="flex items-center gap-2">
-                    <span class="text-sm text-ssw-gray-600">Value Score:</span>
-                    <div class="flex-1 bg-ssw-gray-100 rounded-full h-2">
-                        <div class="bg-ssw-red h-2 rounded-full" style="width: 80%"></div>
-                    </div>
-                    <span class="text-sm font-semibold text-ssw-charcoal">8/10</span>
-                </div>
-            </div>
-
-            <!-- Key Finding -->
-            <p class="text-sm text-ssw-gray-600 mb-3">
-                <span class="font-medium text-ssw-charcoal">Key finding:</span>
-                Highest value-per-minute but systematically underutilized
-            </p>
-
-            <!-- Strengths (prominent band - the written feedback is the focus of the card) -->
-            <div class="border-l-4 border-green-400 bg-green-50 rounded-r-lg px-4 py-3 mb-3">
-                <p class="text-sm font-semibold text-green-700 uppercase tracking-wide mb-2">Strengths</p>
-                <ul class="text-base text-ssw-charcoal space-y-2 leading-snug">
-                    <li>• <span class="font-semibold">Efficiency</span> - every word counted, no filler</li>
-                    <li>• <span class="font-semibold">Technical depth</span> - highly valuable when consulted</li>
-                </ul>
-            </div>
-
-            <!-- Feedback (prominent band) -->
-            <div class="border-l-4 border-amber-400 bg-amber-50 rounded-r-lg px-4 py-3">
-                <p class="text-sm font-semibold text-amber-700 uppercase tracking-wide mb-2">Feedback</p>
-                <ul class="text-base text-ssw-charcoal space-y-2 leading-snug">
-                    <li>• <span class="font-semibold">Push back</span> - when interrupted, hold your ground; your points matter</li>
-                    <li>• <span class="font-semibold">Initiative</span> - you don't need permission to contribute</li>
-                </ul>
-            </div>
-        </div>
+<div class="ds-card">
+  <div class="px-4 pt-4 flex items-start gap-3">
+    <!-- Profile Photo: ds-avatar, 48px. Fallback to initials is handled by
+         the template's .js-profile-image error-listener script. -->
+    <div class="ds-avatar" style="width: 48px; height: 48px;">
+      <img src="https://raw.githubusercontent.com/SSWConsulting/SSW.People.Profiles/main/Bob-Northwind/Images/Bob-Northwind-Profile.jpg"
+           alt="Bob Northwind"
+           class="js-profile-image"
+           data-initials="BN">
     </div>
+
+    <!-- Info Section -->
+    <div class="flex-1">
+      <div class="flex items-start justify-between gap-2">
+        <div>
+          <p class="font-medium" style="color: var(--text-strong);">Bob Northwind</p>
+          <p class="text-sm" style="color: var(--text-weak);">Senior Developer</p>
+        </div>
+        <span class="ds-badge ds-badge-secondary">18% speaking</span>
+      </div>
+
+      <!-- Value Score -->
+      <div class="mt-3 flex items-center gap-2">
+        <div class="value-bar-track flex-1">
+          <div class="value-bar-fill" style="width: 80%; background: var(--text-success);"></div>
+        </div>
+        <span class="text-xs font-semibold" style="color: var(--text-strong);">8/10</span>
+      </div>
+
+      <!-- Key Finding -->
+      <p class="text-sm mt-3" style="color: var(--text-weak);">
+        <span class="font-medium" style="color: var(--text-strong);">Key finding:</span>
+        Highest value-per-minute but systematically underutilized
+      </p>
+    </div>
+  </div>
+
+  <div class="px-4 py-4 mt-2 space-y-3">
+    <!-- Strengths (prominent band - the written feedback is the focus of the card) -->
+    <div class="rounded p-3" style="background: var(--fill-success-weak); border-left: 3px solid var(--text-success);">
+      <p class="text-xs font-semibold uppercase tracking-wide mb-1" style="color: var(--text-success);">Strengths</p>
+      <ul class="text-sm space-y-1" style="color: var(--text-strong);">
+        <li><span class="font-semibold">Efficiency</span> - every word counted, no filler</li>
+        <li><span class="font-semibold">Technical depth</span> - highly valuable when consulted</li>
+      </ul>
+    </div>
+
+    <!-- Feedback (prominent band) -->
+    <div class="rounded p-3" style="background: var(--fill-warning-weak); border-left: 3px solid var(--text-warning);">
+      <p class="text-xs font-semibold uppercase tracking-wide mb-1" style="color: var(--text-warning);">Feedback</p>
+      <ul class="text-sm space-y-1" style="color: var(--text-strong);">
+        <li><span class="font-semibold">Push back</span> - when interrupted, hold your ground; your points matter</li>
+        <li><span class="font-semibold">Initiative</span> - you don't need permission to contribute</li>
+      </ul>
+    </div>
+  </div>
 </div>
 ```
 
 #### Fallback for Non-SSW Participants
 
-For participants who don't have SSW profiles, use their initials as a fallback:
+For participants who don't have SSW profiles, use their initials as a fallback (same 48px `ds-avatar` box, no `<img>`):
 
 ```html
-<div class="profile-image-container">
-    <div class="profile-image-placeholder">JD</div>
+<div class="ds-avatar" style="width: 48px; height: 48px;">
+  <div class="ds-avatar-fallback">JD</div>
 </div>
 ```
 
@@ -446,5 +453,5 @@ projects/{project}/{meeting-id}/dashboard-parts/{PLACEHOLDER_NAME}.html
 - Use inconsistent names across tabs
 - Generate a simple single-tab page
 - Deploy the dashboard (processor.js handles deployment)
-- Write `dashboard/index.html` yourself, or author any static chrome (tailwind config, colors, Chart.js setup, profile-image fallback script) - `processor/index.js` builds it deterministically from `templates/dashboard.html` plus your fragments
+- Write `dashboard/index.html` yourself, or author any static chrome (Design System tokens/CSS, tab-switching script, profile-image fallback script) - `processor/index.js` builds it deterministically from `templates/dashboard.html` plus your fragments
 - Rush through the analysis - THIS IS IMPORTANT

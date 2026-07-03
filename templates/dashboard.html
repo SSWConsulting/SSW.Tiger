@@ -1,543 +1,420 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{PROJECT_NAME}} - Meeting Dashboard ({{DATE}})</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- SSW Brand: Inter font for web -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <script>
-        // SSW Brand Colors Configuration
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        // SSW Primary Red: #CC4141
-                        'ssw-red': {
-                            DEFAULT: '#CC4141',
-                            50: '#FCE9E9',
-                            100: '#F8D4D4',
-                            200: '#F1A9A9',
-                            300: '#E97D7D',
-                            400: '#E25252',
-                            500: '#CC4141',
-                            600: '#A33434',
-                            700: '#7A2727',
-                            800: '#521A1A',
-                            900: '#290D0D'
-                        },
-                        // SSW Charcoal: #333333
-                        'ssw-charcoal': {
-                            DEFAULT: '#333333',
-                            50: '#F5F5F5',
-                            100: '#E8E8E8',
-                            200: '#D1D1D1',
-                            300: '#B0B0B0',
-                            400: '#888888',
-                            500: '#666666',
-                            600: '#4D4D4D',
-                            700: '#333333',
-                            800: '#1A1A1A',
-                            900: '#0D0D0D'
-                        },
-                        // SSW Gray palette
-                        'ssw-gray': {
-                            50: '#FAFAFA',
-                            100: '#F4F4F5',
-                            200: '#E4E4E7',
-                            300: '#D4D4D8',
-                            400: '#A1A1AA',
-                            500: '#71717A',
-                            600: '#52525B',
-                            700: '#3F3F46',
-                            800: '#27272A',
-                            900: '#18181B'
-                        }
-                    },
-                    fontFamily: {
-                        'sans': ['Inter', 'Helvetica Neue', 'Helvetica', 'sans-serif'],
-                    }
-                }
-            }
-        }
-    </script>
-    <style>
-        [x-cloak] { display: none !important; }
-        
-        /* SSW Brand Typography */
-        html {
-            font-size: 18px;
-        }
-        body {
-            font-family: 'Inter', 'Helvetica Neue', 'Helvetica', sans-serif;
-            font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
-        }
-        
-        /* Strong heading differentiation per SSW rules */
-        h1 { font-weight: 800; letter-spacing: -0.025em; }
-        h2 { font-weight: 700; letter-spacing: -0.02em; }
-        h3 { font-weight: 600; }
-        
-        @media print {
-            .no-print { display: none; }
-            .print-break { page-break-before: always; }
-        }
-        
-        /* Timeline segments with SSW red accent */
-        .timeline-segment {
-            position: relative;
-        }
-        .timeline-segment::before {
-            content: '';
-            position: absolute;
-            left: 0;
-            top: 0;
-            bottom: 0;
-            width: 4px;
-            border-radius: 2px;
-        }
-        
-        /* Speaker Timeline Visualization */
-        .speaker-timeline-row {
-            display: grid;
-            grid-template-columns: 150px 1fr 100px;
-            gap: 1rem;
-            align-items: center;
-            padding: 0.75rem 0;
-            border-bottom: 1px solid #f4f4f5;
-        }
-        
-        .speaker-timeline-row:last-child {
-            border-bottom: none;
-        }
-        
-        .speaker-timeline-bar-container {
-            position: relative;
-            height: 28px;
-            background: #f4f4f5;
-            border-radius: 4px;
-            overflow: hidden;
-        }
-        
-        .speaker-timeline-bar {
-            position: absolute;
-            height: 100%;
-            background: #CC4141;
-            opacity: 0.8;
-            transition: opacity 0.2s;
-            border-radius: 2px;
-        }
-        
-        .speaker-timeline-bar:hover {
-            opacity: 1;
-        }
-        
-        .speaker-timeline-bar.short {
-            background: #A33434;
-        }
-        
-        .speaker-timeline-bar.medium {
-            background: #CC4141;
-        }
-        
-        .speaker-timeline-bar.long {
-            background: #E25252;
-        }
-        .energy-high::before { background: linear-gradient(to bottom, #CC4141, #E25252); }
-        .energy-medium::before { background: linear-gradient(to bottom, #F59E0B, #FBBF24); }
-        .energy-low::before { background: linear-gradient(to bottom, #666666, #888888); }
-        
-        /* SSW-style card hover effect */
-        .ssw-card {
-            transition: all 0.2s ease;
-            border: 1px solid #E4E4E7;
-        }
-        .ssw-card:hover {
-            border-color: #CC4141;
-            box-shadow: 0 4px 12px rgba(204, 65, 65, 0.1);
-        }
-        
-        /* Tab active state with SSW red */
-        .tab-active {
-            background-color: #CC4141;
-            color: white;
-        }
-        
-        /* SSW branded scrollbar */
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: #F4F4F5; }
-        ::-webkit-scrollbar-thumb { background: #CC4141; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #A33434; }
-        
-        /* Grade badges */
-        .grade-a { background: #059669; }
-        .grade-b { background: #0891B2; }
-        .grade-c { background: #F59E0B; }
-        .grade-d { background: #DC2626; }
-        .grade-f { background: #7F1D1D; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{PROJECT_NAME}} - Meeting Dashboard ({{DATE}})</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /*
+    Tokens copied verbatim from SSWConsulting/SSW.DesignSystem's
+    src/styles/theme.css (light mode only). This is the real source of
+    truth for every color/spacing/radius/shadow/type value below.
+  */
+  :root {
+    --muted: hsla(0, 0%, 0%, 0.04);
+    --muted-foreground: hsla(0, 0%, 0%, 0.6);
+    --destructive: hsla(0, 72%, 51%, 1);
+    --destructive-foreground: hsla(0, 0%, 100%, 1);
+    --success: hsla(162, 90%, 25%, 1);
+    --success-foreground: hsla(0, 0%, 100%, 1);
+    --warning: hsla(42, 70%, 33%, 1);
+    --warning-foreground: hsla(0, 0%, 100%, 1);
+    --border: hsla(0, 0%, 0%, 0.1);
+    --input: hsla(0, 0%, 0%, 0.2);
+    --background: hsla(0, 0%, 100%, 1);
+    --foreground: hsla(0, 0%, 0%, 0.9);
+    --primary: hsla(0, 58%, 53%, 1);
+    --primary-foreground: hsla(0, 0%, 100%, 1);
+    --secondary: hsla(0, 0%, 20%, 1);
+    --secondary-foreground: hsla(0, 0%, 100%, 1);
+    --accent: hsla(0, 0%, 0%, 0.04);
+    --accent-foreground: hsla(0, 0%, 0%, 0.9);
+    --card: hsla(0, 0%, 100%, 1);
+    --card-foreground: hsla(0, 0%, 0%, 0.9);
 
-        /* Profile image styles */
-        .profile-image-container {
-            width: 80px;
-            height: 100px;
-            overflow: hidden;
-            border-radius: 8px;
-            background: #E4E4E7;
-            flex-shrink: 0;
-        }
+    --text-strong: rgba(0, 0, 0, 0.9);
+    --text-weak: rgba(0, 0, 0, 0.6);
+    --text-error: oklch(57.7% 0.215 27.3);
+    --text-warning: hsla(42, 70%, 33%, 1);
+    --text-success: hsla(162, 90%, 25%, 1);
+    --text-information: hsla(262, 74%, 38%, 1);
 
-        .profile-image {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            object-position: top center;
-        }
+    --stroke-weak: rgba(0, 0, 0, 0.1);
+    --fill-weak: rgba(0, 0, 0, 0.04);
+    --fill-success-weak: rgba(0, 153, 102, 0.05);
+    --fill-error-weak: rgba(220, 38, 38, 0.05);
+    --fill-warning-weak: hsla(42, 70%, 45%, 0.08);
+    --fill-information-weak: hsla(262, 74%, 55%, 0.06);
 
-        .profile-image-placeholder {
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: linear-gradient(135deg, #E4E4E7 0%, #D4D4D8 100%);
-            color: #71717A;
-            font-size: 2rem;
-            font-weight: 600;
-        }
-    </style>
+    --background-sunken: #fafafa;
+
+    --shadow-raised: 0px 2px 4px 0px rgba(0, 0, 0, 0.08), 0px 4px 8px 0px rgba(0, 0, 0, 0.04);
+    --shadow-overlay: 0px 8px 8px 0px rgba(0, 0, 0, 0.04), 0px 20px 24px 0px rgba(0, 0, 0, 0.08);
+
+    --spacing-xs: 8px;
+    --spacing-sm: 12px;
+    --spacing-md: 16px;
+
+    --radius-sm: 4px;
+    --radius-lg: 8px;
+
+    --font-family-body: "Inter", sans-serif;
+    --font-family-heading: "Inter", sans-serif;
+    --font-family-mono: "IBM Plex Mono", monospace;
+    --font-size-h1: 40px;
+    --font-size-h2: 32px;
+    --font-size-h3: 24px;
+    --font-size-h4: 20px;
+    --line-height-h1: 48px;
+    --line-height-h2: 40px;
+    --line-height-h3: 32px;
+    --line-height-h4: 28px;
+    --letter-spacing-h1: -0.5px;
+  }
+
+  body { font-family: var(--font-family-body); background: var(--background-sunken); color: var(--text-strong); }
+  .font-heading { font-family: var(--font-family-heading); letter-spacing: var(--letter-spacing-h1); }
+  .font-mono-ds { font-family: var(--font-family-mono); }
+
+  /* ssw/card.tsx: SSWCard wraps ui/card.tsx's Card and overrides its
+     radius to --radius-sm (4px). */
+  .ds-card {
+    background: var(--card);
+    color: var(--card-foreground);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-raised);
+    overflow: hidden;
+  }
+  .ds-card-footer {
+    border-top: 1px solid var(--border);
+    background: color-mix(in srgb, var(--muted) 50%, transparent);
+    border-bottom-left-radius: var(--radius-sm);
+    border-bottom-right-radius: var(--radius-sm);
+  }
+
+  /* ui/badge.tsx: rounded-4xl (full pill), h-5, px-2 py-0.5, text-xs font-medium. */
+  .ds-badge { border-radius: 9999px; height: 20px; padding: 2px 8px; font-size: 12px; font-weight: 500; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .ds-badge-primary { background: var(--primary); color: var(--primary-foreground); }
+  .ds-badge-secondary { background: var(--secondary); color: var(--secondary-foreground); }
+  .ds-badge-success { background: var(--fill-success-weak); color: var(--text-success); }
+  .ds-badge-warning { background: var(--fill-warning-weak); color: var(--text-warning); }
+  .ds-badge-destructive { background: var(--fill-error-weak); color: var(--text-error); }
+  .ds-badge-outline { border: 1px solid var(--border); color: var(--text-strong); background: transparent; }
+
+  /* ui/avatar.tsx: rounded-full, after-pseudo-element ring border using
+     mix-blend-darken so it reads correctly over any fallback color. */
+  .ds-avatar { position: relative; border-radius: 9999px; flex-shrink: 0; overflow: hidden; }
+  .ds-avatar::after { content: ""; position: absolute; inset: 0; border-radius: 9999px; border: 1px solid var(--border); mix-blend-mode: darken; }
+  .ds-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 9999px; }
+  .ds-avatar-fallback { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; border-radius: 9999px; background: var(--muted); color: var(--muted-foreground); font-size: 14px; font-weight: 500; }
+
+  /* ui/tabs.tsx: segmented-control pattern. */
+  .ds-tabs-list { display: inline-flex; align-items: center; background: var(--muted); border-radius: var(--radius-lg); padding: 3px; gap: 2px; }
+  .ds-tab { border-radius: calc(var(--radius-lg) - 2px); padding: 6px 14px; font-size: 14px; font-weight: 500; color: var(--text-weak); transition: all 0.15s ease; border: none; background: transparent; cursor: pointer; }
+  .ds-tab.active { background: var(--background); color: var(--text-strong); box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+  .ds-tab:not(.active):hover { color: var(--text-strong); }
+
+  /* ssw/button.tsx: rounded-[var(--radius-sm)], opacity-layer hover, flat (no shadow). */
+  .ds-btn { position: relative; border-radius: var(--radius-sm); font-size: 14px; font-weight: 500; padding: 8px 16px; display: inline-flex; align-items: center; gap: 8px; border: 1px solid transparent; cursor: pointer; transition: all 0.15s ease; }
+  .ds-btn-primary { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
+  .ds-btn-primary:hover { background: color-mix(in srgb, var(--primary) 90%, white); }
+  .ds-btn-outline { background: transparent; border-color: var(--border); color: var(--text-strong); }
+  .ds-btn-outline:hover { background: var(--fill-weak); }
+
+  .value-bar-track { background: var(--muted); border-radius: 9999px; height: 6px; overflow: hidden; }
+  .value-bar-fill { height: 100%; border-radius: 9999px; }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .speaker-row { display: grid; grid-template-columns: 140px 1fr 90px; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .speaker-row:last-child { border-bottom: none; }
+  .speaker-track { position: relative; height: 22px; background: var(--muted); border-radius: var(--radius-sm); overflow: hidden; }
+  .speaker-seg { position: absolute; top: 0; bottom: 0; border-radius: 2px; opacity: 0.9; }
+
+  @media print {
+    .no-print { display: none; }
+    .tab-panel { display: block !important; }
+  }
+</style>
 </head>
-<body class="bg-ssw-gray-50 min-h-screen">
-    <div x-data="{ activeTab: 'overview' }" class="max-w-6xl mx-auto py-8 px-4">
-        
-        <!-- SSW Branded Header -->
-        <header class="mb-8">
-            <div class="flex items-center justify-between flex-wrap gap-4">
-                <div class="flex items-center gap-4">
-                    <!-- SSW Logo Squares Motif -->
-                    <div class="flex gap-0.5">
-                        <div class="w-3 h-3 bg-ssw-red"></div>
-                        <div class="w-3 h-3 bg-ssw-charcoal"></div>
-                        <div class="w-3 h-3 bg-ssw-gray-400"></div>
-                        <div class="w-3 h-3 bg-ssw-red-300"></div>
-                    </div>
-                    <div>
-                        <h1 class="text-3xl text-ssw-charcoal">
-                            <span class="font-extrabold">{{PROJECT_NAME}}</span>
-                        </h1>
-                        <p class="text-ssw-gray-500 mt-1 font-medium">Meeting Dashboard</p>
-                    </div>
-                </div>
-                <div class="text-right">
-                    <p class="text-2xl font-bold text-ssw-red"><span class="js-meeting-date">{{DATE}}</span></p>
-                    <p class="text-sm text-ssw-gray-500 font-medium">{{MEETING_TYPE}} • {{DURATION}}</p>
-                </div>
-            </div>
-            
-            <!-- Quick Stats Bar - SSW Red Accents -->
-            <div class="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-                {{QUICK_STATS}}
-            </div>
-        </header>
+<body class="min-h-screen">
 
-        <!-- Tab Navigation - SSW Style -->
-        <nav class="flex flex-wrap gap-2 mb-6 border-b border-ssw-gray-200 pb-4 no-print">
-            <button @click="activeTab = 'overview'" 
-                    :class="activeTab === 'overview' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
-                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
-                📋 Overview
-            </button>
-            <button @click="activeTab = 'timeline'" 
-                    :class="activeTab === 'timeline' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
-                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
-                ⏱️ Timeline
-            </button>
-            <button @click="activeTab = 'people'" 
-                    :class="activeTab === 'people' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
-                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
-                👥 People & Roles
-            </button>
-            <button @click="activeTab = 'insights'" 
-                    :class="activeTab === 'insights' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
-                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
-                💡 Insights
-            </button>
-            <button @click="activeTab = 'trends'" 
-                    :class="activeTab === 'trends' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
-                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
-                📈 Trends
-            </button>
-        </nav>
+<!-- ================= HEADER ================= -->
+<header class="bg-white border-b" style="border-color: var(--border);">
+  <div class="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
+    <div class="flex items-center gap-4">
+      <!-- Real SSW logo, ssw/logo.tsx SVG paths verbatim -->
+      <svg viewBox="0 0 90 60" class="h-9 w-auto" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="SSW">
+        <g>
+          <path d="M80.009 17.191C75.893 12.466 69.545 9.437 62.43 9.437C55.42 9.437 49.164 12.369 45.049 16.961C49.15 10.714 56.117 6.509 64.086 6.216C64.309 6.224 64.544 6.229 64.798 6.243C65.1 6.256 65.42 6.3 65.773 6.332C66.467 6.408 67.247 6.546 68.08 6.748C68.902 6.979 69.795 7.25 70.68 7.671C71.565 8.083 72.456 8.598 73.326 9.216C74.192 9.833 75.026 10.54 75.85 11.317C76.663 12.072 77.389 12.922 78.048 13.84C78.376 14.295 78.69 14.77 78.979 15.245C79.27 15.726 79.524 16.195 79.784 16.714C79.859 16.872 79.932 17.029 80.009 17.191Z" fill="#CC4141"/>
+          <path d="M82.773 45.82C78.41 50.707 72.056 53.783 64.986 53.783C56.634 53.783 49.292 49.496 45.036 43.008C49.154 47.608 55.415 50.547 62.423 50.547C67.872 50.547 72.861 48.774 76.757 45.822H82.774L82.773 45.82Z" fill="#CC4141"/>
+          <path d="M88.809 29.993V30.093H84.041C84.031 29.9 84.016 29.683 84.009 29.436C83.952 28.415 83.882 26.956 83.669 25.191C83.445 23.438 83.086 21.365 82.313 19.258C81.928 18.198 81.453 17.153 80.864 16.118C80.589 15.635 80.266 15.113 79.932 14.631C79.604 14.139 79.251 13.663 78.875 13.203C78.139 12.285 77.305 11.417 76.409 10.675C75.54 9.939 74.621 9.245 73.689 8.661C72.755 8.072 71.798 7.593 70.861 7.222C69.929 6.84 69.005 6.612 68.148 6.424C68.017 6.4 67.878 6.379 67.75 6.358C79.607 7.728 88.809 17.784 88.809 29.993Z" fill="#CC4141"/>
+          <path d="M20.436 30.605C19.81 29.566 18.809 28.699 17.429 27.998C16.056 27.292 13.774 26.602 10.595 25.915C9.308 25.648 8.494 25.353 8.148 25.051C7.8 24.746 7.62 24.41 7.62 24.033C7.62 23.523 7.833 23.086 8.263 22.726C8.691 22.368 9.33 22.188 10.175 22.188C11.201 22.188 12.007 22.427 12.594 22.909C13.175 23.392 13.561 24.166 13.741 25.225L20.606 24.821C20.303 22.38 19.362 20.599 17.783 19.478C16.203 18.357 13.909 17.797 10.897 17.797C8.445 17.797 6.512 18.111 5.108 18.726C3.696 19.339 2.64 20.189 1.941 21.263C1.24 22.34 0.887 23.483 0.887 24.694C0.887 26.537 1.575 28.05 2.949 29.243C4.305 30.432 6.584 31.387 9.775 32.101C11.729 32.529 12.971 32.988 13.504 33.467C14.042 33.947 14.307 34.492 14.307 35.109C14.307 35.748 14.028 36.318 13.463 36.801C12.903 37.287 12.114 37.426 11.077 37.426C9.687 37.426 8.597 37.056 7.849 36.101C7.384 35.517 7.084 34.658 6.93 33.535L0 33.967C0.207 36.34 1.082 38.301 2.621 39.846C4.166 41.389 6.939 42.16 10.943 42.16C13.225 42.16 15.119 41.834 16.618 41.17C18.115 40.514 19.283 39.549 20.118 38.27C20.953 36.998 21.374 35.606 21.374 34.092C21.376 32.807 21.062 31.646 20.436 30.605Z" fill="currentColor"/>
+          <path d="M43.824 34.121C43.824 35.601 43.426 36.959 42.622 38.217C42.604 38.242 42.587 38.272 42.57 38.299C42.442 38.496 42.305 38.684 42.154 38.863C41.365 39.865 40.33 40.644 39.066 41.201C37.569 41.859 35.677 42.185 33.393 42.185C29.382 42.185 26.614 41.416 25.068 39.869C23.526 38.33 22.654 36.369 22.448 33.992L29.373 33.558C29.522 34.681 29.832 35.537 30.29 36.129C31.041 37.078 32.114 37.449 33.512 37.449C34.545 37.449 35.343 37.311 35.908 36.824C36.465 36.336 36.754 35.772 36.754 35.131C36.754 34.519 36.483 33.972 35.948 33.49C35.412 33.008 34.174 32.552 32.222 32.121C29.028 31.404 26.749 30.449 25.392 29.263C24.023 28.075 23.334 26.558 23.334 24.717C23.334 23.507 23.685 22.363 24.388 21.286C25.091 20.208 26.142 19.364 27.554 18.745C28.967 18.125 30.895 17.824 33.347 17.824C36.358 17.824 38.657 18.382 40.234 19.5C40.949 20.005 41.536 20.651 41.986 21.433C42.15 21.707 42.295 22.004 42.419 22.315C42.727 23.057 42.938 23.902 43.049 24.841L41.699 24.918L40.627 24.983L36.189 25.241C36.004 24.181 35.624 23.411 35.045 22.925C34.458 22.449 33.651 22.204 32.628 22.204C31.779 22.204 31.145 22.384 30.714 22.745C30.285 23.1 30.071 23.537 30.071 24.057C30.071 24.426 30.241 24.762 30.597 25.063C30.94 25.376 31.753 25.665 33.043 25.93C36.221 26.619 38.501 27.314 39.877 28.014C39.936 28.044 39.993 28.075 40.048 28.105C40.463 28.327 40.845 28.563 41.188 28.816C41.909 29.349 42.474 29.949 42.883 30.622C43.51 31.668 43.824 32.83 43.824 34.121Z" fill="currentColor"/>
+          <path d="M76.701 18.229L71.514 41.781H64.365L60.234 26.951L56.124 41.781H48.984L43.896 18.918V18.916L43.803 18.491L43.743 18.229H50.656L53.145 31.412L56.791 18.229H63.675L67.331 31.395L69.826 18.229H76.701Z" fill="currentColor"/>
+          <path d="M90.014 31.332H84.012V37.336H90.014V31.332Z" fill="currentColor"/>
+          <path d="M82.77 31.332H76.766V37.336H82.77V31.332Z" fill="#797979"/>
+          <path d="M90.014 38.576H84.012V44.582H90.014V38.576Z" fill="#CC4141"/>
+          <path d="M82.77 38.576H76.766V44.582H82.77V38.576Z" fill="#AAAAAA"/>
+        </g>
+      </svg>
+      <div class="border-l pl-4" style="border-color: var(--border);">
+        <h1 class="font-heading font-semibold" style="font-size: var(--font-size-h4); line-height: var(--line-height-h4); color: var(--text-strong);">{{PROJECT_NAME}}</h1>
+        <p class="text-sm" style="color: var(--text-weak);">{{MEETING_TYPE}} &middot; {{DATE}}</p>
+      </div>
+    </div>
+    <div class="ds-badge ds-badge-outline font-mono-ds">{{DURATION}}</div>
+  </div>
+</header>
 
-        <!-- Tab Content -->
-        <main>
-            <!-- Overview Tab -->
-            <div x-show="activeTab === 'overview'" x-cloak>
-                <div class="grid md:grid-cols-2 gap-6">
-                    <!-- Summary -->
-                    <section class="bg-white rounded-xl shadow-sm ssw-card p-6">
-                        <h2 class="text-lg text-ssw-charcoal mb-3 flex items-center">
-                            <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
-                            Meeting Summary
-                        </h2>
-                        <ul class="space-y-2 text-ssw-gray-600 leading-relaxed">
-                            {{SUMMARY}}
-                        </ul>
-                    </section>
+<div class="max-w-6xl mx-auto px-6 py-8">
 
-                    <!-- Key Decisions -->
-                    <section class="bg-white rounded-xl shadow-sm ssw-card p-6">
-                        <h2 class="text-lg text-ssw-charcoal mb-3 flex items-center">
-                            <span class="w-3 h-3 bg-green-600 rounded-full mr-2"></span>
-                            🔑 Key Decisions
-                        </h2>
-                        <ul class="space-y-2">
-                            {{KEY_DECISIONS}}
-                        </ul>
-                    </section>
-                </div>
+  <!-- ================= TABS (ui/tabs.tsx segmented control) ================= -->
+  <div class="ds-tabs-list mb-8 no-print" role="tablist">
+    <button class="ds-tab active" data-tab="overview" role="tab" aria-selected="true">Overview</button>
+    <button class="ds-tab" data-tab="timeline" role="tab" aria-selected="false">Timeline</button>
+    <button class="ds-tab" data-tab="people" role="tab" aria-selected="false">People</button>
+    <button class="ds-tab" data-tab="insights" role="tab" aria-selected="false">Insights</button>
+    <button class="ds-tab" data-tab="trends" role="tab" aria-selected="false">Trends</button>
+  </div>
 
-                <!-- Done This Sprint -->
-                <section class="mt-6 bg-white rounded-xl shadow-sm ssw-card p-6">
-                    <h2 class="text-lg text-ssw-charcoal mb-3 flex items-center">
-                        <span class="w-3 h-3 bg-green-600 rounded-full mr-2"></span>
-                        ✅ Done This Sprint
-                    </h2>
-                    <ul class="space-y-2 text-ssw-gray-600">
-                        {{DONE_THIS_SPRINT}}
-                    </ul>
-                </section>
+  <!-- ================= OVERVIEW PANEL ================= -->
+  <section class="tab-panel active" data-panel="overview">
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
-                <!-- Next Steps -->
-                <section class="mt-6 bg-white rounded-xl shadow-sm ssw-card p-6">
-                    <h2 class="text-lg text-ssw-charcoal mb-3 flex items-center">
-                        <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
-                        ➡️ Next Steps
-                    </h2>
-                    <ul class="space-y-2 text-ssw-gray-600">
-                        {{NEXT_STEPS}}
-                    </ul>
-                </section>
-                
-                <!-- Hard Truths Section - Critical Findings -->
-                <section class="mt-6 bg-ssw-red-50 border-l-4 border-ssw-red rounded-r-xl p-6">
-                    <h2 class="text-lg text-ssw-red-700 mb-4 flex items-center font-bold">
-                        ⚠️ Hard Truths
-                    </h2>
-                    <div class="space-y-2 text-ssw-charcoal">
-                        {{HARD_TRUTHS}}
-                    </div>
-                </section>
-            </div>
-
-            <!-- Timeline Tab -->
-            <div x-show="activeTab === 'timeline'" x-cloak>
-                <!-- Speaker Timeline Visualization -->
-                <section class="bg-white rounded-xl shadow-sm ssw-card p-6 mb-6">
-                    <h2 class="text-lg text-ssw-charcoal mb-6 flex items-center">
-                        <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
-                        Speaker Timeline
-                    </h2>
-                    <div class="space-y-4">
-                        {{SPEAKER_TIMELINE}}
-                    </div>
-                </section>
-                
-                <section class="bg-white rounded-xl shadow-sm ssw-card p-6">
-                    <h2 class="text-lg text-ssw-charcoal mb-6">Meeting Timeline</h2>
-                    <div class="space-y-6">
-                        {{TIMELINE_SEGMENTS}}
-                    </div>
-                </section>
-                
-                <!-- Time Waste Analysis -->
-                <section class="mt-6 bg-ssw-red-50 border-l-4 border-ssw-red rounded-r-xl p-6">
-                    <h2 class="text-lg text-ssw-red-700 mb-4 font-bold">⏰ Time Waste Analysis</h2>
-                    {{TIME_WASTE_ANALYSIS}}
-                </section>
-                
-                <!-- Flow Analysis -->
-                <section class="mt-6 bg-white rounded-xl shadow-sm ssw-card p-6">
-                    <h2 class="text-lg text-ssw-charcoal mb-4">Flow Analysis</h2>
-                    {{FLOW_ANALYSIS}}
-                </section>
-            </div>
-
-            <!-- People & Roles Tab -->
-            <div x-show="activeTab === 'people'" x-cloak>
-                <!-- Team Dynamics Summary -->
-                <section class="bg-gradient-to-r from-ssw-gray-600 to-ssw-gray-700 rounded-xl shadow-lg p-6 text-white mb-6">
-                    <h2 class="text-lg font-bold mb-2">Team Dynamics</h2>
-                    {{TEAM_DYNAMICS}}
-                </section>
-                
-                <!-- Power Dynamics Warning -->
-                <section class="mb-6 bg-ssw-gray-800 rounded-xl p-6 text-white">
-                    <h2 class="text-lg font-bold mb-3 flex items-center">
-                        <span class="w-2 h-2 bg-ssw-red rounded-full mr-2 animate-pulse"></span>
-                        Power Dynamics
-                    </h2>
-                    {{POWER_DYNAMICS}}
-                </section>
-
-                <!-- Participant Cards -->
-                <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {{PARTICIPANT_CARDS}}
-                </div>
-            </div>
-
-            <!-- Insights Tab -->
-            <div x-show="activeTab === 'insights'" x-cloak>
-                <!-- Team Health -->
-                <section class="bg-gradient-to-r from-ssw-charcoal to-ssw-gray-700 rounded-xl shadow-lg p-6 text-white mb-6">
-                    <h2 class="text-lg font-bold mb-2">Team Health X-Ray</h2>
-                    {{TEAM_HEALTH}}
-                </section>
-                
-                <!-- Elephants in the Room -->
-                <section class="mb-6 bg-ssw-red-50 border-2 border-ssw-red border-dashed rounded-xl p-6">
-                    <h2 class="text-lg text-ssw-red font-bold mb-4">🐘 Elephants in the Room</h2>
-                    {{ELEPHANTS}}
-                </section>
-
-                <!-- Risk Radar -->
-                <section class="mb-6 bg-white rounded-xl shadow-sm ssw-card p-6">
-                    <h2 class="text-lg text-ssw-charcoal mb-4 flex items-center">
-                        <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
-                        Risk Radar
-                    </h2>
-                    {{RISK_RADAR}}
-                </section>
-
-                <!-- Insights Grid -->
-                <div class="grid md:grid-cols-2 gap-6">
-                    {{INSIGHTS_CARDS}}
-                </div>
-
-                <!-- Notable Moments -->
-                <section class="mt-6 bg-white rounded-xl shadow-sm ssw-card p-6">
-                    <h2 class="text-lg text-ssw-charcoal mb-4">💬 Notable Moments & Hidden Truths</h2>
-                    {{NOTABLE_MOMENTS}}
-                </section>
-            </div>
-
-            <!-- Trends Tab -->
-            <div x-show="activeTab === 'trends'" x-cloak>
-                <!-- Trajectory Banner -->
-                <section class="mb-6 bg-gradient-to-r from-ssw-charcoal to-ssw-gray-700 rounded-xl p-6 text-white">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <h2 class="text-lg font-bold">Team Trajectory</h2>
-                            <p class="text-ssw-gray-300 mt-1">{{TRAJECTORY_SUMMARY}}</p>
-                        </div>
-                        <div class="text-4xl">{{TRAJECTORY_INDICATOR}}</div>
-                    </div>
-                </section>
-                
-                <!-- Accountability Audit -->
-                <section class="mb-6 bg-white rounded-xl shadow-sm ssw-card p-6">
-                    <h2 class="text-lg text-ssw-charcoal mb-4 flex items-center">
-                        <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
-                        Accountability Audit
-                    </h2>
-                    {{ACCOUNTABILITY_AUDIT}}
-                </section>
-                
-                <!-- Recurring Issues -->
-                <section class="mb-6 bg-ssw-red-50 border-l-4 border-ssw-red rounded-r-xl p-6">
-                    <h2 class="text-lg text-ssw-red-700 mb-4 font-bold">🔄 Recurring Issues (The Graveyard)</h2>
-                    {{RECURRING_ISSUES}}
-                </section>
-                
-                {{TRENDS_CONTENT}}
-                
-                <!-- Predictions -->
-                <section class="mt-6 bg-ssw-charcoal rounded-xl p-6 text-white">
-                    <h2 class="text-lg font-bold mb-4">🔮 Predictions</h2>
-                    {{PREDICTIONS}}
-                </section>
-            </div>
-        </main>
-
-        <!-- SSW Branded Footer -->
-        <footer class="text-center text-ssw-gray-400 text-sm mt-12 pt-8 border-t border-ssw-gray-200 no-print">
-            <div class="flex items-center justify-center gap-2 mb-2">
-                <!-- SSW Logo Squares Motif -->
-                <div class="flex gap-0.5">
-                    <div class="w-2 h-2 bg-ssw-red"></div>
-                    <div class="w-2 h-2 bg-ssw-charcoal"></div>
-                    <div class="w-2 h-2 bg-ssw-gray-400"></div>
-                    <div class="w-2 h-2 bg-ssw-red-300"></div>
-                </div>
-                <span class="font-semibold text-ssw-charcoal">SSW</span>
-                <span class="text-ssw-gray-400">Meeting Summary Dashboard</span>
-            </div>
-            <p class="text-ssw-gray-400">{{GENERATED_AT}}</p>
-            <p class="mt-2">
-                <a href="https://github.com/SSWConsulting/SSW.Tiger"
-                   target="_blank"
-                   class="text-ssw-gray-500 hover:text-ssw-red transition-colors">
-                    View on GitHub
-                </a>
-            </p>
-        </footer>
+    <!-- Summary card -->
+    <div class="ds-card lg:col-span-2">
+      <div class="px-4 pt-4 pb-2">
+        <h2 class="font-medium" style="font-size: 16px; color: var(--text-strong);">Meeting Summary</h2>
+      </div>
+      <div class="px-4 pb-4">
+        <ul class="space-y-2 text-sm" style="color: var(--text-strong);">
+          {{SUMMARY}}
+        </ul>
+      </div>
     </div>
 
-    <!-- Chart.js Initialization with SSW Colors -->
-    <script>
-        // SSW Brand Colors for Charts
-        const sswColors = {
-            red: '#CC4141',
-            redLight: '#E25252',
-            redDark: '#A33434',
-            charcoal: '#333333',
-            gray: '#666666',
-            grayLight: '#888888',
-            // Chart palette
-            palette: ['#CC4141', '#333333', '#666666', '#E25252', '#888888', '#A33434', '#B0B0B0']
-        };
-        
-        Chart.defaults.font.family = "'Inter', 'Helvetica Neue', 'Helvetica', sans-serif";
-        Chart.defaults.color = '#333333';
+    <!-- Hard Truths card (destructive semantic) -->
+    <div class="ds-card">
+      <div class="px-4 pt-4 pb-2">
+        <h2 class="font-medium" style="font-size: 16px; color: var(--text-strong);">Hard Truths</h2>
+      </div>
+      <div class="px-4 pb-4 space-y-3">
+        {{HARD_TRUTHS}}
+      </div>
+    </div>
 
-        // Prefix the meeting date with a 3-letter weekday (e.g. "25/05/2026" -> "Mon 25/05/2026").
-        // Date format is DD/MM/YYYY per CLAUDE.md; if parsing fails the original text stays untouched.
-        document.querySelectorAll('.js-meeting-date').forEach(function (el) {
-            var match = (el.textContent || '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-            if (!match) return;
-            var day = parseInt(match[1], 10);
-            var month = parseInt(match[2], 10) - 1;
-            var year = parseInt(match[3], 10);
-            var d = new Date(year, month, day);
-            if (isNaN(d.getTime())) return;
-            var weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-            el.textContent = weekdays[d.getDay()] + ' ' + el.textContent;
-        });
+    <!-- Key Decisions card -->
+    <div class="ds-card">
+      <div class="px-4 pt-4 pb-2">
+        <h2 class="font-medium" style="font-size: 16px; color: var(--text-strong);">Key Decisions</h2>
+      </div>
+      <div class="px-4 pb-4">
+        <ul class="space-y-2 text-sm" style="color: var(--text-strong);">
+          {{KEY_DECISIONS}}
+        </ul>
+      </div>
+    </div>
 
-        // Handle profile image load failures - falls back to initials
-        // The initials MUST come from trusted participant data (canonical names)
-        document.querySelectorAll('.js-profile-image').forEach(function (img) {
-            img.addEventListener('error', function () {
-                var initials = img.getAttribute('data-initials') || '';
-                var placeholder = document.createElement('div');
-                placeholder.className = 'profile-image-placeholder';
-                placeholder.textContent = initials;
-                img.replaceWith(placeholder);
-            });
-        });
-    </script>
+    <!-- Done This Sprint card -->
+    <div class="ds-card">
+      <div class="px-4 pt-4 pb-2">
+        <h2 class="font-medium" style="font-size: 16px; color: var(--text-strong);">Done This Sprint</h2>
+      </div>
+      <div class="px-4 pb-4">
+        <ul class="space-y-2 text-sm" style="color: var(--text-strong);">
+          {{DONE_THIS_SPRINT}}
+        </ul>
+      </div>
+    </div>
 
-    <!-- Chart rendering code - the one region that is still model-authored
-         (see GitHub issue #125). Kept in its own <script> tag, separate from
-         the static chrome above, so a syntax error here cannot take down
-         sswColors, Chart.defaults, the date-weekday prefix, or the
-         profile-image fallback - those already ran in the tag above. -->
-    <script>
-        {{CHART_SCRIPTS}}
-    </script>
+    <!-- Next Steps card -->
+    <div class="ds-card lg:col-span-1">
+      <div class="px-4 pt-4 pb-2">
+        <h2 class="font-medium" style="font-size: 16px; color: var(--text-strong);">Next Steps</h2>
+      </div>
+      <div class="px-4 pb-4">
+        <ul class="space-y-2 text-sm" style="color: var(--text-strong);">
+          {{NEXT_STEPS}}
+        </ul>
+      </div>
+    </div>
+  </div>
+  </section>
+
+  <!-- ================= TIMELINE PANEL ================= -->
+  <section class="tab-panel" data-panel="timeline">
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+    <div class="ds-card lg:col-span-2">
+      <div class="px-4 pt-4 pb-2">
+        <h2 class="font-medium" style="font-size: 16px; color: var(--text-strong);">Speaker Timeline</h2>
+      </div>
+      <div class="px-4 pb-4">
+        {{SPEAKER_TIMELINE}}
+      </div>
+    </div>
+
+    <div class="ds-card">
+      <div class="px-4 pt-4 pb-2"><h2 class="font-medium" style="font-size: 16px; color: var(--text-strong);">Flow Analysis</h2></div>
+      <div class="px-4 pb-4 space-y-3">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide mb-1" style="color: var(--text-weak);">Transition &amp; agenda</p>
+          {{FLOW_ANALYSIS}}
+        </div>
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide mb-1" style="color: var(--text-weak);">Time waste</p>
+          {{TIME_WASTE_ANALYSIS}}
+        </div>
+      </div>
+    </div>
+
+    <div class="ds-card lg:col-span-3">
+      <div class="px-4 pt-4 pb-2"><h2 class="font-medium" style="font-size: 16px; color: var(--text-strong);">Meeting Timeline</h2></div>
+      <div class="px-4 pb-4">
+        {{TIMELINE_SEGMENTS}}
+      </div>
+    </div>
+  </div>
+  </section>
+
+  <!-- ================= PEOPLE PANEL ================= -->
+  <section class="tab-panel" data-panel="people">
+  <div class="ds-card mb-5">
+    <div class="px-4 pt-4 pb-2"><h2 class="font-medium" style="font-size: 16px; color: var(--text-strong);">Team Dynamics</h2></div>
+    <div class="px-4 pb-4 text-sm" style="color: var(--text-strong);">
+      {{TEAM_DYNAMICS}}
+    </div>
+  </div>
+
+  <div class="ds-card mb-5">
+    <div class="px-4 pt-4 pb-2"><h2 class="font-medium" style="font-size: 16px; color: var(--text-strong);">Power Dynamics</h2></div>
+    <div class="px-4 pb-4 text-sm" style="color: var(--text-strong);">
+      {{POWER_DYNAMICS}}
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+    {{PARTICIPANT_CARDS}}
+  </div>
+  </section>
+
+  <!-- ================= INSIGHTS PANEL ================= -->
+  <section class="tab-panel" data-panel="insights">
+  <div class="ds-card mb-5">
+    <div class="px-4 pt-4 pb-2"><h2 class="font-medium" style="font-size: 16px; color: var(--text-strong);">Team Health</h2></div>
+    <div class="px-4 pb-4 text-sm" style="color: var(--text-strong);">
+      {{TEAM_HEALTH}}
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+    <div class="ds-card">
+      <div class="px-4 pt-4 pb-4 space-y-3">
+        {{RISK_RADAR}}
+      </div>
+    </div>
+    <div class="ds-card">
+      <div class="px-4 pt-4 pb-4 space-y-3">
+        {{ELEPHANTS}}
+      </div>
+    </div>
+    <div class="ds-card">
+      <div class="px-4 pt-4 pb-4 space-y-3">
+        {{INSIGHTS_CARDS}}
+      </div>
+    </div>
+    <div class="ds-card md:col-span-3">
+      <div class="px-4 pt-4 pb-2"><h2 class="font-medium" style="font-size: 16px; color: var(--text-strong);">Notable Moments</h2></div>
+      <div class="px-4 pb-4 space-y-3">
+        {{NOTABLE_MOMENTS}}
+      </div>
+    </div>
+  </div>
+  </section>
+
+  <!-- ================= TRENDS PANEL ================= -->
+  <section class="tab-panel" data-panel="trends">
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+    <div class="ds-card lg:col-span-2">
+      <div class="px-4 pt-4 pb-2"><h2 class="font-medium" style="font-size: 16px; color: var(--text-strong);">Value Score Trend</h2></div>
+      <div class="px-4 pb-4">
+        {{TRENDS_CONTENT}}
+      </div>
+    </div>
+    <div class="ds-card">
+      <div class="px-4 pt-4 pb-2"><h2 class="font-medium" style="font-size: 16px; color: var(--text-strong);">Recurring Themes</h2></div>
+      <div class="px-4 pb-4 flex flex-wrap gap-2">
+        {{RECURRING_ISSUES}}
+      </div>
+    </div>
+    <div class="ds-card lg:col-span-3">
+      <div class="px-4 pt-4 pb-2"><h2 class="font-medium" style="font-size: 16px; color: var(--text-strong);">Prediction</h2></div>
+      <div class="px-4 pb-4 text-sm" style="color: var(--text-strong);">
+        {{PREDICTIONS}}
+      </div>
+    </div>
+  </div>
+  </section>
+
+</div>
+
+<!-- ================= FOOTER (ssw/footer.tsx pattern) ================= -->
+<footer class="border-t bg-white mt-16 no-print" style="border-color: var(--border);">
+  <div class="max-w-6xl mx-auto px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+    <div class="flex items-center gap-3">
+      <svg viewBox="0 0 90 60" class="h-6 w-auto" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="SSW">
+        <path d="M80.009 17.191C75.893 12.466 69.545 9.437 62.43 9.437C55.42 9.437 49.164 12.369 45.049 16.961C49.15 10.714 56.117 6.509 64.086 6.216C64.309 6.224 64.544 6.229 64.798 6.243C65.1 6.256 65.42 6.3 65.773 6.332C66.467 6.408 67.247 6.546 68.08 6.748C68.902 6.979 69.795 7.25 70.68 7.671C71.565 8.083 72.456 8.598 73.326 9.216C74.192 9.833 75.026 10.54 75.85 11.317C76.663 12.072 77.389 12.922 78.048 13.84C78.376 14.295 78.69 14.77 78.979 15.245C79.27 15.726 79.524 16.195 79.784 16.714C79.859 16.872 79.932 17.029 80.009 17.191Z" fill="#CC4141"/>
+        <path d="M82.773 45.82C78.41 50.707 72.056 53.783 64.986 53.783C56.634 53.783 49.292 49.496 45.036 43.008C49.154 47.608 55.415 50.547 62.423 50.547C67.872 50.547 72.861 48.774 76.757 45.822H82.774L82.773 45.82Z" fill="#CC4141"/>
+        <path d="M88.809 29.993V30.093H84.041C84.031 29.9 84.016 29.683 84.009 29.436C83.952 28.415 83.882 26.956 83.669 25.191C83.445 23.438 83.086 21.365 82.313 19.258C81.928 18.198 81.453 17.153 80.864 16.118C80.589 15.635 80.266 15.113 79.932 14.631C79.604 14.139 79.251 13.663 78.875 13.203C78.139 12.285 77.305 11.417 76.409 10.675C75.54 9.939 74.621 9.245 73.689 8.661C72.755 8.072 71.798 7.593 70.861 7.222C69.929 6.84 69.005 6.612 68.148 6.424C68.017 6.4 67.878 6.379 67.75 6.358C79.607 7.728 88.809 17.784 88.809 29.993Z" fill="#CC4141"/>
+        <path d="M20.436 30.605C19.81 29.566 18.809 28.699 17.429 27.998C16.056 27.292 13.774 26.602 10.595 25.915C9.308 25.648 8.494 25.353 8.148 25.051C7.8 24.746 7.62 24.41 7.62 24.033C7.62 23.523 7.833 23.086 8.263 22.726C8.691 22.368 9.33 22.188 10.175 22.188C11.201 22.188 12.007 22.427 12.594 22.909C13.175 23.392 13.561 24.166 13.741 25.225L20.606 24.821C20.303 22.38 19.362 20.599 17.783 19.478C16.203 18.357 13.909 17.797 10.897 17.797C8.445 17.797 6.512 18.111 5.108 18.726C3.696 19.339 2.64 20.189 1.941 21.263C1.24 22.34 0.887 23.483 0.887 24.694C0.887 26.537 1.575 28.05 2.949 29.243C4.305 30.432 6.584 31.387 9.775 32.101C11.729 32.529 12.971 32.988 13.504 33.467C14.042 33.947 14.307 34.492 14.307 35.109C14.307 35.748 14.028 36.318 13.463 36.801C12.903 37.287 12.114 37.426 11.077 37.426C9.687 37.426 8.597 37.056 7.849 36.101C7.384 35.517 7.084 34.658 6.93 33.535L0 33.967C0.207 36.34 1.082 38.301 2.621 39.846C4.166 41.389 6.939 42.16 10.943 42.16C13.225 42.16 15.119 41.834 16.618 41.17C18.115 40.514 19.283 39.549 20.118 38.27C20.953 36.998 21.374 35.606 21.374 34.092C21.376 32.807 21.062 31.646 20.436 30.605Z" fill="currentColor"/>
+        <path d="M43.824 34.121C43.824 35.601 43.426 36.959 42.622 38.217C42.604 38.242 42.587 38.272 42.57 38.299C42.442 38.496 42.305 38.684 42.154 38.863C41.365 39.865 40.33 40.644 39.066 41.201C37.569 41.859 35.677 42.185 33.393 42.185C29.382 42.185 26.614 41.416 25.068 39.869C23.526 38.33 22.654 36.369 22.448 33.992L29.373 33.558C29.522 34.681 29.832 35.537 30.29 36.129C31.041 37.078 32.114 37.449 33.512 37.449C34.545 37.449 35.343 37.311 35.908 36.824C36.465 36.336 36.754 35.772 36.754 35.131C36.754 34.519 36.483 33.972 35.948 33.49C35.412 33.008 34.174 32.552 32.222 32.121C29.028 31.404 26.749 30.449 25.392 29.263C24.023 28.075 23.334 26.558 23.334 24.717C23.334 23.507 23.685 22.363 24.388 21.286C25.091 20.208 26.142 19.364 27.554 18.745C28.967 18.125 30.895 17.824 33.347 17.824C36.358 17.824 38.657 18.382 40.234 19.5C40.949 20.005 41.536 20.651 41.986 21.433C42.15 21.707 42.295 22.004 42.419 22.315C42.727 23.057 42.938 23.902 43.049 24.841L41.699 24.918L40.627 24.983L36.189 25.241C36.004 24.181 35.624 23.411 35.045 22.925C34.458 22.449 33.651 22.204 32.628 22.204C31.779 22.204 31.145 22.384 30.714 22.745C30.285 23.1 30.071 23.537 30.071 24.057C30.071 24.426 30.241 24.762 30.597 25.063C30.94 25.376 31.753 25.665 33.043 25.93C36.221 26.619 38.501 27.314 39.877 28.014C39.936 28.044 39.993 28.075 40.048 28.105C40.463 28.327 40.845 28.563 41.188 28.816C41.909 29.349 42.474 29.949 42.883 30.622C43.51 31.668 43.824 32.83 43.824 34.121Z" fill="currentColor"/>
+        <path d="M76.701 18.229L71.514 41.781H64.365L60.234 26.951L56.124 41.781H48.984L43.896 18.918V18.916L43.803 18.491L43.743 18.229H50.656L53.145 31.412L56.791 18.229H63.675L67.331 31.395L69.826 18.229H76.701Z" fill="currentColor"/>
+        <path d="M90.014 31.332H84.012V37.336H90.014V31.332Z" fill="currentColor"/>
+        <path d="M82.77 31.332H76.766V37.336H82.77V31.332Z" fill="#797979"/>
+        <path d="M90.014 38.576H84.012V44.582H90.014V38.576Z" fill="#CC4141"/>
+        <path d="M82.77 38.576H76.766V44.582H82.77V38.576Z" fill="#AAAAAA"/>
+      </svg>
+      <span class="text-xs" style="color: var(--text-weak);">&copy; 1990-2026 SSW. All rights reserved.</span>
+    </div>
+    <div class="flex items-center gap-4">
+      <span class="text-xs" style="color: var(--text-weak);">{{GENERATED_AT}}</span>
+      <p class="text-xs" style="color: var(--text-weak);">Powered by the <a href="https://github.com/SSWConsulting/SSW.DesignSystem" class="hover:underline" style="color: var(--text-strong);">SSW Design System</a></p>
+    </div>
+  </div>
+</footer>
+
+<script>
+  document.querySelectorAll('.ds-tab').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var target = btn.getAttribute('data-tab');
+      document.querySelectorAll('.ds-tab').forEach(function (b) {
+        b.classList.toggle('active', b === btn);
+        b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
+      });
+      document.querySelectorAll('.tab-panel').forEach(function (panel) {
+        panel.classList.toggle('active', panel.getAttribute('data-panel') === target);
+      });
+    });
+  });
+
+  // Fallback for profile images that fail to load (js-profile-image marker
+  // kept from the previous template so participant-card fragments authored
+  // against the older contract still degrade gracefully to initials).
+  document.querySelectorAll('.js-profile-image').forEach(function (img) {
+    img.addEventListener('error', function () {
+      var initials = img.getAttribute('data-initials') || '';
+      var placeholder = document.createElement('div');
+      placeholder.className = 'ds-avatar-fallback';
+      placeholder.textContent = initials;
+      img.replaceWith(placeholder);
+    });
+  });
+</script>
+
 </body>
 </html>
