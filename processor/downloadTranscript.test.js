@@ -136,7 +136,14 @@ describe("downloadTranscript main() - external participant handling (issue #73)"
 
     global.fetch = makeFetchMock();
 
+    // Only the first outputResult()/process.exit() call is kept - a real
+    // process.exit() halts the process immediately, so nothing past main()'s
+    // first exit point would ever run or log again. main() has multiple
+    // exit points (subject-filter skip, success, error), and without a real
+    // process boundary here, code after the first mocked process.exit() call
+    // keeps executing and can otherwise overwrite these captured results.
     console.log = (msg) => {
+      if (output !== null) return;
       try {
         output = JSON.parse(msg);
       } catch {
@@ -144,13 +151,10 @@ describe("downloadTranscript main() - external participant handling (issue #73)"
       }
     };
 
-    // main() calls process.exit(0) as the last statement of its success path
-    // (and process.exit(1) as the last statement of its catch block);
-    // intercept it so the test process itself doesn't exit. Since it is
-    // always the final statement reached, simply recording the code (rather
-    // than throwing) reproduces real process.exit's effect for this test.
     process.exit = (code) => {
-      exitCode = code;
+      if (exitCode === undefined) {
+        exitCode = code;
+      }
     };
   });
 
@@ -182,6 +186,145 @@ describe("downloadTranscript main() - external participant handling (issue #73)"
     assert.ok(
       !ids.includes("external-user-1"),
       "external participant must be excluded from notification recipients",
+    );
+  });
+
+  it("excludes external participants from the failure-notification output when the pipeline errors after fetching participants", async () => {
+    // Fail transcript content download (a permanent 4xx, so it doesn't
+    // retry) after chatParticipants has already been fetched, forcing
+    // main() down its catch-block error path.
+    const baseFetch = makeFetchMock();
+    global.fetch = async (url) => {
+      const u = String(url);
+      if (u.includes("/transcripts/") && u.includes("/content")) {
+        return {
+          ok: false,
+          status: 404,
+          text: async () => "Transcript not found",
+        };
+      }
+      return baseFetch(url);
+    };
+
+    await main();
+
+    assert.equal(exitCode, 1);
+    assert.equal(output.error, true);
+    assert.ok(Array.isArray(output.participants));
+    const ids = output.participants.map((p) => p.userId);
+    assert.ok(
+      ids.includes("internal-user-1"),
+      "internal SSW participant must still be included in the failure notification",
+    );
+    assert.ok(
+      !ids.includes("external-user-1"),
+      "external participant must be excluded from the failure notification too",
+    );
+  });
+});
+
+describe("downloadTranscript main() - subject-filter skip path excludes externals too (issue #73)", () => {
+  // The subject filter's "skipped" output is a third outputResult() call
+  // site distinct from the success/error paths above. It requires its own
+  // module instance because CONFIG.skipSubjectFilter/meetingFilterPattern
+  // are computed once from process.env at require time.
+  let originalFetch;
+  let originalExit;
+  let originalConsoleLog;
+  let exitCode;
+  let output;
+  let freshMain;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    originalExit = process.exit;
+    originalConsoleLog = console.log;
+
+    output = null;
+    exitCode = undefined;
+
+    process.env.SKIP_SUBJECT_FILTER = "false";
+    delete require.cache[require.resolve("./downloadTranscript")];
+    freshMain = require("./downloadTranscript").main;
+
+    global.fetch = async (url) => {
+      const u = String(url);
+      if (u.includes("/oauth2/v2.0/token")) {
+        return { ok: true, json: async () => ({ access_token: "fake-token" }) };
+      }
+      if (u.includes("/transcripts/") && u.includes("/content")) {
+        return { ok: true, text: async () => "WEBVTT\n\n" };
+      }
+      if (u.includes("/transcripts/")) {
+        return {
+          ok: true,
+          json: async () => ({
+            createdDateTime: "2026-07-01T10:00:00Z",
+            callId: "call-1",
+          }),
+        };
+      }
+      if (u.includes("/messages")) {
+        return { ok: true, json: async () => ({ value: CHAT_MESSAGES }) };
+      }
+      if (u.includes("/onlineMeetings/")) {
+        // Subject deliberately does not match the default "sprint" filter
+        // pattern, so this meeting takes the subjectFilter-skip branch.
+        return {
+          ok: true,
+          json: async () => ({
+            subject: "Random Discovery Call",
+            chatInfo: { threadId: "chat-1" },
+            participants: { organizer: null, attendees: [] },
+          }),
+        };
+      }
+      throw new Error(`Unmocked fetch URL: ${u}`);
+    };
+
+    // Only the first outputResult()/process.exit() call is kept - see the
+    // comment in the describe block above for why this matters: main()'s
+    // subject-filter skip branch calls process.exit() well before the end
+    // of the try block, and without a real process boundary here, execution
+    // would otherwise keep going and overwrite this result.
+    console.log = (msg) => {
+      if (output !== null) return;
+      try {
+        output = JSON.parse(msg);
+      } catch {
+        // ignore non-JSON log lines
+      }
+    };
+
+    process.exit = (code) => {
+      if (exitCode === undefined) {
+        exitCode = code;
+      }
+    };
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    process.exit = originalExit;
+    console.log = originalConsoleLog;
+    delete process.env.SKIP_SUBJECT_FILTER;
+  });
+
+  it("excludes external participants from the subject-filter 'skipped' output", async () => {
+    await freshMain();
+
+    assert.equal(exitCode, 0);
+    assert.equal(output.skipped, true);
+    assert.equal(output.skipReason, "subjectFilter");
+    assert.ok(Array.isArray(output.participants));
+    const ids = output.participants.map((p) => p.userId);
+    assert.ok(
+      ids.includes("internal-user-1"),
+      "internal SSW participant must still be included in the skip notification",
+    );
+    assert.ok(
+      !ids.includes("external-user-1"),
+      "external participant must be excluded from the skip notification too",
     );
   });
 });

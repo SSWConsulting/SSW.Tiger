@@ -811,6 +811,18 @@ function isExternalPerson(person) {
   return { isExternal: false, reason: "" };
 }
 
+/**
+ * Filter a list of chat participants down to SSW-internal ones only, so
+ * Teams notifications never reach an external participant. Used on every
+ * outputResult() call site that feeds entrypoint.sh's PARTICIPANTS_JSON
+ * (success, error, and subject-filter-skip paths).
+ * @param {Array} participants - Array of {userId, displayName, tenantId, userIdentityType}
+ * @returns {Array} Only the SSW-internal participants
+ */
+function filterNotifiableParticipants(participants) {
+  return (participants || []).filter((p) => !isExternalPerson(p).isExternal);
+}
+
 async function main() {
   // Track meeting context for error reporting. Hoisted to the outer scope so
   // that the catch block below can surface them in the error output, allowing
@@ -887,7 +899,10 @@ async function main() {
     // Note: meetings with external invitees/participants are NOT skipped here.
     // Tiger processes them fully (dashboard + transcript) - external recipients
     // are excluded later, at notification time, by filtering chatParticipants
-    // through isExternalPerson() before it is included in the output below.
+    // through filterNotifiableParticipants() before it is included in any
+    // outputResult() call below (this applies to the subject-filter skip
+    // path too, since removing the old gates makes external meetings with a
+    // non-matching subject newly reachable here).
     if (CONFIG.skipSubjectFilter) {
       log("info", "Subject filter skipped (manual trigger)", { subject });
     } else if (!matchesMeetingFilter(subject)) {
@@ -897,7 +912,7 @@ async function main() {
         reason: `Subject does not match filter pattern '${CONFIG.meetingFilterPattern}': "${subject}"`,
         meetingSubject: subject,
         joinWebUrl: meeting.joinWebUrl || "",
-        participants: meeting.participants || [],
+        participants: filterNotifiableParticipants(chatParticipants),
         meetingDuration,
       });
       process.exit(0);
@@ -926,9 +941,7 @@ async function main() {
     // Notifications must only reach SSW internal participants (external
     // participants can still appear on the dashboard itself - they're just
     // excluded from the Teams notification recipient list).
-    const notifiableParticipants = chatParticipants.filter(
-      (p) => !isExternalPerson(p).isExternal,
-    );
+    const notifiableParticipants = filterNotifiableParticipants(chatParticipants);
 
     // Output result as JSON to stdout (includes notification info)
     outputResult({
@@ -969,7 +982,7 @@ async function main() {
         ? `[${meetingSubject}] ${error.message}`
         : error.message,
       meetingSubject: meetingSubject || "",
-      participants: chatParticipants.filter((p) => !isExternalPerson(p).isExternal),
+      participants: filterNotifiableParticipants(chatParticipants),
     };
     outputResult(errorOutput);
     process.exit(1);
