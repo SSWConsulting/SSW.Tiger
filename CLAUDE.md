@@ -345,7 +345,7 @@ For each participant card, look up the slug in this order:
 #### Participant Card HTML Structure
 
 ```html
-<div class="bg-white rounded-xl shadow-sm ssw-card p-6">
+<div class="bg-white rounded-lg shadow-raised ssw-card p-6">
     <div class="flex gap-4">
         <!-- Profile Photo (fallback to initials is handled by template script) -->
         <div class="profile-image-container">

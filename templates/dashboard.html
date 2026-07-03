@@ -72,6 +72,17 @@
                     },
                     fontFamily: {
                         'sans': ['Inter', 'Helvetica Neue', 'Helvetica', 'sans-serif'],
+                    },
+                    // SSW Design System typography scale (src/styles/theme.css --font-size-h1..h4).
+                    // text-2xl (24px/32px) and text-lg (18px/28px) already land exactly on the
+                    // Design System's h3 and --font-size-lg tokens via Tailwind's defaults, so
+                    // only h1/h2/h4 are added here for the one place (the page title) that didn't
+                    // already have a clean match - see the text-h2 usage on the h1 tag below.
+                    fontSize: {
+                        'h1': ['40px', { lineHeight: '48px', letterSpacing: '-0.5px' }],
+                        'h2': ['32px', { lineHeight: '40px' }],
+                        'h3': ['24px', { lineHeight: '32px' }],
+                        'h4': ['20px', { lineHeight: '28px' }]
                     }
                 }
             }
@@ -79,6 +90,12 @@
     </script>
     <style>
         [x-cloak] { display: none !important; }
+
+        /* SSW Design System elevation token (--shadow-raised, src/styles/theme.css),
+           used in place of Tailwind's default small elevation utility on cards and tab buttons. */
+        .shadow-raised {
+            box-shadow: 0px 2px 4px 0px rgba(0, 0, 0, 0.08), 0px 4px 8px 0px rgba(0, 0, 0, 0.04);
+        }
         
         /* SSW Brand Typography */
         html {
@@ -237,7 +254,7 @@
                         <div class="w-3 h-3 bg-ssw-red-300"></div>
                     </div>
                     <div>
-                        <h1 class="text-3xl text-ssw-charcoal">
+                        <h1 class="text-h2 text-ssw-charcoal">
                             <span class="font-extrabold">{{PROJECT_NAME}}</span>
                         </h1>
                         <p class="text-ssw-gray-500 mt-1 font-medium">Meeting Dashboard</p>
@@ -259,27 +276,27 @@
         <nav class="flex flex-wrap gap-2 mb-6 border-b border-ssw-gray-200 pb-4 no-print">
             <button @click="activeTab = 'overview'" 
                     :class="activeTab === 'overview' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
-                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
+                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-raised border border-ssw-gray-200">
                 📋 Overview
             </button>
             <button @click="activeTab = 'timeline'" 
                     :class="activeTab === 'timeline' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
-                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
+                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-raised border border-ssw-gray-200">
                 ⏱️ Timeline
             </button>
             <button @click="activeTab = 'people'" 
                     :class="activeTab === 'people' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
-                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
+                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-raised border border-ssw-gray-200">
                 👥 People & Roles
             </button>
             <button @click="activeTab = 'insights'" 
                     :class="activeTab === 'insights' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
-                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
+                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-raised border border-ssw-gray-200">
                 💡 Insights
             </button>
             <button @click="activeTab = 'trends'" 
                     :class="activeTab === 'trends' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
-                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
+                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-raised border border-ssw-gray-200">
                 📈 Trends
             </button>
         </nav>
@@ -290,7 +307,7 @@
             <div x-show="activeTab === 'overview'" x-cloak>
                 <div class="grid md:grid-cols-2 gap-6">
                     <!-- Summary -->
-                    <section class="bg-white rounded-xl shadow-sm ssw-card p-6">
+                    <section class="bg-white rounded-lg shadow-raised ssw-card p-6">
                         <h2 class="text-lg text-ssw-charcoal mb-3 flex items-center">
                             <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
                             Meeting Summary
@@ -301,7 +318,7 @@
                     </section>
 
                     <!-- Key Decisions -->
-                    <section class="bg-white rounded-xl shadow-sm ssw-card p-6">
+                    <section class="bg-white rounded-lg shadow-raised ssw-card p-6">
                         <h2 class="text-lg text-ssw-charcoal mb-3 flex items-center">
                             <span class="w-3 h-3 bg-green-600 rounded-full mr-2"></span>
                             🔑 Key Decisions
@@ -313,7 +330,7 @@
                 </div>
 
                 <!-- Done This Sprint -->
-                <section class="mt-6 bg-white rounded-xl shadow-sm ssw-card p-6">
+                <section class="mt-6 bg-white rounded-lg shadow-raised ssw-card p-6">
                     <h2 class="text-lg text-ssw-charcoal mb-3 flex items-center">
                         <span class="w-3 h-3 bg-green-600 rounded-full mr-2"></span>
                         ✅ Done This Sprint
@@ -324,7 +341,7 @@
                 </section>
 
                 <!-- Next Steps -->
-                <section class="mt-6 bg-white rounded-xl shadow-sm ssw-card p-6">
+                <section class="mt-6 bg-white rounded-lg shadow-raised ssw-card p-6">
                     <h2 class="text-lg text-ssw-charcoal mb-3 flex items-center">
                         <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
                         ➡️ Next Steps
@@ -335,7 +352,7 @@
                 </section>
                 
                 <!-- Hard Truths Section - Critical Findings -->
-                <section class="mt-6 bg-ssw-red-50 border-l-4 border-ssw-red rounded-r-xl p-6">
+                <section class="mt-6 bg-ssw-red-50 border-l-4 border-ssw-red rounded-r-lg p-6">
                     <h2 class="text-lg text-ssw-red-700 mb-4 flex items-center font-bold">
                         ⚠️ Hard Truths
                     </h2>
@@ -348,7 +365,7 @@
             <!-- Timeline Tab -->
             <div x-show="activeTab === 'timeline'" x-cloak>
                 <!-- Speaker Timeline Visualization -->
-                <section class="bg-white rounded-xl shadow-sm ssw-card p-6 mb-6">
+                <section class="bg-white rounded-lg shadow-raised ssw-card p-6 mb-6">
                     <h2 class="text-lg text-ssw-charcoal mb-6 flex items-center">
                         <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
                         Speaker Timeline
@@ -358,7 +375,7 @@
                     </div>
                 </section>
                 
-                <section class="bg-white rounded-xl shadow-sm ssw-card p-6">
+                <section class="bg-white rounded-lg shadow-raised ssw-card p-6">
                     <h2 class="text-lg text-ssw-charcoal mb-6">Meeting Timeline</h2>
                     <div class="space-y-6">
                         {{TIMELINE_SEGMENTS}}
@@ -366,13 +383,13 @@
                 </section>
                 
                 <!-- Time Waste Analysis -->
-                <section class="mt-6 bg-ssw-red-50 border-l-4 border-ssw-red rounded-r-xl p-6">
+                <section class="mt-6 bg-ssw-red-50 border-l-4 border-ssw-red rounded-r-lg p-6">
                     <h2 class="text-lg text-ssw-red-700 mb-4 font-bold">⏰ Time Waste Analysis</h2>
                     {{TIME_WASTE_ANALYSIS}}
                 </section>
                 
                 <!-- Flow Analysis -->
-                <section class="mt-6 bg-white rounded-xl shadow-sm ssw-card p-6">
+                <section class="mt-6 bg-white rounded-lg shadow-raised ssw-card p-6">
                     <h2 class="text-lg text-ssw-charcoal mb-4">Flow Analysis</h2>
                     {{FLOW_ANALYSIS}}
                 </section>
@@ -381,13 +398,13 @@
             <!-- People & Roles Tab -->
             <div x-show="activeTab === 'people'" x-cloak>
                 <!-- Team Dynamics Summary -->
-                <section class="bg-gradient-to-r from-ssw-gray-600 to-ssw-gray-700 rounded-xl shadow-lg p-6 text-white mb-6">
+                <section class="bg-gradient-to-r from-ssw-gray-600 to-ssw-gray-700 rounded-lg shadow-lg p-6 text-white mb-6">
                     <h2 class="text-lg font-bold mb-2">Team Dynamics</h2>
                     {{TEAM_DYNAMICS}}
                 </section>
                 
                 <!-- Power Dynamics Warning -->
-                <section class="mb-6 bg-ssw-gray-800 rounded-xl p-6 text-white">
+                <section class="mb-6 bg-ssw-gray-800 rounded-lg p-6 text-white">
                     <h2 class="text-lg font-bold mb-3 flex items-center">
                         <span class="w-2 h-2 bg-ssw-red rounded-full mr-2 animate-pulse"></span>
                         Power Dynamics
@@ -404,19 +421,19 @@
             <!-- Insights Tab -->
             <div x-show="activeTab === 'insights'" x-cloak>
                 <!-- Team Health -->
-                <section class="bg-gradient-to-r from-ssw-charcoal to-ssw-gray-700 rounded-xl shadow-lg p-6 text-white mb-6">
+                <section class="bg-gradient-to-r from-ssw-charcoal to-ssw-gray-700 rounded-lg shadow-lg p-6 text-white mb-6">
                     <h2 class="text-lg font-bold mb-2">Team Health X-Ray</h2>
                     {{TEAM_HEALTH}}
                 </section>
                 
                 <!-- Elephants in the Room -->
-                <section class="mb-6 bg-ssw-red-50 border-2 border-ssw-red border-dashed rounded-xl p-6">
+                <section class="mb-6 bg-ssw-red-50 border-2 border-ssw-red border-dashed rounded-lg p-6">
                     <h2 class="text-lg text-ssw-red font-bold mb-4">🐘 Elephants in the Room</h2>
                     {{ELEPHANTS}}
                 </section>
 
                 <!-- Risk Radar -->
-                <section class="mb-6 bg-white rounded-xl shadow-sm ssw-card p-6">
+                <section class="mb-6 bg-white rounded-lg shadow-raised ssw-card p-6">
                     <h2 class="text-lg text-ssw-charcoal mb-4 flex items-center">
                         <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
                         Risk Radar
@@ -430,7 +447,7 @@
                 </div>
 
                 <!-- Notable Moments -->
-                <section class="mt-6 bg-white rounded-xl shadow-sm ssw-card p-6">
+                <section class="mt-6 bg-white rounded-lg shadow-raised ssw-card p-6">
                     <h2 class="text-lg text-ssw-charcoal mb-4">💬 Notable Moments & Hidden Truths</h2>
                     {{NOTABLE_MOMENTS}}
                 </section>
@@ -439,7 +456,7 @@
             <!-- Trends Tab -->
             <div x-show="activeTab === 'trends'" x-cloak>
                 <!-- Trajectory Banner -->
-                <section class="mb-6 bg-gradient-to-r from-ssw-charcoal to-ssw-gray-700 rounded-xl p-6 text-white">
+                <section class="mb-6 bg-gradient-to-r from-ssw-charcoal to-ssw-gray-700 rounded-lg p-6 text-white">
                     <div class="flex items-center justify-between">
                         <div>
                             <h2 class="text-lg font-bold">Team Trajectory</h2>
@@ -450,7 +467,7 @@
                 </section>
                 
                 <!-- Accountability Audit -->
-                <section class="mb-6 bg-white rounded-xl shadow-sm ssw-card p-6">
+                <section class="mb-6 bg-white rounded-lg shadow-raised ssw-card p-6">
                     <h2 class="text-lg text-ssw-charcoal mb-4 flex items-center">
                         <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
                         Accountability Audit
@@ -459,7 +476,7 @@
                 </section>
                 
                 <!-- Recurring Issues -->
-                <section class="mb-6 bg-ssw-red-50 border-l-4 border-ssw-red rounded-r-xl p-6">
+                <section class="mb-6 bg-ssw-red-50 border-l-4 border-ssw-red rounded-r-lg p-6">
                     <h2 class="text-lg text-ssw-red-700 mb-4 font-bold">🔄 Recurring Issues (The Graveyard)</h2>
                     {{RECURRING_ISSUES}}
                 </section>
@@ -467,7 +484,7 @@
                 {{TRENDS_CONTENT}}
                 
                 <!-- Predictions -->
-                <section class="mt-6 bg-ssw-charcoal rounded-xl p-6 text-white">
+                <section class="mt-6 bg-ssw-charcoal rounded-lg p-6 text-white">
                     <h2 class="text-lg font-bold mb-4">🔮 Predictions</h2>
                     {{PREDICTIONS}}
                 </section>

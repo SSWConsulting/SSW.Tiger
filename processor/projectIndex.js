@@ -107,7 +107,7 @@ function renderMeetingCard(meeting) {
     )
     .join("\n                        ");
 
-  return `            <a href="./${encodeURIComponent(meeting.meetingId)}/" class="block bg-white rounded-xl shadow-sm ssw-card p-6">
+  return `            <a href="./${encodeURIComponent(meeting.meetingId)}/" class="block bg-white rounded-lg shadow-raised ssw-card p-6">
                 <div class="flex items-center justify-between gap-4">
                     <div>
                         <h2 class="text-xl text-ssw-charcoal">${escapeHtml(date)}${label ? ` <span class="font-medium text-ssw-gray-500">• ${escapeHtml(label)}</span>` : ""}</h2>
@@ -136,7 +136,7 @@ function renderProjectIndex({ template, displayName, meetings, generatedAt }) {
 
   const meetingList = sorted.length
     ? sorted.map(renderMeetingCard).join("\n")
-    : `            <div class="bg-white rounded-xl shadow-sm ssw-card p-6 text-center text-ssw-gray-500">No meetings yet</div>`;
+    : `            <div class="bg-white rounded-lg shadow-raised ssw-card p-6 text-center text-ssw-gray-500">No meetings yet</div>`;
 
   return template
     .replace(/\{\{PROJECT_NAME\}\}/g, escapeHtml(displayName))
