@@ -116,7 +116,7 @@ function generateCancelConfirmation(request, details = {}) {
       cursor: pointer;
       text-decoration: none;
     }
-    button { background: #CC4141; color: white; }
+    button { background: #CD4242; color: white; }
     .secondary { background: #eee; color: #333; }
   </style>
 </head>

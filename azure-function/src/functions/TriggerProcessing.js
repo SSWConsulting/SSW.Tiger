@@ -180,7 +180,7 @@ function generateConfirmationResponse(request) {
       font: inherit;
       font-weight: 600;
       cursor: pointer;
-      background: #CC4141;
+      background: #CD4242;
       color: white;
     }
   </style>

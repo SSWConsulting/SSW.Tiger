@@ -52,11 +52,11 @@
                         // opacity-based neutral tokens (--background-sunken, --fill-weak
                         // rgba(0,0,0,0.04), --stroke-weak rgba(0,0,0,0.1) over white).
                         // 300-900 deliberately left as the existing Zinc-based scale: mapping
-                        // them onto the Design System's darker opacity tokens (--stroke-strong
-                        // 0.45, --text-weak 0.6, --text-strong 0.9) measurably drops
-                        // text-on-white contrast below WCAG AA for the body-copy classes that
-                        // use them today (e.g. gray-600 would fall from ~7.7:1 to ~4.35:1) -
-                        // that is a regression, not an alignment, so those steps are unchanged.
+                        // gray-500 onto the Design System's --stroke-strong token
+                        // (rgba(0,0,0,0.45) over white = #8C8C8C) drops its text-on-white
+                        // contrast from 4.83:1 to 3.36:1, failing WCAG AA (4.5:1 minimum for
+                        // normal text) for the body-copy classes that use it today - that is
+                        // a regression, not an alignment, so 300-900 are left unchanged.
                         'ssw-gray': {
                             50: '#FAFAFA',
                             100: '#F5F5F5',

@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![SSW](https://img.shields.io/badge/SSW-Brand%20Styled-CC4141?style=for-the-badge)
+![SSW](https://img.shields.io/badge/SSW-Brand%20Styled-CD4242?style=for-the-badge)
 ![Claude](https://img.shields.io/badge/Claude-Powered-333333?style=for-the-badge)
 
 **Transform meeting transcripts into brutally honest, insight-rich dashboards**
@@ -231,7 +231,7 @@ Transcripts are stored in:
 
 The dashboard follows [SSW design guidelines](https://www.ssw.com.au/rules/set-design-guidelines/):
 
-- **Primary Red**: `#CC4141`
+- **Primary Red**: `#CD4242`
 - **Charcoal**: `#333333`
 - **Font**: Inter (web) / Helvetica Neue (print)
 - **Logo motif**: Four colored squares

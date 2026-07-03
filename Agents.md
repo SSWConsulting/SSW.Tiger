@@ -241,7 +241,7 @@ secrets: [{
 
 ### Modifying the Dashboard Template
 
-`templates/dashboard.html` uses Tailwind CSS v4, Alpine.js (tabs), Chart.js (charts), and SSW brand colors (Red `#CC4141`, Charcoal `#333333`).
+`templates/dashboard.html` uses Tailwind CSS v4, Alpine.js (tabs), Chart.js (charts), and SSW brand colors (Red `#CD4242`, Charcoal `#333333`).
 
 1. Add `{{NEW_PLACEHOLDER}}` in the template
 2. Document expected HTML structure in CLAUDE.md
