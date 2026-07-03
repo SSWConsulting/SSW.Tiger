@@ -15,21 +15,24 @@
             theme: {
                 extend: {
                     colors: {
-                        // SSW Primary Red: #CC4141
+                        // SSW Primary Red: #CD4242 (aligned to SSW Design System --primary token,
+                        // hsla(0, 58%, 53%, 1) - the previous #CC4141 was already a near-exact
+                        // match; this is a 1-unit precision fix, not a redesign)
                         'ssw-red': {
-                            DEFAULT: '#CC4141',
+                            DEFAULT: '#CD4242',
                             50: '#FCE9E9',
                             100: '#F8D4D4',
                             200: '#F1A9A9',
                             300: '#E97D7D',
                             400: '#E25252',
-                            500: '#CC4141',
+                            500: '#CD4242',
                             600: '#A33434',
                             700: '#7A2727',
                             800: '#521A1A',
                             900: '#290D0D'
                         },
-                        // SSW Charcoal: #333333
+                        // SSW Charcoal: #333333 (already an exact match for the Design
+                        // System's --secondary token, hsla(0, 0%, 20%, 1) - no change needed)
                         'ssw-charcoal': {
                             DEFAULT: '#333333',
                             50: '#F5F5F5',
@@ -43,11 +46,15 @@
                             800: '#1A1A1A',
                             900: '#0D0D0D'
                         },
-                        // SSW Gray palette
+                        // SSW Gray palette - 50/100/200 aligned to the Design System's real
+                        // opacity-based neutral tokens (--background-sunken, --fill-weak
+                        // rgba(0,0,0,0.04), --stroke-weak rgba(0,0,0,0.1) over white).
+                        // 300-900 deliberately left as the existing Zinc-based scale: see
+                        // templates/dashboard.html for the WCAG contrast rationale.
                         'ssw-gray': {
                             50: '#FAFAFA',
-                            100: '#F4F4F5',
-                            200: '#E4E4E7',
+                            100: '#F5F5F5',
+                            200: '#E6E6E6',
                             300: '#D4D4D8',
                             400: '#A1A1AA',
                             500: '#71717A',
@@ -82,11 +89,11 @@
         /* SSW-style card hover effect */
         .ssw-card {
             transition: all 0.2s ease;
-            border: 1px solid #E4E4E7;
+            border: 1px solid #E6E6E6;
         }
         .ssw-card:hover {
-            border-color: #CC4141;
-            box-shadow: 0 4px 12px rgba(204, 65, 65, 0.1);
+            border-color: #CD4242;
+            box-shadow: 0 4px 12px rgba(205, 66, 66, 0.1);
         }
     </style>
 </head>

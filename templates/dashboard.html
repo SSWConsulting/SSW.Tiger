@@ -17,21 +17,24 @@
             theme: {
                 extend: {
                     colors: {
-                        // SSW Primary Red: #CC4141
+                        // SSW Primary Red: #CD4242 (aligned to SSW Design System --primary token,
+                        // hsla(0, 58%, 53%, 1) - the previous #CC4141 was already a near-exact
+                        // match; this is a 1-unit precision fix, not a redesign)
                         'ssw-red': {
-                            DEFAULT: '#CC4141',
+                            DEFAULT: '#CD4242',
                             50: '#FCE9E9',
                             100: '#F8D4D4',
                             200: '#F1A9A9',
                             300: '#E97D7D',
                             400: '#E25252',
-                            500: '#CC4141',
+                            500: '#CD4242',
                             600: '#A33434',
                             700: '#7A2727',
                             800: '#521A1A',
                             900: '#290D0D'
                         },
-                        // SSW Charcoal: #333333
+                        // SSW Charcoal: #333333 (already an exact match for the Design
+                        // System's --secondary token, hsla(0, 0%, 20%, 1) - no change needed)
                         'ssw-charcoal': {
                             DEFAULT: '#333333',
                             50: '#F5F5F5',
@@ -45,11 +48,19 @@
                             800: '#1A1A1A',
                             900: '#0D0D0D'
                         },
-                        // SSW Gray palette
+                        // SSW Gray palette - 50/100/200 aligned to the Design System's real
+                        // opacity-based neutral tokens (--background-sunken, --fill-weak
+                        // rgba(0,0,0,0.04), --stroke-weak rgba(0,0,0,0.1) over white).
+                        // 300-900 deliberately left as the existing Zinc-based scale: mapping
+                        // them onto the Design System's darker opacity tokens (--stroke-strong
+                        // 0.45, --text-weak 0.6, --text-strong 0.9) measurably drops
+                        // text-on-white contrast below WCAG AA for the body-copy classes that
+                        // use them today (e.g. gray-600 would fall from ~7.7:1 to ~4.35:1) -
+                        // that is a regression, not an alignment, so those steps are unchanged.
                         'ssw-gray': {
                             50: '#FAFAFA',
-                            100: '#F4F4F5',
-                            200: '#E4E4E7',
+                            100: '#F5F5F5',
+                            200: '#E6E6E6',
                             300: '#D4D4D8',
                             400: '#A1A1AA',
                             500: '#71717A',
@@ -109,69 +120,69 @@
             gap: 1rem;
             align-items: center;
             padding: 0.75rem 0;
-            border-bottom: 1px solid #f4f4f5;
+            border-bottom: 1px solid #f5f5f5;
         }
-        
+
         .speaker-timeline-row:last-child {
             border-bottom: none;
         }
-        
+
         .speaker-timeline-bar-container {
             position: relative;
             height: 28px;
-            background: #f4f4f5;
+            background: #f5f5f5;
             border-radius: 4px;
             overflow: hidden;
         }
-        
+
         .speaker-timeline-bar {
             position: absolute;
             height: 100%;
-            background: #CC4141;
+            background: #CD4242;
             opacity: 0.8;
             transition: opacity 0.2s;
             border-radius: 2px;
         }
-        
+
         .speaker-timeline-bar:hover {
             opacity: 1;
         }
-        
+
         .speaker-timeline-bar.short {
             background: #A33434;
         }
-        
+
         .speaker-timeline-bar.medium {
-            background: #CC4141;
+            background: #CD4242;
         }
-        
+
         .speaker-timeline-bar.long {
             background: #E25252;
         }
-        .energy-high::before { background: linear-gradient(to bottom, #CC4141, #E25252); }
+        .energy-high::before { background: linear-gradient(to bottom, #CD4242, #E25252); }
         .energy-medium::before { background: linear-gradient(to bottom, #F59E0B, #FBBF24); }
         .energy-low::before { background: linear-gradient(to bottom, #666666, #888888); }
-        
+
         /* SSW-style card hover effect */
         .ssw-card {
             transition: all 0.2s ease;
-            border: 1px solid #E4E4E7;
+            border: 1px solid #E6E6E6;
         }
         .ssw-card:hover {
-            border-color: #CC4141;
-            box-shadow: 0 4px 12px rgba(204, 65, 65, 0.1);
+            border-color: #CD4242;
+            box-shadow: 0 4px 12px rgba(205, 66, 66, 0.1);
         }
-        
+
         /* Tab active state with SSW red */
         .tab-active {
-            background-color: #CC4141;
+            background-color: #CD4242;
             color: white;
         }
-        
+
         /* SSW branded scrollbar */
         ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: #F4F4F5; }
-        ::-webkit-scrollbar-thumb { background: #CC4141; border-radius: 4px; }
+        ::-webkit-scrollbar-track { background: #F5F5F5; }
+        ::-webkit-scrollbar-thumb { background: #CD4242; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #A33434; }
         
         /* Grade badges */
@@ -187,7 +198,7 @@
             height: 100px;
             overflow: hidden;
             border-radius: 8px;
-            background: #E4E4E7;
+            background: #E6E6E6;
             flex-shrink: 0;
         }
 
@@ -204,7 +215,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            background: linear-gradient(135deg, #E4E4E7 0%, #D4D4D8 100%);
+            background: linear-gradient(135deg, #E6E6E6 0%, #D4D4D8 100%);
             color: #71717A;
             font-size: 2rem;
             font-weight: 600;
@@ -491,14 +502,14 @@
     <script>
         // SSW Brand Colors for Charts
         const sswColors = {
-            red: '#CC4141',
+            red: '#CD4242',
             redLight: '#E25252',
             redDark: '#A33434',
             charcoal: '#333333',
             gray: '#666666',
             grayLight: '#888888',
             // Chart palette
-            palette: ['#CC4141', '#333333', '#666666', '#E25252', '#888888', '#A33434', '#B0B0B0']
+            palette: ['#CD4242', '#333333', '#666666', '#E25252', '#888888', '#A33434', '#B0B0B0']
         };
         
         Chart.defaults.font.family = "'Inter', 'Helvetica Neue', 'Helvetica', sans-serif";
