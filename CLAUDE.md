@@ -187,6 +187,7 @@ A single topic (e.g., "John departing") must NOT appear as:
 | Color | Usage | Tailwind classes |
 |---|---|---|
 | **White** | Primary background, default for all cards and items | `bg-white` |
+| **Translucent-White** | Used inside of the dark team Health banner only (Team Health X-Ray) | `bg-white/10` |
 | **Green-50** | Positive indicators (outside Overview tab only) | `bg-green-50` |
 | **Amber-50** | Warnings, caution items | `bg-amber-50` |
 | **Red-50** | Critical issues only (Hard Truths section, critical risks) | `bg-ssw-red-50` or `bg-red-50` |
