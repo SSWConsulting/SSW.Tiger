@@ -179,11 +179,7 @@ A single topic (e.g., "John departing") must NOT appear as:
 
 **Styling rules:**
 - In warning/alert sections (e.g. Hard Truths, Time Waste Analysis), keep the body text black (`text-ssw-charcoal`). Only the section heading and border should use accent colors.
-- Icon usage by context:
-  - ✅ for completed/positive items (Done This Sprint, Key Decisions)
-  - ⚠️ for warnings, risks, caution items
-  - ❌ for things that went wrong or failed — NEVER use ❌ in Next Steps (these are future plans, not failures)
-  - ➡️ for all Next Steps items (they are forward-looking actions)
+- **Emoji policy — section headings only.** Emojis are reserved for the section headings the template already renders (e.g. "🔑 Key Decisions", "✅ Done This Sprint", "➡️ Next Steps", "⚠️ Hard Truths", "🐘 Elephants in the Room", "🔄 Recurring Issues"). You author fragment *content*, not those headings — so **your fragments must contain no emoji at all**. Never prefix a list item, card, participant, decision, risk, elephant, quote, or any repeated element with ✅ / ➡️ / ⚠️ / ❌ / 🐘 / 🔑 / etc. A leading emoji on every point reads as clutter and defeats the purpose of the headings. List items use the template's plain ▸ bullet marker; convey status or severity with DS badges (`ds-badge-destructive` for a critical risk, `ds-badge-success` for a positive) and the accent-colour borders, **not** with a per-item emoji.
 - **All Overview sections use the same format:** `<li>` bullet points inside `<ul>`. This applies to Summary, Key Decisions, Done This Sprint, and Next Steps. Do NOT use `<div>` card grids or colored background cards for these — keep them as clean bullet lists.
 
 **Color allowlist (STRICT — no other background colors permitted):**
@@ -191,6 +187,7 @@ A single topic (e.g., "John departing") must NOT appear as:
 | Color | Usage | Tailwind classes |
 |---|---|---|
 | **White** | Primary background, default for all cards and items | `bg-white` |
+| **Translucent-White** | Used inside of the dark team Health banner only (Team Health X-Ray) | `bg-white/10` |
 | **Green-50** | Positive indicators (outside Overview tab only) | `bg-green-50` |
 | **Amber-50** | Warnings, caution items | `bg-amber-50` |
 | **Red-50** | Critical issues only (Hard Truths section, critical risks) | `bg-ssw-red-50` or `bg-red-50` |
@@ -214,7 +211,8 @@ All sections below use `<li>` bullet points inside `<ul>` — consistent style t
 - **Boardroom handling**: If the VTT has a mix of `<v>`-tagged and untagged speech, show "Group (Boardroom)" as a speaker entry for all untagged speech. Do NOT guess individual speakers from untagged text.
 - Duration and energy level for each
 - Key moments highlighted
-- Flow Analysis: transition quality, agenda adherence, time waste inventory
+- **Meeting Timeline segments are plain analysis** — render each segment WITHOUT a coloured/grey left bar. A grey vertical left bar is a blockquote signifier reserved **only for direct verbatim quotes** (see Notable Moments in Insights); analysis blocks get no bar.
+- The time-waste inventory goes in the separate `{{TIME_WASTE_ANALYSIS}}` callout. **There is no "Flow Analysis" section any more — do not create one** (transition/agenda-adherence commentary either folds into the segment analysis or is dropped as low-signal).
 - **Do NOT include "Missing from Agenda" section** — that content belongs exclusively in the Insights tab (Elephants in the Room)
 
 ### Tab 3: People & Roles
@@ -230,6 +228,23 @@ All sections below use `<li>` bullet points inside `<ul>` — consistent style t
 
 ### Tab 4: Insights
 - **This tab OWNS all analysis, risks, elephants, and hard truths.** If something is uncomfortable or hidden, it goes HERE, not in Overview.
+- **Team Health X-Ray** (`{{TEAM_HEALTH}}`) renders inside the dark banner as a row of **uniform** metric cards — every card the SAME shape: an uppercase label, a big headline value, and a one-line caption. Do NOT let one card (e.g. sentiment) break the pattern with a different layout — give it a headline value too. Example:
+
+```html
+<div class="grid md:grid-cols-4 gap-4 mt-3">
+    <div class="bg-white/10 rounded-lg p-3">
+        <p class="text-xs uppercase tracking-wide text-ssw-gray-300 font-semibold">Morale</p>
+        <p class="text-2xl font-bold text-white mt-1">5/10</p>
+        <p class="text-xs text-ssw-gray-300 mt-1">Flat / strained - nothing to celebrate</p>
+    </div>
+    <!-- Sentiment follows the SAME shape: a headline value, not a raw list of percentages -->
+    <div class="bg-white/10 rounded-lg p-3">
+        <p class="text-xs uppercase tracking-wide text-ssw-gray-300 font-semibold">Sentiment Mix</p>
+        <p class="text-2xl font-bold text-white mt-1">60% <span class="text-sm font-medium text-ssw-gray-300">neutral</span></p>
+        <p class="text-xs text-ssw-gray-300 mt-1"><span class="text-green-400">25% positive</span> · <span class="text-ssw-red-300">15% negative</span></p>
+    </div>
+</div>
+```
 - Each finding appears in ONE sub-section only (a topic is either a risk OR an elephant OR an opportunity — never all three)
 - Risk signals with who raised them **(canonical names!)**
 - Elephants in the room — **each elephant is max 2-3 sentences**: what it is, why it matters, one-line recommendation. Do NOT write full paragraphs with background context.
@@ -344,6 +359,8 @@ For each participant card, look up the slug in this order:
 
 #### Participant Card HTML Structure
 
+The participant grid is **2 cards per row** (the template sets `grid-cols-1 sm:grid-cols-2`). Each card has the avatar + name/role/speaking + value bar + key finding in a top row, then the **Strengths and Feedback bands stretch the full card width below** (do NOT nest the bands inside the narrow column beside the photo - they must span the whole card so the text has room). There is **no "Value Score:" label** - just the coloured bar and the score.
+
 ```html
 <div class="bg-white rounded-xl shadow-sm ssw-card p-6">
     <div class="flex gap-4">
@@ -362,45 +379,41 @@ For each participant card, look up the slug in this order:
                     <h3 class="font-bold text-ssw-charcoal text-lg">Bob Northwind</h3>
                     <p class="text-ssw-gray-500 text-sm">Senior Developer</p>
                 </div>
-                <span class="bg-ssw-gray-100 text-ssw-gray-700 px-2 py-1 rounded text-sm font-medium">
-                    18% speaking time
-                </span>
+                <span class="bg-ssw-gray-100 text-ssw-gray-700 px-2 py-1 rounded text-sm font-medium whitespace-nowrap">18% speaking</span>
             </div>
 
-            <!-- Value Score -->
-            <div class="mb-3">
-                <div class="flex items-center gap-2">
-                    <span class="text-sm text-ssw-gray-600">Value Score:</span>
-                    <div class="flex-1 bg-ssw-gray-100 rounded-full h-2">
-                        <div class="bg-ssw-red h-2 rounded-full" style="width: 80%"></div>
-                    </div>
-                    <span class="text-sm font-semibold text-ssw-charcoal">8/10</span>
+            <!-- Value bar (NO "Value Score:" label). Fill colour by score:
+                 8-10 = bg-green-500, 4-6 = bg-amber-500, <=3 = bg-ssw-red. -->
+            <div class="mb-3 flex items-center gap-2">
+                <div class="flex-1 bg-ssw-gray-100 rounded-full h-2">
+                    <div class="bg-green-500 h-2 rounded-full" style="width: 80%"></div>
                 </div>
+                <span class="text-sm font-semibold text-ssw-charcoal">8/10</span>
             </div>
 
             <!-- Key Finding -->
-            <p class="text-sm text-ssw-gray-600 mb-3">
+            <p class="text-sm text-ssw-gray-600">
                 <span class="font-medium text-ssw-charcoal">Key finding:</span>
                 Highest value-per-minute but systematically underutilized
             </p>
+        </div>
+    </div>
 
-            <!-- Strengths (prominent band - the written feedback is the focus of the card) -->
-            <div class="border-l-4 border-green-400 bg-green-50 rounded-r-lg px-4 py-3 mb-3">
-                <p class="text-sm font-semibold text-green-700 uppercase tracking-wide mb-2">Strengths</p>
-                <ul class="text-base text-ssw-charcoal space-y-2 leading-snug">
-                    <li>• <span class="font-semibold">Efficiency</span> - every word counted, no filler</li>
-                    <li>• <span class="font-semibold">Technical depth</span> - highly valuable when consulted</li>
-                </ul>
-            </div>
-
-            <!-- Feedback (prominent band) -->
-            <div class="border-l-4 border-amber-400 bg-amber-50 rounded-r-lg px-4 py-3">
-                <p class="text-sm font-semibold text-amber-700 uppercase tracking-wide mb-2">Feedback</p>
-                <ul class="text-base text-ssw-charcoal space-y-2 leading-snug">
-                    <li>• <span class="font-semibold">Push back</span> - when interrupted, hold your ground; your points matter</li>
-                    <li>• <span class="font-semibold">Initiative</span> - you don't need permission to contribute</li>
-                </ul>
-            </div>
+    <!-- Strengths + Feedback stretch the FULL card width, below the avatar/info row -->
+    <div class="mt-4 space-y-3">
+        <div class="border-l-4 border-green-400 bg-green-50 rounded-r-lg px-4 py-3">
+            <p class="text-sm font-semibold text-green-700 uppercase tracking-wide mb-2">Strengths</p>
+            <ul class="text-base text-ssw-charcoal space-y-2 leading-snug">
+                <li>• <span class="font-semibold">Efficiency</span> - every word counted, no filler</li>
+                <li>• <span class="font-semibold">Technical depth</span> - highly valuable when consulted</li>
+            </ul>
+        </div>
+        <div class="border-l-4 border-amber-400 bg-amber-50 rounded-r-lg px-4 py-3">
+            <p class="text-sm font-semibold text-amber-700 uppercase tracking-wide mb-2">Feedback</p>
+            <ul class="text-base text-ssw-charcoal space-y-2 leading-snug">
+                <li>• <span class="font-semibold">Push back</span> - when interrupted, hold your ground; your points matter</li>
+                <li>• <span class="font-semibold">Initiative</span> - you don't need permission to contribute</li>
+            </ul>
         </div>
     </div>
 </div>
