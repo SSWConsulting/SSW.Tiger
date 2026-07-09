@@ -250,8 +250,10 @@ run_pipeline() {
         exit 1
     fi
 
-    # Extract deployed URL from stdout (minimal data)
+    # Extract deployed URL and optional security metadata from stdout (minimal data)
     DEPLOYED_URL=$(echo "$PROCESSOR_STDOUT" | grep -oP 'DEPLOYED_URL=\K[^\s"]+' | head -1)
+    PASSWORD_PROTECTED=$(echo "$PROCESSOR_STDOUT" | grep -oP 'PASSWORD_PROTECTED=\K[^\s"]+' | head -1)
+    DASHBOARD_PASSWORD=$(echo "$PROCESSOR_STDOUT" | grep -oP 'DASHBOARD_PASSWORD=\K[^\s"]+' | head -1)
 
     if [ -z "$DEPLOYED_URL" ]; then
         log "error" "Failed to extract deployed URL"
@@ -266,6 +268,8 @@ run_pipeline() {
         log "info" "Sending completed notification..."
         export NOTIFICATION_TYPE="completed"
         export DASHBOARD_URL="$DEPLOYED_URL"
+        export PASSWORD_PROTECTED="$PASSWORD_PROTECTED"
+        export DASHBOARD_PASSWORD="$DASHBOARD_PASSWORD"
         node processor/sendNotification.js >/dev/null || log "warn" "Completed notification failed"
     fi
 }

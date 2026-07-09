@@ -16,8 +16,14 @@ const fs = require("fs").promises;
 const os = require("os");
 const path = require("path");
 const { log } = require("../lib/logger");
-const { upsertMeeting, queryMeetings } = require("../lib/cosmosClient");
+const { upsertMeeting, queryMeetings, getProjectPolicy, upsertMeetingSecurity } = require("../lib/cosmosClient");
 const { mergeCurrentMeeting, renderProjectIndex } = require("./projectIndex");
+const {
+  generateDashboardPassword,
+  encryptDashboardHtml,
+  renderUnlockPage,
+} = require("../lib/dashboardEncryption");
+const { setMeetingPasswordSecret } = require("../lib/keyVaultPasswords");
 
 /**
  * Check that the dashboard HTML exists at the canonical location.
@@ -71,7 +77,12 @@ async function deployDashboard({ dashboardPath, projectName, meetingId }) {
     throw new Error("DASHBOARD_STORAGE_ACCOUNT not set");
   }
 
-  const dashboardDir = path.dirname(dashboardPath);
+  const security = await prepareDashboardForDeployment({
+    dashboardPath,
+    projectName,
+    meetingId,
+  });
+  const dashboardDir = security.uploadDir || path.dirname(dashboardPath);
 
   const blobDestination = `$web/${projectName}/${meetingId}`;
 
@@ -135,7 +146,72 @@ async function deployDashboard({ dashboardPath, projectName, meetingId }) {
   const storagePath = `${projectName}/${meetingId}`;
   const deployedUrl = `https://${host}/${storagePath}`;
   log("info", "Dashboard deployed", { url: deployedUrl });
-  return { deployedUrl, dashboardPath: storagePath };
+  return {
+    deployedUrl,
+    dashboardPath: storagePath,
+    passwordProtected: security.passwordProtected,
+    dashboardPassword: security.dashboardPassword,
+  };
+}
+
+async function prepareDashboardForDeployment({ dashboardPath, projectName, meetingId }) {
+  if (!process.env.COSMOS_ENDPOINT) {
+    return { passwordProtected: false };
+  }
+
+  let policy = null;
+  try {
+    policy = await getProjectPolicy(projectName);
+  } catch (err) {
+    log("warn", "Could not read project security policy, deploying public dashboard", {
+      projectName,
+      error: err.message,
+    });
+    return { passwordProtected: false };
+  }
+
+  if (!policy?.passwordProtectionEnabled) {
+    return { passwordProtected: false };
+  }
+
+  const dashboardHtml = await fs.readFile(dashboardPath, "utf-8");
+  const password = generateDashboardPassword();
+  const encryptedPayload = encryptDashboardHtml(dashboardHtml, password);
+  const unlockHtml = renderUnlockPage({
+    projectName,
+    meetingId,
+    encryptedPayload,
+  });
+
+  const uploadDir = await fs.mkdtemp(path.join(os.tmpdir(), `tiger-secure-dashboard-${projectName}-${meetingId}-`));
+  await fs.writeFile(path.join(uploadDir, "index.html"), unlockHtml, "utf-8");
+
+  const passwordSecretName = await setMeetingPasswordSecret({
+    projectName,
+    meetingId,
+    password,
+  });
+
+  await upsertMeetingSecurity({
+    projectName,
+    meetingId,
+    passwordEnabled: true,
+    passwordSecretName,
+    encryptedAt: new Date().toISOString(),
+    updatedBy: "processor",
+  });
+
+  log("info", "Prepared password-protected dashboard", {
+    projectName,
+    meetingId,
+    passwordSecretName,
+  });
+
+  return {
+    passwordProtected: true,
+    dashboardPassword: password,
+    uploadDir,
+  };
 }
 
 /**
@@ -251,4 +327,11 @@ async function deployProjectIndex({ projectName, displayName, currentMeeting }) 
   return indexUrl;
 }
 
-module.exports = { checkOutputExists, copyToOutputDirectory, deployDashboard, persistToCosmos, deployProjectIndex };
+module.exports = {
+  checkOutputExists,
+  copyToOutputDirectory,
+  deployDashboard,
+  persistToCosmos,
+  deployProjectIndex,
+  prepareDashboardForDeployment,
+};

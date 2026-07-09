@@ -8,6 +8,7 @@ param location string = resourceGroup().location
 param costCategoryTag object
 param storageAccountName string
 param keyVaultName string
+param keyVaultUrl string
 param containerAppJobName string
 param containerAppJobResourceGroup string
 param containerAppJobImage string
@@ -133,6 +134,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
           name: 'WEBHOOK_CLIENT_STATE'
           value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=webhook-client-state)'
         }
+        { name: 'KEY_VAULT_URL', value: keyVaultUrl }
       ]
     }
   }

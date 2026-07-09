@@ -37,6 +37,18 @@ param suffix string = take(uniqueString(utcNow()), 6)
 @description('Skip Logic App deployment to preserve Portal configuration')
 param deployLogicApp bool = false
 
+@description('Comma-separated seed Tiger Admin emails for the authenticated admin console')
+param tigerAdminEmails string = ''
+
+@description('Microsoft Entra tenant ID allowed to sign into the admin console')
+param adminAuthAllowedTenantId string = ''
+
+@description('Microsoft Entra app registration client ID for admin Easy Auth')
+param adminAuthClientId string = ''
+
+@description('Key Vault secret name containing the admin Easy Auth client secret')
+param adminAuthClientSecretName string = 'tiger-admin-auth-client-secret'
+
 
 var containerImage = 'ghcr.io/${githubOrg}/tiger-processor:${imageTag}'
 
@@ -68,7 +80,7 @@ module kvRoleAssignment 'modules/keyVaultRoleAssignment.bicep' = {
   params: {
     keyVaultName: kv.outputs.name
     principalId: id.outputs.principalId
-    roleName: 'Key Vault Secrets User'
+    roleName: 'Key Vault Secrets Officer'
   }
 }
 
@@ -161,6 +173,7 @@ module functionApp 'modules/functionApp.bicep' = {
     location: location
     storageAccountName: storage.outputs.name
     keyVaultName: kv.outputs.name
+    keyVaultUrl: kv.outputs.keyVaultUrl
     containerAppJobName: containerApp.outputs.jobName
     containerAppJobResourceGroup: resourceGroup().name
     containerAppJobImage: containerImage
@@ -170,6 +183,29 @@ module functionApp 'modules/functionApp.bicep' = {
     dashboardStorageAccountName: dashboardStorage.outputs.name
     cosmosEndpoint: cosmosDb.outputs.endpoint
     claudeModel: claudeModel
+  }
+}
+
+// 9. Admin Function App - authenticated admin console/API for dashboard security
+module adminFunctionApp 'modules/adminFunctionApp.bicep' = {
+  name: 'provision-admin-function-app-${suffix}'
+  params: {
+    project: project
+    environment: environment
+    costCategoryTag: costCategoryTag
+    location: location
+    storageAccountName: storage.outputs.name
+    managedIdentityId: id.outputs.id
+    managedIdentityClientId: id.outputs.clientId
+    appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
+    cosmosEndpoint: cosmosDb.outputs.endpoint
+    dashboardStorageAccountName: dashboardStorage.outputs.name
+    keyVaultName: kv.outputs.name
+    keyVaultUrl: kv.outputs.keyVaultUrl
+    tigerAdminEmails: tigerAdminEmails
+    adminAuthAllowedTenantId: adminAuthAllowedTenantId
+    adminAuthClientId: adminAuthClientId
+    adminAuthClientSecretName: adminAuthClientSecretName
   }
 }
 
@@ -196,6 +232,11 @@ output containerApp object = {
 output functionApp object = {
   name: functionApp.outputs.name
   url: functionApp.outputs.endpoint
+}
+
+output adminFunctionApp object = {
+  name: adminFunctionApp.outputs.name
+  url: adminFunctionApp.outputs.endpoint
 }
 
 output managedIdentity object = {

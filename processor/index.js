@@ -81,7 +81,12 @@ async function processTranscript(transcriptPath, projectSlug) {
   }
 
   // Deploy to Azure Blob Storage
-  const { deployedUrl, dashboardPath: storagePath } = await deployDashboard({
+  const {
+    deployedUrl,
+    dashboardPath: storagePath,
+    passwordProtected,
+    dashboardPassword,
+  } = await deployDashboard({
     dashboardPath: canonicalPath,
     projectName: projectSlug,
     meetingId,
@@ -134,6 +139,8 @@ async function processTranscript(transcriptPath, projectSlug) {
     dashboardPath: canonicalPath,
     outputCopyPath,
     deployedUrl,
+    passwordProtected,
+    dashboardPassword,
   };
 }
 
@@ -166,6 +173,10 @@ async function main() {
     );
     if (result.deployedUrl) {
       console.log(`DEPLOYED_URL=${result.deployedUrl}`);
+    }
+    if (result.passwordProtected) {
+      console.log("PASSWORD_PROTECTED=true");
+      console.log(`DASHBOARD_PASSWORD=${result.dashboardPassword}`);
     }
     process.exit(0);
   } catch (error) {
