@@ -37,20 +37,6 @@ param suffix string = take(uniqueString(utcNow()), 6)
 @description('Skip Logic App deployment to preserve Portal configuration')
 param deployLogicApp bool = false
 
-@description('Comma-separated seed Tiger Admin emails for the authenticated admin console')
-param tigerAdminEmails string = ''
-
-@description('Microsoft Entra tenant ID allowed to sign into the admin console')
-@minLength(1)
-param adminAuthAllowedTenantId string
-
-@description('Microsoft Entra app registration client ID for admin Easy Auth')
-@minLength(1)
-param adminAuthClientId string
-
-@description('Key Vault secret name containing the admin Easy Auth client secret')
-param adminAuthClientSecretName string = 'tiger-admin-auth-client-secret'
-
 
 var containerImage = 'ghcr.io/${githubOrg}/tiger-processor:${imageTag}'
 
@@ -188,29 +174,6 @@ module functionApp 'modules/functionApp.bicep' = {
   }
 }
 
-// 9. Admin Function App - authenticated admin console/API for dashboard security
-module adminFunctionApp 'modules/adminFunctionApp.bicep' = {
-  name: 'provision-admin-function-app-${suffix}'
-  params: {
-    project: project
-    environment: environment
-    costCategoryTag: costCategoryTag
-    location: location
-    storageAccountName: storage.outputs.name
-    managedIdentityId: id.outputs.id
-    managedIdentityClientId: id.outputs.clientId
-    appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
-    cosmosEndpoint: cosmosDb.outputs.endpoint
-    dashboardStorageAccountName: dashboardStorage.outputs.name
-    keyVaultName: kv.outputs.name
-    keyVaultUrl: kv.outputs.keyVaultUrl
-    tigerAdminEmails: tigerAdminEmails
-    adminAuthAllowedTenantId: adminAuthAllowedTenantId
-    adminAuthClientId: adminAuthClientId
-    adminAuthClientSecretName: adminAuthClientSecretName
-  }
-}
-
 output keyVault object = {
   name: kv.outputs.name
   uri: kv.outputs.keyVaultUrl
@@ -236,11 +199,6 @@ output functionApp object = {
   url: functionApp.outputs.endpoint
 }
 
-output adminFunctionApp object = {
-  name: adminFunctionApp.outputs.name
-  url: adminFunctionApp.outputs.endpoint
-}
-
 output managedIdentity object = {
   id: id.outputs.id
   principalId: id.outputs.principalId
@@ -254,6 +212,7 @@ output cosmosDb object = {
   accountName: cosmosDb.outputs.accountName
   databaseName: cosmosDb.outputs.databaseName
   containerName: cosmosDb.outputs.containerName
+  securityContainerName: cosmosDb.outputs.securityContainerName
 }
 
 output monitoring object = {

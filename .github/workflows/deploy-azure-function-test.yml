@@ -1,11 +1,6 @@
 name: Deploy Azure Function Test
 
 on:
-  push:
-    branches: [main, master]
-    paths:
-      - "azure-function/**"
-      - ".github/workflows/deploy-azure-function-test.yml"
   workflow_dispatch:
 
 concurrency:

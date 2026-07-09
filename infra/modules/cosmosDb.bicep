@@ -12,6 +12,7 @@ param managedIdentityPrincipalId string
 var accountName = toLower('cosmos-${project}-${environment}')
 var databaseName = 'tiger'
 var containerName = 'meetings'
+var securityContainerName = 'security'
 
 // Cosmos DB Account (Serverless)
 resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-11-15' = {
@@ -49,8 +50,11 @@ resource database 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-11-15
   }
 }
 
-// NOTE: Container is created via post-deploy script (ARM nested resource path fails for sqlContainers)
-// Run: az cosmosdb sql container create --account-name <name> -g <rg> -d tiger -n meetings -p /projectName
+// NOTE: Containers are created via post-deploy script (ARM nested resource path fails for sqlContainers)
+// Run: ./setup-cosmos.sh <environment>
+// Creates:
+// - meetings: meeting metadata and consolidated analysis
+// - security: project policies and meeting password metadata
 
 // Grant managed identity "Cosmos DB Built-in Data Contributor" role
 // This allows read/write without using account keys
@@ -68,3 +72,4 @@ output endpoint string = cosmosAccount.properties.documentEndpoint
 output accountName string = cosmosAccount.name
 output databaseName string = databaseName
 output containerName string = containerName
+output securityContainerName string = securityContainerName
