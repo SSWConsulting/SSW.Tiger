@@ -155,7 +155,16 @@ async function deployDashboard({ dashboardPath, projectName, meetingId }) {
 }
 
 async function prepareDashboardForDeployment({ dashboardPath, projectName, meetingId }) {
+  const requirePolicy =
+    process.env.REQUIRE_DASHBOARD_SECURITY_POLICY === "true" ||
+    process.env.NODE_ENV === "production";
+
   if (!process.env.COSMOS_ENDPOINT) {
+    if (requirePolicy) {
+      throw new Error(
+        "COSMOS_ENDPOINT is required to evaluate dashboard security policy",
+      );
+    }
     return { passwordProtected: false };
   }
 
@@ -163,6 +172,11 @@ async function prepareDashboardForDeployment({ dashboardPath, projectName, meeti
   try {
     policy = await getProjectPolicy(projectName);
   } catch (err) {
+    if (requirePolicy) {
+      throw new Error(
+        `Failed to read dashboard security policy for project '${projectName}': ${err.message}`,
+      );
+    }
     log("warn", "Could not read project security policy, deploying public dashboard", {
       projectName,
       error: err.message,

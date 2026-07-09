@@ -232,6 +232,9 @@ run_pipeline() {
     # stderr = logs (real-time), stdout = machine output (captured)
     log "info" "Processing transcript with Claude..."
 
+    PROCESSOR_RESULT_FILE=$(mktemp /tmp/tiger-processor-result.XXXXXX.json)
+    export PROCESSOR_RESULT_PATH="$PROCESSOR_RESULT_FILE"
+
     set +e
     # stderr flows through for real-time display
     # stdout (only DEPLOYED_URL) captured to variable
@@ -250,10 +253,16 @@ run_pipeline() {
         exit 1
     fi
 
-    # Extract deployed URL and optional security metadata from stdout (minimal data)
+    # Extract deployed URL from stdout and optional security metadata from a private result file.
     DEPLOYED_URL=$(echo "$PROCESSOR_STDOUT" | grep -oP 'DEPLOYED_URL=\K[^\s"]+' | head -1)
-    PASSWORD_PROTECTED=$(echo "$PROCESSOR_STDOUT" | grep -oP 'PASSWORD_PROTECTED=\K[^\s"]+' | head -1)
-    DASHBOARD_PASSWORD=$(echo "$PROCESSOR_STDOUT" | grep -oP 'DASHBOARD_PASSWORD=\K[^\s"]+' | head -1)
+    PASSWORD_PROTECTED=""
+    DASHBOARD_PASSWORD=""
+    if [ -s "$PROCESSOR_RESULT_FILE" ]; then
+        PASSWORD_PROTECTED=$(node -pe "JSON.parse(require('fs').readFileSync(process.env.PROCESSOR_RESULT_PATH, 'utf8')).passwordProtected ? 'true' : ''" 2>/dev/null || echo "")
+        DASHBOARD_PASSWORD=$(node -pe "JSON.parse(require('fs').readFileSync(process.env.PROCESSOR_RESULT_PATH, 'utf8')).dashboardPassword || ''" 2>/dev/null || echo "")
+    fi
+    rm -f "$PROCESSOR_RESULT_FILE"
+    unset PROCESSOR_RESULT_PATH
 
     if [ -z "$DEPLOYED_URL" ]; then
         log "error" "Failed to extract deployed URL"

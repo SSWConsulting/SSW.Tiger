@@ -144,6 +144,21 @@ async function processTranscript(transcriptPath, projectSlug) {
   };
 }
 
+async function writeProcessorResult(result) {
+  if (!process.env.PROCESSOR_RESULT_PATH) return;
+
+  const payload = {
+    passwordProtected: !!result.passwordProtected,
+    dashboardPassword: result.dashboardPassword || "",
+  };
+
+  await fs.writeFile(
+    process.env.PROCESSOR_RESULT_PATH,
+    JSON.stringify(payload),
+    "utf-8",
+  );
+}
+
 async function main() {
   const args = process.argv.slice(2);
 
@@ -164,6 +179,7 @@ async function main() {
 
   try {
     const result = await processTranscript(transcriptPath, projectName);
+    await writeProcessorResult(result);
     console.error(
       JSON.stringify({
         level: "info",
@@ -173,10 +189,6 @@ async function main() {
     );
     if (result.deployedUrl) {
       console.log(`DEPLOYED_URL=${result.deployedUrl}`);
-    }
-    if (result.passwordProtected) {
-      console.log("PASSWORD_PROTECTED=true");
-      console.log(`DASHBOARD_PASSWORD=${result.dashboardPassword}`);
     }
     process.exit(0);
   } catch (error) {
