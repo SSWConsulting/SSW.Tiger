@@ -20,7 +20,7 @@
     "@azure/cosmos": "^4.9.2",
     "@azure/identity": "^4.13.1",
     "@azure/keyvault-secrets": "^4.10.0",
-    "@azure/storage-blob": "^12.27.0",
+    "@azure/storage-blob": "12.27.0",
     "dotenv": "^17.4.2"
   },
   "engines": {

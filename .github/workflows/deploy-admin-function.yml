@@ -1,0 +1,58 @@
+name: Deploy Admin Function
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "azure-function-admin/**"
+      - "lib/**"
+      - ".github/workflows/deploy-admin-function.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ADMIN_FUNCTION_APP_NAME: func-tiger-admin-test
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build admin function package
+        shell: bash
+        run: |
+          rm -rf azure-function-admin/lib
+          mkdir -p azure-function-admin/lib
+          cp -R lib/. azure-function-admin/lib/
+          find azure-function-admin/lib -name "*.test.js" -delete
+
+      - name: Install admin function dependencies
+        working-directory: azure-function-admin
+        run: npm ci
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy admin Function App
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ env.ADMIN_FUNCTION_APP_NAME }}
+          package: azure-function-admin

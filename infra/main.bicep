@@ -41,10 +41,12 @@ param deployLogicApp bool = false
 param tigerAdminEmails string = ''
 
 @description('Microsoft Entra tenant ID allowed to sign into the admin console')
-param adminAuthAllowedTenantId string = ''
+@minLength(1)
+param adminAuthAllowedTenantId string
 
 @description('Microsoft Entra app registration client ID for admin Easy Auth')
-param adminAuthClientId string = ''
+@minLength(1)
+param adminAuthClientId string
 
 @description('Key Vault secret name containing the admin Easy Auth client secret')
 param adminAuthClientSecretName string = 'tiger-admin-auth-client-secret'

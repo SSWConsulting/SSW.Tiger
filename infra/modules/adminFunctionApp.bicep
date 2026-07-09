@@ -17,10 +17,12 @@ param keyVaultUrl string
 param tigerAdminEmails string = ''
 
 @description('Microsoft Entra tenant ID allowed to sign into the admin app')
-param adminAuthAllowedTenantId string = ''
+@minLength(1)
+param adminAuthAllowedTenantId string
 
 @description('Microsoft Entra app registration client ID for Easy Auth')
-param adminAuthClientId string = ''
+@minLength(1)
+param adminAuthClientId string
 
 @description('Key Vault secret name containing the Microsoft provider client secret')
 param adminAuthClientSecretName string = 'tiger-admin-auth-client-secret'
@@ -28,7 +30,6 @@ param adminAuthClientSecretName string = 'tiger-admin-auth-client-secret'
 var functionAppName = toLower('func-${project}-admin-${environment}')
 var hostingPlanName = toLower('plan-${project}-admin-${environment}')
 var authSecretSettingName = 'MICROSOFT_PROVIDER_AUTHENTICATION_SECRET'
-var authEnabled = !empty(adminAuthClientId) && !empty(adminAuthAllowedTenantId)
 
 resource hostingPlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   name: hostingPlanName
@@ -98,7 +99,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
   }
 }
 
-resource authSettings 'Microsoft.Web/sites/config@2023-12-01' = if (authEnabled) {
+resource authSettings 'Microsoft.Web/sites/config@2023-12-01' = {
   parent: functionApp
   name: 'authsettingsV2'
   properties: {

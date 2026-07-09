@@ -8,23 +8,23 @@ const {
   queryMeetings,
   getMeetingSecurity,
   upsertMeetingSecurity,
-} = require("../../../lib/cosmosClient");
+} = require("../../lib/cosmosClient");
 const {
   generateDashboardPassword,
   encryptDashboardHtml,
   decryptDashboardPayload,
   extractEncryptedPayloadFromUnlockPage,
   renderUnlockPage,
-} = require("../../../lib/dashboardEncryption");
+} = require("../../lib/dashboardEncryption");
 const {
   setMeetingPasswordSecret,
   getMeetingPasswordSecret,
-} = require("../../../lib/keyVaultPasswords");
+} = require("../../lib/keyVaultPasswords");
 const {
   downloadDashboardHtml,
   uploadDashboardHtml,
-} = require("../../../lib/dashboardBlob");
-const { sanitizeId } = require("../../../lib/sanitize");
+} = require("../../lib/dashboardBlob");
+const { sanitizeId } = require("../../lib/sanitize");
 
 const LOG_PREFIX = "[TIGER-ADMIN]";
 
