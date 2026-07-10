@@ -138,16 +138,10 @@ async function sendViaLogicApp(participants) {
 
 async function main() {
   try {
-    // Validate required config
-    if (!CONFIG.logicAppUrl) {
-      throw new Error("LOGIC_APP_URL is required");
-    }
-    // DASHBOARD_URL is only required for "completed" notifications
-    if (CONFIG.notificationType === "completed" && !CONFIG.dashboardUrl) {
-      throw new Error("DASHBOARD_URL is required for completed notifications");
-    }
+    validateRequiredConfig(CONFIG);
 
     const participants = parseParticipants();
+    validateParticipantsForNotification(CONFIG, participants);
 
     if (participants.length === 0) {
       log("warn", "No participants to notify, skipping");
@@ -166,8 +160,41 @@ async function main() {
   }
 }
 
+function validateRequiredConfig(config) {
+  if (!config.logicAppUrl) {
+    throw new Error("LOGIC_APP_URL is required");
+  }
+  // DASHBOARD_URL is only required for "completed" notifications
+  if (config.notificationType === "completed" && !config.dashboardUrl) {
+    throw new Error("DASHBOARD_URL is required for completed notifications");
+  }
+  if (
+    config.notificationType === "completed" &&
+    config.passwordProtected &&
+    !String(config.dashboardPassword || "").trim()
+  ) {
+    throw new Error("DASHBOARD_PASSWORD is required for password-protected completed notifications");
+  }
+}
+
+function validateParticipantsForNotification(config, participants) {
+  if (
+    config.notificationType === "completed" &&
+    config.passwordProtected &&
+    participants.length === 0
+  ) {
+    throw new Error("Participants are required for password-protected completed notifications");
+  }
+}
+
 if (require.main === module) {
   main();
 }
 
-module.exports = { sendViaLogicApp, parseParticipants, CONFIG };
+module.exports = {
+  sendViaLogicApp,
+  parseParticipants,
+  validateRequiredConfig,
+  validateParticipantsForNotification,
+  CONFIG,
+};

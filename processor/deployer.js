@@ -162,18 +162,32 @@ async function prepareDashboardForDeployment({ dashboardPath, projectName, meeti
     process.env.REQUIRE_DASHBOARD_SECURITY_POLICY === "true" ||
     process.env.NODE_ENV === "production";
 
+  log("info", "Evaluating dashboard security policy", {
+    projectName,
+    meetingId,
+    requirePolicy,
+    hasCosmosEndpoint: !!process.env.COSMOS_ENDPOINT,
+    securityContainer: process.env.COSMOS_SECURITY_CONTAINER || "security",
+  });
+
   if (!process.env.COSMOS_ENDPOINT) {
     if (requirePolicy) {
       throw new Error(
         "COSMOS_ENDPOINT is required to evaluate dashboard security policy",
       );
     }
+    log("warn", "COSMOS_ENDPOINT not set, deploying public dashboard", {
+      projectName,
+      meetingId,
+    });
     return { passwordProtected: false };
   }
 
   let policy = null;
   try {
-    policy = await getProjectPolicy(projectName);
+    policy = await getProjectPolicy(projectName, {
+      requireContainer: requirePolicy,
+    });
   } catch (err) {
     if (requirePolicy) {
       throw new Error(
@@ -182,12 +196,28 @@ async function prepareDashboardForDeployment({ dashboardPath, projectName, meeti
     }
     log("warn", "Could not read project security policy, deploying public dashboard", {
       projectName,
+      meetingId,
       error: err.message,
     });
     return { passwordProtected: false };
   }
 
+  log("info", "Dashboard security policy result", {
+    projectName,
+    meetingId,
+    policyFound: !!policy,
+    policyId: policy?.id,
+    policyProjectName: policy?.projectName,
+    passwordProtectionEnabled: !!policy?.passwordProtectionEnabled,
+  });
+
   if (!policy?.passwordProtectionEnabled) {
+    log("info", "Deploying public dashboard because password protection is not enabled", {
+      projectName,
+      meetingId,
+      policyFound: !!policy,
+      passwordProtectionEnabled: policy?.passwordProtectionEnabled ?? null,
+    });
     return { passwordProtected: false };
   }
 

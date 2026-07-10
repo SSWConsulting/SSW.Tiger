@@ -5,7 +5,8 @@
   "main": "processor/index.js",
   "scripts": {
     "start": "node processor/index.js",
-    "test": "node --test lib/**/*.test.js processor/**/*.test.js"
+    "test": "node --test lib/**/*.test.js processor/**/*.test.js scripts/**/*.test.js",
+    "tiger:security": "node scripts/tiger-security.js"
   },
   "keywords": [
     "meeting",

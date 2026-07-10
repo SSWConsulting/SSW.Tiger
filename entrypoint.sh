@@ -257,12 +257,22 @@ run_pipeline() {
     DEPLOYED_URL=$(echo "$PROCESSOR_STDOUT" | grep -oP 'DEPLOYED_URL=\K[^\s"]+' | head -1)
     PASSWORD_PROTECTED=""
     DASHBOARD_PASSWORD=""
-    if [ -s "$PROCESSOR_RESULT_FILE" ]; then
-        PASSWORD_PROTECTED=$(node -pe "JSON.parse(require('fs').readFileSync(process.env.PROCESSOR_RESULT_PATH, 'utf8')).passwordProtected ? 'true' : ''" 2>/dev/null || echo "")
-        DASHBOARD_PASSWORD=$(node -pe "JSON.parse(require('fs').readFileSync(process.env.PROCESSOR_RESULT_PATH, 'utf8')).dashboardPassword || ''" 2>/dev/null || echo "")
+    if [ ! -s "$PROCESSOR_RESULT_FILE" ]; then
+        log "error" "Processor result metadata missing"
+        rm -f "$PROCESSOR_RESULT_FILE"
+        unset PROCESSOR_RESULT_PATH
+        send_failure_notification
+        exit 1
     fi
+    PASSWORD_PROTECTED=$(node -pe "JSON.parse(require('fs').readFileSync(process.env.PROCESSOR_RESULT_PATH, 'utf8')).passwordProtected ? 'true' : ''" 2>/dev/null || echo "__parse_error__")
+    DASHBOARD_PASSWORD=$(node -pe "JSON.parse(require('fs').readFileSync(process.env.PROCESSOR_RESULT_PATH, 'utf8')).dashboardPassword || ''" 2>/dev/null || echo "__parse_error__")
     rm -f "$PROCESSOR_RESULT_FILE"
     unset PROCESSOR_RESULT_PATH
+    if [ "$PASSWORD_PROTECTED" = "__parse_error__" ] || [ "$DASHBOARD_PASSWORD" = "__parse_error__" ]; then
+        log "error" "Processor result metadata is invalid"
+        send_failure_notification
+        exit 1
+    fi
 
     if [ -z "$DEPLOYED_URL" ]; then
         log "error" "Failed to extract deployed URL"
@@ -279,7 +289,11 @@ run_pipeline() {
         export DASHBOARD_URL="$DEPLOYED_URL"
         export PASSWORD_PROTECTED="$PASSWORD_PROTECTED"
         export DASHBOARD_PASSWORD="$DASHBOARD_PASSWORD"
-        node processor/sendNotification.js >/dev/null || log "warn" "Completed notification failed"
+        if [ "$PASSWORD_PROTECTED" = "true" ]; then
+            node processor/sendNotification.js >/dev/null
+        else
+            node processor/sendNotification.js >/dev/null || log "warn" "Completed notification failed"
+        fi
     fi
 }
 
