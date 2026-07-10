@@ -37,6 +37,9 @@ param suffix string = take(uniqueString(utcNow()), 6)
 @description('Skip Logic App deployment to preserve Portal configuration')
 param deployLogicApp bool = false
 
+@description('Manage the Key Vault Secrets User assignment. Requires Owner or User Access Administrator.')
+param manageKeyVaultRoleAssignment bool = false
+
 
 var containerImage = 'ghcr.io/${githubOrg}/tiger-processor:${imageTag}'
 
@@ -63,12 +66,12 @@ module kv 'modules/keyVault.bicep' = {
 }
 
 // 3. Key Vault Role Assignment - Grant managed identity access to secrets
-module kvRoleAssignment 'modules/keyVaultRoleAssignment.bicep' = {
+module kvRoleAssignment 'modules/keyVaultRoleAssignment.bicep' = if (manageKeyVaultRoleAssignment) {
   name: 'provision-keyvault-role-assignment-${suffix}'
   params: {
     keyVaultName: kv.outputs.name
     principalId: id.outputs.principalId
-    roleName: 'Key Vault Secrets Officer'
+    roleName: 'Key Vault Secrets User'
   }
 }
 
@@ -91,7 +94,6 @@ module dashboardStorage 'modules/dashboardStorage.bicep' = {
     environment: environment
     costCategoryTag: costCategoryTag
     location: location
-    managedIdentityPrincipalId: id.outputs.principalId
   }
 }
 

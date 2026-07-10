@@ -23,7 +23,10 @@ const {
   encryptDashboardHtml,
   renderUnlockPage,
 } = require("../lib/dashboardEncryption");
-const { setMeetingPasswordSecret } = require("../lib/keyVaultPasswords");
+const {
+  getPasswordEncryptionKey,
+  encryptDashboardPassword,
+} = require("../lib/keyVaultPasswords");
 
 /**
  * Check that the dashboard HTML exists at the canonical location.
@@ -200,17 +203,17 @@ async function prepareDashboardForDeployment({ dashboardPath, projectName, meeti
   const uploadDir = await fs.mkdtemp(path.join(os.tmpdir(), `tiger-secure-dashboard-${projectName}-${meetingId}-`));
   await fs.writeFile(path.join(uploadDir, "index.html"), unlockHtml, "utf-8");
 
-  const passwordSecretName = await setMeetingPasswordSecret({
-    projectName,
-    meetingId,
+  const passwordEncryptionKey = await getPasswordEncryptionKey();
+  const passwordEncryption = encryptDashboardPassword(
     password,
-  });
+    passwordEncryptionKey,
+  );
 
   await upsertMeetingSecurity({
     projectName,
     meetingId,
     passwordEnabled: true,
-    passwordSecretName,
+    passwordEncryption,
     encryptedAt: new Date().toISOString(),
     updatedBy: "processor",
   });
@@ -218,7 +221,7 @@ async function prepareDashboardForDeployment({ dashboardPath, projectName, meeti
   log("info", "Prepared password-protected dashboard", {
     projectName,
     meetingId,
-    passwordSecretName,
+    keySecretName: passwordEncryption.keySecretName,
   });
 
   return {

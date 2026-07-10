@@ -74,6 +74,10 @@ resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
     workloadProfileName: 'Consumption'
     configuration: {
       triggerType: 'Manual'
+      manualTriggerConfig: {
+        parallelism: 1
+        replicaCompletionCount: 1
+      }
       replicaTimeout: replicaTimeout
       replicaRetryLimit: 0
 

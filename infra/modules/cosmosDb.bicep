@@ -34,6 +34,7 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-11-15' = {
     consistencyPolicy: {
       defaultConsistencyLevel: 'Session'
     }
+    enableAutomaticFailover: true
     // Key-based auth disabled — code uses DefaultAzureCredential (managed identity)
     disableLocalAuth: true
   }

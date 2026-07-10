@@ -13,5 +13,6 @@ param claudeModel = 'claude-opus-4-5-20251101'
 
 // Skip Logic App deployment to preserve Portal configuration
 param deployLogicApp = false
+param manageKeyVaultRoleAssignment = false
 
 //az deployment group create --resource-group "SSW.Transcript-Intelligence-Group-Event-Reasoning.Dev" --template-file main.bicep --parameters test.bicepparam
