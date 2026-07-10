@@ -43,7 +43,7 @@ async function main() {
   });
 
   // Deploy to Azure Blob Storage
-  const { deployedUrl, dashboardPath: storagePath } = await deployDashboard({
+  const { deployedUrl, dashboardPath: storagePath, obfuscated } = await deployDashboard({
     dashboardPath,
     projectName,
     meetingId,
@@ -62,12 +62,17 @@ async function main() {
   });
   console.log("Saved to Cosmos DB");
 
-  // Update the per-project index page
+  // Update the per-project index page (suppressed for obfuscated projects)
   const indexUrl = await deployProjectIndex({
     projectName,
     currentMeeting: { meetingId, meetingDate },
+    obfuscate: obfuscated,
   });
-  console.log(`Project index updated: ${indexUrl}`);
+  console.log(
+    indexUrl
+      ? `Project index updated: ${indexUrl}`
+      : "Project index suppressed (obfuscated project)",
+  );
 }
 
 main().catch((err) => {
