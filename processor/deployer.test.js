@@ -65,6 +65,65 @@ describe("resolveDeploySlug (no Cosmos configured)", () => {
   });
 });
 
+describe("resolveDeploySlug (Cosmos-backed, injected deps)", () => {
+  const guid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+  let savedEndpoint;
+  before(() => {
+    savedEndpoint = process.env.COSMOS_ENDPOINT;
+    process.env.COSMOS_ENDPOINT = "https://cosmos.example/"; // gate the prior-GUID lookup
+  });
+  after(() => {
+    if (savedEndpoint === undefined) delete process.env.COSMOS_ENDPOINT;
+    else process.env.COSMOS_ENDPOINT = savedEndpoint;
+  });
+
+  it("reuses the prior GUID from Cosmos so the URL is stable across re-processing", async () => {
+    const deps = {
+      getProjectSettings: async () => ({ obfuscateUrls: true }),
+      getMeeting: async () => ({ dashboardPath: `crm/${guid}` }),
+    };
+    const result = await resolveDeploySlug({ projectName: "crm", meetingId: "2026-04-03" }, deps);
+    assert.deepEqual(result, { slug: guid, obfuscated: true });
+  });
+
+  it("mints a fresh GUID when the meeting has no prior obfuscated path", async () => {
+    const deps = {
+      getProjectSettings: async () => ({ obfuscateUrls: true }),
+      getMeeting: async () => null,
+    };
+    const result = await resolveDeploySlug({ projectName: "crm", meetingId: "2026-04-03" }, deps);
+    assert.equal(result.obfuscated, true);
+    assert.ok(UUID_RE.test(result.slug));
+  });
+
+  it("falls back to a fresh GUID (does not abort) when the prior-meeting lookup fails", async () => {
+    const deps = {
+      getProjectSettings: async () => ({ obfuscateUrls: true }),
+      getMeeting: async () => {
+        throw new Error("transient getMeeting failure");
+      },
+    };
+    const result = await resolveDeploySlug({ projectName: "crm", meetingId: "2026-04-03" }, deps);
+    assert.equal(result.obfuscated, true);
+    assert.ok(UUID_RE.test(result.slug));
+  });
+
+  it("aborts (rejects) when the settings read fails closed - never silently downgrades", async () => {
+    const deps = {
+      getProjectSettings: async () => {
+        const err = new Error("Cosmos unavailable");
+        err.code = 503;
+        throw err;
+      },
+      getMeeting: async () => null,
+    };
+    await assert.rejects(
+      () => resolveDeploySlug({ projectName: "crm", meetingId: "2026-04-03" }, deps),
+      /Cosmos unavailable/,
+    );
+  });
+});
+
 describe("deployProjectIndex suppression", () => {
   let savedAccount;
   before(() => {

@@ -29,6 +29,14 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   }
 }
 
+// SECURITY: the $web container must stay at public-access = off (the default).
+// Blobs are served by GET via the static-website endpoint, but the container
+// must NOT be set to public "Container" access, which would allow anonymous
+// LISTING of every blob. The obfuscated-URL feature (per-project obfuscateUrls,
+// issue #72) relies on GUID dashboard paths being unguessable AND unlistable;
+// enabling container-level listing would let anyone enumerate the GUIDs and
+// defeat it. Do not add a container resource here with publicAccess: 'Container'.
+
 resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
   parent: storageAccount
   name: 'default'
