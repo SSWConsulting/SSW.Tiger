@@ -81,7 +81,7 @@ async function processTranscript(transcriptPath, projectSlug) {
   }
 
   // Deploy to Azure Blob Storage
-  const { deployedUrl, dashboardPath: storagePath } = await deployDashboard({
+  const { deployedUrl, dashboardPath: storagePath, obfuscated } = await deployDashboard({
     dashboardPath: canonicalPath,
     projectName: projectSlug,
     meetingId,
@@ -106,12 +106,14 @@ async function processTranscript(transcriptPath, projectSlug) {
     log("warn", "COSMOS_ENDPOINT not set, skipping Cosmos DB persistence");
   }
 
-  // Update the per-project index page (non-fatal)
+  // Update the per-project index page (non-fatal). Suppressed for obfuscated
+  // projects — a public list of every meeting would defeat the setting.
   try {
     await deployProjectIndex({
       projectName: projectSlug,
       displayName,
       currentMeeting: { meetingId, meetingDate },
+      obfuscate: obfuscated,
     });
   } catch (err) {
     log("error", "Failed to deploy project index (non-fatal)", {

@@ -49,8 +49,10 @@ resource database 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-11-15
   }
 }
 
-// NOTE: Container is created via post-deploy script (ARM nested resource path fails for sqlContainers)
-// Run: az cosmosdb sql container create --account-name <name> -g <rg> -d tiger -n meetings -p /projectName
+// NOTE: Containers are created via post-deploy script (ARM nested resource path fails for sqlContainers).
+// Run ./setup-cosmos.sh <env>, which creates both:
+//   az cosmosdb sql container create --account-name <name> -g <rg> -d tiger -n meetings -p /projectName
+//   az cosmosdb sql container create --account-name <name> -g <rg> -d tiger -n projects -p /projectName  (per-project settings, e.g. obfuscateUrls)
 
 // Grant managed identity "Cosmos DB Built-in Data Contributor" role
 // This allows read/write without using account keys

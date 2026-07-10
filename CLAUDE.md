@@ -444,6 +444,8 @@ The template includes a script that automatically falls back to initials (from `
 projects/{project}/{meeting-id}/dashboard/index.html
 ```
 
+The deploy path (human-readable `{project}/{meeting-id}/` vs a non-guessable `{project}/{guid}/`) is decided by code from the project's `obfuscateUrls` setting - see `processor/deployer.js`. You do not need to do anything for this; always save to the path above.
+
 ## DO NOT
 
 - Create .md files

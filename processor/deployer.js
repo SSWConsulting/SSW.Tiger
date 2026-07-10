@@ -12,12 +12,73 @@
  * Local interactive: deploy-dashboard skill → deploy-local.js → deployer.js
  */
 
+const crypto = require("crypto");
 const fs = require("fs").promises;
 const os = require("os");
 const path = require("path");
 const { log } = require("../lib/logger");
-const { upsertMeeting, queryMeetings } = require("../lib/cosmosClient");
+const {
+  upsertMeeting,
+  queryMeetings,
+  getMeeting,
+  getProjectSettings,
+} = require("../lib/cosmosClient");
 const { mergeCurrentMeeting, renderProjectIndex } = require("./projectIndex");
+
+// Matches a v4-style UUID, used to detect an already-obfuscated storage path
+// so re-processing a meeting keeps the same non-guessable URL.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Pure decision: which path segment does a meeting deploy under?
+ *
+ * Human-readable (default): the meetingId (e.g. "2026-04-03").
+ * Obfuscated: a GUID. To keep the URL stable across re-processing / restarts,
+ * a prior GUID is reused if the meeting's existing dashboardPath already ends
+ * in one; otherwise a fresh GUID is generated.
+ *
+ * @param {Object} params
+ * @param {boolean} params.obfuscateUrls
+ * @param {string}  params.meetingId
+ * @param {string} [params.priorDashboardPath] - e.g. "crm/<guid>" from Cosmos
+ * @returns {{ slug: string, obfuscated: boolean }}
+ */
+function chooseSlug({ obfuscateUrls, meetingId, priorDashboardPath }) {
+  if (!obfuscateUrls) {
+    return { slug: meetingId, obfuscated: false };
+  }
+
+  const priorSlug = priorDashboardPath ? priorDashboardPath.split("/").pop() : null;
+  if (priorSlug && UUID_RE.test(priorSlug)) {
+    return { slug: priorSlug, obfuscated: true };
+  }
+
+  return { slug: crypto.randomUUID(), obfuscated: true };
+}
+
+/**
+ * Resolve the deploy slug, reading the project setting and any prior GUID from
+ * Cosmos. Wraps the pure chooseSlug() with the (default-safe) I/O.
+ *
+ * @returns {Promise<{ slug: string, obfuscated: boolean }>}
+ */
+async function resolveDeploySlug({ projectName, meetingId }) {
+  const { obfuscateUrls } = await getProjectSettings(projectName);
+
+  let priorDashboardPath = null;
+  if (obfuscateUrls && process.env.COSMOS_ENDPOINT) {
+    try {
+      const existing = await getMeeting(projectName, meetingId);
+      priorDashboardPath = existing?.dashboardPath || null;
+    } catch (err) {
+      log("warn", "Could not look up existing meeting for stable GUID, generating new", {
+        error: err.message,
+      });
+    }
+  }
+
+  return chooseSlug({ obfuscateUrls, meetingId, priorDashboardPath });
+}
 
 /**
  * Check that the dashboard HTML exists at the canonical location.
@@ -73,11 +134,16 @@ async function deployDashboard({ dashboardPath, projectName, meetingId }) {
 
   const dashboardDir = path.dirname(dashboardPath);
 
-  const blobDestination = `$web/${projectName}/${meetingId}`;
+  // Choose the path segment: meetingId (human-readable) or a GUID (obfuscated,
+  // per the project's obfuscateUrls setting).
+  const { slug, obfuscated } = await resolveDeploySlug({ projectName, meetingId });
+
+  const blobDestination = `$web/${projectName}/${slug}`;
 
   log("info", "Deploying dashboard to blob storage", {
     storageAccount,
     destination: blobDestination,
+    obfuscated,
   });
 
   const { execFileSync } = require("child_process");
@@ -132,10 +198,10 @@ async function deployDashboard({ dashboardPath, projectName, meetingId }) {
     }
   }
 
-  const storagePath = `${projectName}/${meetingId}`;
+  const storagePath = `${projectName}/${slug}`;
   const deployedUrl = `https://${host}/${storagePath}`;
-  log("info", "Dashboard deployed", { url: deployedUrl });
-  return { deployedUrl, dashboardPath: storagePath };
+  log("info", "Dashboard deployed", { url: deployedUrl, obfuscated });
+  return { deployedUrl, dashboardPath: storagePath, obfuscated };
 }
 
 /**
@@ -185,12 +251,26 @@ async function persistToCosmos({ projectName, meetingId, meetingDate, dashboardP
  * Must run after deployDashboard in the same process — it reuses the
  * az CLI session established there (no separate login).
  *
- * @returns {string} deployed index URL (without hostname lookup, path only on fallback)
+ * Suppressed for obfuscated projects: publishing a public list of every
+ * meeting would defeat the non-guessable-URL setting, so no index is written
+ * and null is returned. The caller may pass `obfuscate` explicitly; if omitted
+ * it is looked up from the project's settings so the guard holds either way.
+ *
+ * @returns {string|null} deployed index URL (null when suppressed)
  */
-async function deployProjectIndex({ projectName, displayName, currentMeeting }) {
+async function deployProjectIndex({ projectName, displayName, currentMeeting, obfuscate }) {
   const storageAccount = process.env.DASHBOARD_STORAGE_ACCOUNT;
   if (!storageAccount) {
     throw new Error("DASHBOARD_STORAGE_ACCOUNT not set");
+  }
+
+  const isObfuscated =
+    obfuscate !== undefined
+      ? obfuscate
+      : (await getProjectSettings(projectName)).obfuscateUrls;
+  if (isObfuscated) {
+    log("info", "Project index suppressed for obfuscated project", { projectName });
+    return null;
   }
 
   // Gather the project's meetings
@@ -251,4 +331,13 @@ async function deployProjectIndex({ projectName, displayName, currentMeeting }) 
   return indexUrl;
 }
 
-module.exports = { checkOutputExists, copyToOutputDirectory, deployDashboard, persistToCosmos, deployProjectIndex };
+module.exports = {
+  checkOutputExists,
+  copyToOutputDirectory,
+  deployDashboard,
+  persistToCosmos,
+  deployProjectIndex,
+  chooseSlug,
+  resolveDeploySlug,
+  UUID_RE,
+};
