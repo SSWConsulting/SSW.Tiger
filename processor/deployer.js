@@ -167,7 +167,8 @@ async function prepareDashboardForDeployment({ dashboardPath, projectName, meeti
     meetingId,
     requirePolicy,
     hasCosmosEndpoint: !!process.env.COSMOS_ENDPOINT,
-    securityContainer: process.env.COSMOS_SECURITY_CONTAINER || "security",
+    projectPoliciesContainer: process.env.COSMOS_PROJECT_POLICIES_CONTAINER || "projectPolicies",
+    meetingSecurityContainer: process.env.COSMOS_MEETING_SECURITY_CONTAINER || "security",
   });
 
   if (!process.env.COSMOS_ENDPOINT) {
@@ -227,6 +228,7 @@ async function prepareDashboardForDeployment({ dashboardPath, projectName, meeti
   const unlockHtml = renderUnlockPage({
     projectName,
     meetingId,
+    meetingTitle: process.env.MEETING_SUBJECT || "",
     encryptedPayload,
   });
 

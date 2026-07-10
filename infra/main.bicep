@@ -214,6 +214,7 @@ output cosmosDb object = {
   accountName: cosmosDb.outputs.accountName
   databaseName: cosmosDb.outputs.databaseName
   containerName: cosmosDb.outputs.containerName
+  projectPoliciesContainerName: cosmosDb.outputs.projectPoliciesContainerName
   securityContainerName: cosmosDb.outputs.securityContainerName
 }
 

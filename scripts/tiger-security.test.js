@@ -39,9 +39,26 @@ describe("tiger security CLI parsing", () => {
     );
   });
 
+  it("parses an optional env file flag", () => {
+    assert.deepEqual(
+      parseArgs(["project", "set", "--project", "crm", "--password-protection", "on", "--env-file", ".env.test"]).flags,
+      {
+        project: "crm",
+        "password-protection": "on",
+        "env-file": ".env.test",
+      },
+    );
+  });
+
+  it("documents the protect command", async () => {
+    const output = [];
+    await run(["--help"], (line) => output.push(line));
+    assert.match(output.join("\n"), /npm run tiger:security -- protect/);
+  });
+
   it("prints help without Azure environment variables", async () => {
     const output = [];
     await run(["--help"], (line) => output.push(line));
-    assert.match(output.join("\n"), /tiger-security\.js show/);
+    assert.match(output.join("\n"), /npm run tiger:security -- show/);
   });
 });

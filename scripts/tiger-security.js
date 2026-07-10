@@ -1,17 +1,18 @@
 #!/usr/bin/env node
 
-const { createDashboardSecurityManager } = require("../lib/dashboardSecurityManager");
-
 function usage() {
   return [
     "Usage:",
-    "  node scripts/tiger-security.js show --dashboard-url <url>",
-    "  node scripts/tiger-security.js rotate --dashboard-url <url> --yes",
-    "  node scripts/tiger-security.js revoke --dashboard-url <url> --yes",
-    "  node scripts/tiger-security.js project set --project <name> --password-protection on|off",
+    "  npm run tiger:security -- show --dashboard-url <url>",
+    "  npm run tiger:security -- protect --dashboard-url <url> --yes [--meeting-title <title>]",
+    "  npm run tiger:security -- rotate --dashboard-url <url> --yes",
+    "  npm run tiger:security -- project set --project <name> --password-protection on|off",
     "",
     "Alternative meeting target:",
     "  --project <name> --meeting-id <id>",
+    "",
+    "Environment:",
+    "  Reads .env by default, or pass --env-file <path>",
   ].join("\n");
 }
 
@@ -89,11 +90,14 @@ function requireEnv(names) {
 
 async function run(argv = process.argv.slice(2), output = console.log) {
   if (argv.length === 0 || argv.includes("--help") || argv.includes("-h")) {
+    loadEnv();
     output(usage());
     return;
   }
 
   const { command, subcommand, flags } = parseArgs(argv);
+  loadEnv(flags["env-file"]);
+  const { createDashboardSecurityManager } = require("../lib/dashboardSecurityManager");
   const manager = createDashboardSecurityManager();
 
   if (command === "show") {
@@ -116,16 +120,17 @@ async function run(argv = process.argv.slice(2), output = console.log) {
     return;
   }
 
-  if (command === "revoke") {
+  if (command === "protect") {
     requireEnv(["COSMOS_ENDPOINT", "KEY_VAULT_URL", "DASHBOARD_STORAGE_ACCOUNT"]);
     if (!flags.yes) {
-      throw new Error("revoke modifies the dashboard and requires --yes");
+      throw new Error("protect modifies the dashboard and requires --yes");
     }
-    const result = await manager.revokePassword({
+    const result = await manager.protectMeeting({
       ...parseDashboardTarget(flags),
+      meetingTitle: flags["meeting-title"] || "",
       updatedBy: currentUser(),
     });
-    output(`Password revoked for ${result.projectName}/${result.meetingId}`);
+    output(result.password);
     return;
   }
 
@@ -155,6 +160,55 @@ function currentUser() {
   return process.env.USERNAME || process.env.USER || "tiger-security-cli";
 }
 
+function loadEnv(envFile) {
+  const fs = require("fs");
+  const path = require("path");
+  const envPath = envFile || ".env";
+  const resolvedPath = path.resolve(process.cwd(), envPath);
+
+  if (!fs.existsSync(resolvedPath)) {
+    if (envFile) {
+      throw new Error(`Failed to load env file '${envFile}': file not found`);
+    }
+    return;
+  }
+
+  let dotenv;
+  try {
+    dotenv = require("dotenv");
+  } catch (error) {
+    loadEnvFileWithoutDotenv(resolvedPath);
+    return;
+  }
+
+  const result = dotenv.config({ path: resolvedPath });
+  if (result.error) {
+    throw new Error(`Failed to load env file '${envFile}': ${result.error.message}`);
+  }
+}
+
+function loadEnvFileWithoutDotenv(envPath) {
+  const fs = require("fs");
+  const content = fs.readFileSync(envPath, "utf-8");
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const equalsIndex = trimmed.indexOf("=");
+    if (equalsIndex === -1) continue;
+    const key = trimmed.slice(0, equalsIndex).trim();
+    let value = trimmed.slice(equalsIndex + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (key && process.env[key] === undefined) {
+      process.env[key] = value;
+    }
+  }
+}
+
 if (require.main === module) {
   run().catch((error) => {
     console.error(error.message);
@@ -170,4 +224,6 @@ module.exports = {
   parseDashboardUrl,
   run,
   usage,
+  loadEnv,
+  loadEnvFileWithoutDotenv,
 };

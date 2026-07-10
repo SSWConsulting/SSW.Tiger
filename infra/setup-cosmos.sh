@@ -1,7 +1,7 @@
 #!/bin/bash
-# Post-deployment setup for Cosmos DB
-# Run this AFTER bicep deployment to create the containers
-# (ARM nested resource path fails for sqlContainers, so we use CLI)
+# Legacy/manual repair helper for Cosmos DB containers.
+# Bicep now creates these containers; use this only if you need to repair
+# an older environment without running the full infra deployment.
 #
 # Usage:
 #   ./setup-cosmos.sh staging
@@ -13,7 +13,7 @@ ENV="${1:?Usage: ./setup-cosmos.sh <environment>}"
 ACCOUNT_NAME="cosmos-tiger-${ENV}"
 RESOURCE_GROUP="SSW.Transcript-Intelligence-Group-Event-Reasoning.Dev"
 DATABASE_NAME="tiger"
-CONTAINERS=("meetings" "security")
+CONTAINERS=("meetings" "projectPolicies" "security")
 
 echo "Setting up Cosmos DB containers for ${ENV}..."
 

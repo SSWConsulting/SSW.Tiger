@@ -12,6 +12,7 @@ param managedIdentityPrincipalId string
 var accountName = toLower('cosmos-${project}-${environment}')
 var databaseName = 'tiger'
 var containerName = 'meetings'
+var projectPoliciesContainerName = 'projectPolicies'
 var securityContainerName = 'security'
 
 // Cosmos DB Account (Serverless)
@@ -51,11 +52,55 @@ resource database 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-11-15
   }
 }
 
-// NOTE: Containers are created via post-deploy script (ARM nested resource path fails for sqlContainers)
-// Run: ./setup-cosmos.sh <environment>
-// Creates:
-// - meetings: meeting metadata and consolidated analysis
-// - security: project policies and meeting password metadata
+// SQL Containers
+// All containers are partitioned by projectName so project-scoped reads stay efficient.
+resource meetingsContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-11-15' = {
+  parent: database
+  name: containerName
+  properties: {
+    resource: {
+      id: containerName
+      partitionKey: {
+        paths: [
+          '/projectName'
+        ]
+        kind: 'Hash'
+      }
+    }
+  }
+}
+
+resource projectPoliciesContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-11-15' = {
+  parent: database
+  name: projectPoliciesContainerName
+  properties: {
+    resource: {
+      id: projectPoliciesContainerName
+      partitionKey: {
+        paths: [
+          '/projectName'
+        ]
+        kind: 'Hash'
+      }
+    }
+  }
+}
+
+resource meetingSecurityContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-11-15' = {
+  parent: database
+  name: securityContainerName
+  properties: {
+    resource: {
+      id: securityContainerName
+      partitionKey: {
+        paths: [
+          '/projectName'
+        ]
+        kind: 'Hash'
+      }
+    }
+  }
+}
 
 // Grant managed identity "Cosmos DB Built-in Data Contributor" role
 // This allows read/write without using account keys
@@ -72,5 +117,6 @@ resource cosmosRoleAssignment 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssi
 output endpoint string = cosmosAccount.properties.documentEndpoint
 output accountName string = cosmosAccount.name
 output databaseName string = databaseName
-output containerName string = containerName
-output securityContainerName string = securityContainerName
+output containerName string = meetingsContainer.name
+output projectPoliciesContainerName string = projectPoliciesContainer.name
+output securityContainerName string = meetingSecurityContainer.name

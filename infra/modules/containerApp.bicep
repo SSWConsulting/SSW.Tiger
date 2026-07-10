@@ -153,6 +153,8 @@ resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
             { name: 'LOGIC_APP_URL', secretRef: 'logic-app-url' }
             { name: 'STORAGE_CONNECTION_STRING', secretRef: 'storage-connection-string' }
             { name: 'COSMOS_ENDPOINT', value: cosmosEndpoint }
+            { name: 'COSMOS_PROJECT_POLICIES_CONTAINER', value: 'projectPolicies' }
+            { name: 'COSMOS_MEETING_SECURITY_CONTAINER', value: 'security' }
             { name: 'KEY_VAULT_URL', value: 'https://${keyVaultName}${az.environment().suffixes.keyvaultDns}' }
           ]
         }

@@ -18,7 +18,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@azure/cosmos": "^4.9.2",
+    "@azure/cosmos": "^4.9.3",
     "@azure/identity": "^4.13.1",
     "@azure/keyvault-secrets": "^4.10.0",
     "@azure/storage-blob": "12.27.0",

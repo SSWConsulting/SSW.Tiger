@@ -117,6 +117,8 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'DASHBOARD_BASE_URL', value: dashboardBaseUrl }
         // Passed through to Container App Job at start time
         { name: 'COSMOS_ENDPOINT', value: cosmosEndpoint }
+        { name: 'COSMOS_PROJECT_POLICIES_CONTAINER', value: 'projectPolicies' }
+        { name: 'COSMOS_MEETING_SECURITY_CONTAINER', value: 'security' }
         { name: 'CLAUDE_MODEL', value: claudeModel }
         // Subscription ID (for Container App API calls)
         { name: 'SUBSCRIPTION_ID', value: subscription().subscriptionId }
