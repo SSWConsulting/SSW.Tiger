@@ -13,7 +13,7 @@ var accountName = toLower('cosmos-${project}-${environment}')
 var databaseName = 'tiger'
 var containerName = 'meetings'
 var projectPoliciesContainerName = 'projectPolicies'
-var securityContainerName = 'security'
+var meetingSecurityContainerName = 'meetingSecurity'
 
 // Cosmos DB Account (Serverless)
 resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-11-15' = {
@@ -88,10 +88,10 @@ resource projectPoliciesContainer 'Microsoft.DocumentDB/databaseAccounts/sqlData
 
 resource meetingSecurityContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-11-15' = {
   parent: database
-  name: securityContainerName
+  name: meetingSecurityContainerName
   properties: {
     resource: {
-      id: securityContainerName
+      id: meetingSecurityContainerName
       partitionKey: {
         paths: [
           '/projectName'
@@ -119,4 +119,4 @@ output accountName string = cosmosAccount.name
 output databaseName string = databaseName
 output containerName string = meetingsContainer.name
 output projectPoliciesContainerName string = projectPoliciesContainer.name
-output securityContainerName string = meetingSecurityContainer.name
+output meetingSecurityContainerName string = meetingSecurityContainer.name

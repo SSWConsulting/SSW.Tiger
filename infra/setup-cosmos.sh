@@ -13,7 +13,7 @@ ENV="${1:?Usage: ./setup-cosmos.sh <environment>}"
 ACCOUNT_NAME="cosmos-tiger-${ENV}"
 RESOURCE_GROUP="SSW.Transcript-Intelligence-Group-Event-Reasoning.Dev"
 DATABASE_NAME="tiger"
-CONTAINERS=("meetings" "projectPolicies" "security")
+CONTAINERS=("meetings" "projectPolicies" "meetingSecurity")
 
 echo "Setting up Cosmos DB containers for ${ENV}..."
 

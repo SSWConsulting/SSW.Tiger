@@ -168,7 +168,7 @@ async function prepareDashboardForDeployment({ dashboardPath, projectName, meeti
     requirePolicy,
     hasCosmosEndpoint: !!process.env.COSMOS_ENDPOINT,
     projectPoliciesContainer: process.env.COSMOS_PROJECT_POLICIES_CONTAINER || "projectPolicies",
-    meetingSecurityContainer: process.env.COSMOS_MEETING_SECURITY_CONTAINER || "security",
+    meetingSecurityContainer: process.env.COSMOS_MEETING_SECURITY_CONTAINER || "meetingSecurity",
   });
 
   if (!process.env.COSMOS_ENDPOINT) {

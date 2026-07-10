@@ -403,7 +403,7 @@ async function triggerContainerAppJob(params, context) {
               // Cosmos DB for meeting metadata persistence
               { name: "COSMOS_ENDPOINT", value: process.env.COSMOS_ENDPOINT || "" },
               { name: "COSMOS_PROJECT_POLICIES_CONTAINER", value: process.env.COSMOS_PROJECT_POLICIES_CONTAINER || "projectPolicies" },
-              { name: "COSMOS_MEETING_SECURITY_CONTAINER", value: process.env.COSMOS_MEETING_SECURITY_CONTAINER || "security" },
+              { name: "COSMOS_MEETING_SECURITY_CONTAINER", value: process.env.COSMOS_MEETING_SECURITY_CONTAINER || "meetingSecurity" },
               // Claude model override
               { name: "CLAUDE_MODEL", value: process.env.CLAUDE_MODEL || "" },
             ],

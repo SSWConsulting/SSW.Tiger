@@ -277,8 +277,6 @@ npm run tiger:security -- show --project <project> --meeting-id <meeting-id> --e
 npm run tiger:security -- rotate --dashboard-url <dashboard-url> --yes --env-file .env.test
 ```
 
-Cosmos containers: project rules go to `projectPolicies`; per-meeting password metadata goes to `security`.
-
 ## 📝 Example Output
 
 After processing a transcript, you'll get:

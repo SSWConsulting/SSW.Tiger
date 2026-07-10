@@ -215,7 +215,7 @@ output cosmosDb object = {
   databaseName: cosmosDb.outputs.databaseName
   containerName: cosmosDb.outputs.containerName
   projectPoliciesContainerName: cosmosDb.outputs.projectPoliciesContainerName
-  securityContainerName: cosmosDb.outputs.securityContainerName
+  meetingSecurityContainerName: cosmosDb.outputs.meetingSecurityContainerName
 }
 
 output monitoring object = {
