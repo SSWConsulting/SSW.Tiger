@@ -27,6 +27,7 @@ const {
   getPasswordEncryptionKey,
   encryptDashboardPassword,
 } = require("../lib/keyVaultPasswords");
+const { DASHBOARD_HTML_CACHE_CONTROL } = require("../lib/dashboardBlob");
 
 /**
  * Check that the dashboard HTML exists at the canonical location.
@@ -67,6 +68,18 @@ async function copyToOutputDirectory({ sourcePath, outputDir, projectName, meeti
   } catch (error) {
     return null;
   }
+}
+
+function buildDashboardUploadArgs({ dashboardDir, blobDestination, storageAccount }) {
+  return [
+    "storage", "blob", "upload-batch",
+    "--source", dashboardDir,
+    "--destination", blobDestination,
+    "--account-name", storageAccount,
+    "--auth-mode", "login",
+    "--content-cache-control", DASHBOARD_HTML_CACHE_CONTROL,
+    "--overwrite",
+  ];
 }
 
 /**
@@ -117,14 +130,11 @@ async function deployDashboard({ dashboardPath, projectName, meetingId }) {
 
   // Upload dashboard files
   try {
-    execFileSync("az", [
-      "storage", "blob", "upload-batch",
-      "--source", dashboardDir,
-      "--destination", blobDestination,
-      "--account-name", storageAccount,
-      "--auth-mode", "login",
-      "--overwrite",
-    ], { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], shell: isWindows });
+    execFileSync("az", buildDashboardUploadArgs({
+      dashboardDir,
+      blobDestination,
+      storageAccount,
+    }), { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], shell: isWindows });
   } catch (err) {
     log("error", "Blob upload failed", { stderr: err.stderr });
     throw err;
@@ -376,6 +386,7 @@ async function deployProjectIndex({ projectName, displayName, currentMeeting }) 
 }
 
 module.exports = {
+  buildDashboardUploadArgs,
   checkOutputExists,
   copyToOutputDirectory,
   deployDashboard,
