@@ -290,7 +290,15 @@ run_pipeline() {
         export PASSWORD_PROTECTED="$PASSWORD_PROTECTED"
         export DASHBOARD_PASSWORD="$DASHBOARD_PASSWORD"
         if [ "$PASSWORD_PROTECTED" = "true" ]; then
+            set +e
             node processor/sendNotification.js >/dev/null
+            COMPLETED_NOTIFICATION_EXIT_CODE=$?
+            set -e
+            if [ "$COMPLETED_NOTIFICATION_EXIT_CODE" -ne 0 ]; then
+                log "error" "Completed notification failed for password-protected dashboard"
+                send_failure_notification
+                exit 1
+            fi
         else
             node processor/sendNotification.js >/dev/null || log "warn" "Completed notification failed"
         fi

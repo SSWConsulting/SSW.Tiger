@@ -228,7 +228,6 @@ async function prepareDashboardForDeployment({ dashboardPath, projectName, meeti
   const unlockHtml = renderUnlockPage({
     projectName,
     meetingId,
-    meetingTitle: process.env.MEETING_SUBJECT || "",
     encryptedPayload,
   });
 

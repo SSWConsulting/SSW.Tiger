@@ -4,7 +4,7 @@ function usage() {
   return [
     "Usage:",
     "  npm run tiger:security -- show --dashboard-url <url>",
-    "  npm run tiger:security -- protect --dashboard-url <url> --yes [--meeting-title <title>]",
+    "  npm run tiger:security -- protect --dashboard-url <url> --yes",
     "  npm run tiger:security -- rotate --dashboard-url <url> --yes",
     "  npm run tiger:security -- project set --project <name> --password-protection on|off",
     "",
@@ -127,7 +127,6 @@ async function run(argv = process.argv.slice(2), output = console.log) {
     }
     const result = await manager.protectMeeting({
       ...parseDashboardTarget(flags),
-      meetingTitle: flags["meeting-title"] || "",
       updatedBy: currentUser(),
     });
     output(result.password);
