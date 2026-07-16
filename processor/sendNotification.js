@@ -18,6 +18,8 @@
  *   PROJECT_NAME          - Project name
  *   PARTICIPANTS_JSON     - JSON array of participants [{userId}]
  *   NOTIFICATION_TYPE     - "started", "completed", or "failed"
+ *   PASSWORD_PROTECTED    - "true" when the dashboard requires a password
+ *   DASHBOARD_PASSWORD    - Password for a protected dashboard
  *
  * Output (JSON to stdout):
  *   Success: {"success": true, "recipientCount": N}
@@ -38,6 +40,8 @@ const CONFIG = {
   triggerUrl: process.env.TRIGGER_URL, // URL to manually trigger processing (for "skipped" notifications)
   restartUrl: process.env.RESTART_URL, // URL to restart processing (for "cancelled" and "failed" notifications)
   meetingDuration: process.env.MEETING_DURATION || null, // Pre-formatted duration string (e.g. "23 min", "1 hr 32 min")
+  passwordProtected: process.env.PASSWORD_PROTECTED === "true",
+  dashboardPassword: process.env.DASHBOARD_PASSWORD || "",
 };
 
 function outputResult(result) {
@@ -71,6 +75,11 @@ async function sendViaLogicApp(participants) {
     participants: participants,
     meetingDuration: CONFIG.meetingDuration,
   };
+
+  if (CONFIG.notificationType === "completed" && CONFIG.passwordProtected) {
+    payload.passwordProtected = true;
+    payload.dashboardPassword = CONFIG.dashboardPassword;
+  }
 
   // Include cancelUrl for "started" notifications (allows user to cancel processing)
   if (CONFIG.notificationType === "started" && CONFIG.cancelUrl) {
@@ -129,16 +138,10 @@ async function sendViaLogicApp(participants) {
 
 async function main() {
   try {
-    // Validate required config
-    if (!CONFIG.logicAppUrl) {
-      throw new Error("LOGIC_APP_URL is required");
-    }
-    // DASHBOARD_URL is only required for "completed" notifications
-    if (CONFIG.notificationType === "completed" && !CONFIG.dashboardUrl) {
-      throw new Error("DASHBOARD_URL is required for completed notifications");
-    }
+    validateRequiredConfig(CONFIG);
 
     const participants = parseParticipants();
+    validateParticipantsForNotification(CONFIG, participants);
 
     if (participants.length === 0) {
       log("warn", "No participants to notify, skipping");
@@ -157,8 +160,41 @@ async function main() {
   }
 }
 
+function validateRequiredConfig(config) {
+  if (!config.logicAppUrl) {
+    throw new Error("LOGIC_APP_URL is required");
+  }
+  // DASHBOARD_URL is only required for "completed" notifications
+  if (config.notificationType === "completed" && !config.dashboardUrl) {
+    throw new Error("DASHBOARD_URL is required for completed notifications");
+  }
+  if (
+    config.notificationType === "completed" &&
+    config.passwordProtected &&
+    !String(config.dashboardPassword || "").trim()
+  ) {
+    throw new Error("DASHBOARD_PASSWORD is required for password-protected completed notifications");
+  }
+}
+
+function validateParticipantsForNotification(config, participants) {
+  if (
+    config.notificationType === "completed" &&
+    config.passwordProtected &&
+    participants.length === 0
+  ) {
+    throw new Error("Participants are required for password-protected completed notifications");
+  }
+}
+
 if (require.main === module) {
   main();
 }
 
-module.exports = { sendViaLogicApp, parseParticipants, CONFIG };
+module.exports = {
+  sendViaLogicApp,
+  parseParticipants,
+  validateRequiredConfig,
+  validateParticipantsForNotification,
+  CONFIG,
+};

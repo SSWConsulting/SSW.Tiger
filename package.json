@@ -5,7 +5,8 @@
   "main": "processor/index.js",
   "scripts": {
     "start": "node processor/index.js",
-    "test": "node --test lib/**/*.test.js processor/**/*.test.js"
+    "test": "node --test lib/**/*.test.js processor/**/*.test.js scripts/**/*.test.js",
+    "tiger:security": "node scripts/tiger-security.js"
   },
   "keywords": [
     "meeting",
@@ -17,8 +18,10 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@azure/cosmos": "^4.9.2",
+    "@azure/cosmos": "^4.9.3",
     "@azure/identity": "^4.13.1",
+    "@azure/keyvault-secrets": "^4.10.0",
+    "@azure/storage-blob": "12.27.0",
     "dotenv": "^17.4.2"
   },
   "engines": {

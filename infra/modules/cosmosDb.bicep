@@ -12,6 +12,8 @@ param managedIdentityPrincipalId string
 var accountName = toLower('cosmos-${project}-${environment}')
 var databaseName = 'tiger'
 var containerName = 'meetings'
+var projectPoliciesContainerName = 'projectPolicies'
+var meetingSecurityContainerName = 'meetingSecurity'
 
 // Cosmos DB Account (Serverless)
 resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-11-15' = {
@@ -33,6 +35,7 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-11-15' = {
     consistencyPolicy: {
       defaultConsistencyLevel: 'Session'
     }
+    enableAutomaticFailover: true
     // Key-based auth disabled — code uses DefaultAzureCredential (managed identity)
     disableLocalAuth: true
   }
@@ -49,8 +52,55 @@ resource database 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-11-15
   }
 }
 
-// NOTE: Container is created via post-deploy script (ARM nested resource path fails for sqlContainers)
-// Run: az cosmosdb sql container create --account-name <name> -g <rg> -d tiger -n meetings -p /projectName
+// SQL Containers
+// All containers are partitioned by projectName so project-scoped reads stay efficient.
+resource meetingsContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-11-15' = {
+  parent: database
+  name: containerName
+  properties: {
+    resource: {
+      id: containerName
+      partitionKey: {
+        paths: [
+          '/projectName'
+        ]
+        kind: 'Hash'
+      }
+    }
+  }
+}
+
+resource projectPoliciesContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-11-15' = {
+  parent: database
+  name: projectPoliciesContainerName
+  properties: {
+    resource: {
+      id: projectPoliciesContainerName
+      partitionKey: {
+        paths: [
+          '/projectName'
+        ]
+        kind: 'Hash'
+      }
+    }
+  }
+}
+
+resource meetingSecurityContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-11-15' = {
+  parent: database
+  name: meetingSecurityContainerName
+  properties: {
+    resource: {
+      id: meetingSecurityContainerName
+      partitionKey: {
+        paths: [
+          '/projectName'
+        ]
+        kind: 'Hash'
+      }
+    }
+  }
+}
 
 // Grant managed identity "Cosmos DB Built-in Data Contributor" role
 // This allows read/write without using account keys
@@ -67,4 +117,6 @@ resource cosmosRoleAssignment 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssi
 output endpoint string = cosmosAccount.properties.documentEndpoint
 output accountName string = cosmosAccount.name
 output databaseName string = databaseName
-output containerName string = containerName
+output containerName string = meetingsContainer.name
+output projectPoliciesContainerName string = projectPoliciesContainer.name
+output meetingSecurityContainerName string = meetingSecurityContainer.name

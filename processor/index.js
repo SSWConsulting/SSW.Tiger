@@ -81,7 +81,12 @@ async function processTranscript(transcriptPath, projectSlug) {
   }
 
   // Deploy to Azure Blob Storage
-  const { deployedUrl, dashboardPath: storagePath } = await deployDashboard({
+  const {
+    deployedUrl,
+    dashboardPath: storagePath,
+    passwordProtected,
+    dashboardPassword,
+  } = await deployDashboard({
     dashboardPath: canonicalPath,
     projectName: projectSlug,
     meetingId,
@@ -134,7 +139,24 @@ async function processTranscript(transcriptPath, projectSlug) {
     dashboardPath: canonicalPath,
     outputCopyPath,
     deployedUrl,
+    passwordProtected,
+    dashboardPassword,
   };
+}
+
+async function writeProcessorResult(result) {
+  if (!process.env.PROCESSOR_RESULT_PATH) return;
+
+  const payload = {
+    passwordProtected: !!result.passwordProtected,
+    dashboardPassword: result.dashboardPassword || "",
+  };
+
+  await fs.writeFile(
+    process.env.PROCESSOR_RESULT_PATH,
+    JSON.stringify(payload),
+    "utf-8",
+  );
 }
 
 async function main() {
@@ -157,6 +179,7 @@ async function main() {
 
   try {
     const result = await processTranscript(transcriptPath, projectName);
+    await writeProcessorResult(result);
     console.error(
       JSON.stringify({
         level: "info",

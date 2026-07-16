@@ -37,6 +37,9 @@ param suffix string = take(uniqueString(utcNow()), 6)
 @description('Skip Logic App deployment to preserve Portal configuration')
 param deployLogicApp bool = false
 
+@description('Manage the Key Vault Secrets User assignment. Requires Owner or User Access Administrator.')
+param manageKeyVaultRoleAssignment bool = false
+
 
 var containerImage = 'ghcr.io/${githubOrg}/tiger-processor:${imageTag}'
 
@@ -63,7 +66,7 @@ module kv 'modules/keyVault.bicep' = {
 }
 
 // 3. Key Vault Role Assignment - Grant managed identity access to secrets
-module kvRoleAssignment 'modules/keyVaultRoleAssignment.bicep' = {
+module kvRoleAssignment 'modules/keyVaultRoleAssignment.bicep' = if (manageKeyVaultRoleAssignment) {
   name: 'provision-keyvault-role-assignment-${suffix}'
   params: {
     keyVaultName: kv.outputs.name
@@ -91,7 +94,6 @@ module dashboardStorage 'modules/dashboardStorage.bicep' = {
     environment: environment
     costCategoryTag: costCategoryTag
     location: location
-    managedIdentityPrincipalId: id.outputs.principalId
   }
 }
 
@@ -161,6 +163,7 @@ module functionApp 'modules/functionApp.bicep' = {
     location: location
     storageAccountName: storage.outputs.name
     keyVaultName: kv.outputs.name
+    keyVaultUrl: kv.outputs.keyVaultUrl
     containerAppJobName: containerApp.outputs.jobName
     containerAppJobResourceGroup: resourceGroup().name
     containerAppJobImage: containerImage
@@ -211,6 +214,8 @@ output cosmosDb object = {
   accountName: cosmosDb.outputs.accountName
   databaseName: cosmosDb.outputs.databaseName
   containerName: cosmosDb.outputs.containerName
+  projectPoliciesContainerName: cosmosDb.outputs.projectPoliciesContainerName
+  meetingSecurityContainerName: cosmosDb.outputs.meetingSecurityContainerName
 }
 
 output monitoring object = {

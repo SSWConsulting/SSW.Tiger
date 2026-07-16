@@ -8,6 +8,7 @@ param location string = resourceGroup().location
 param costCategoryTag object
 param storageAccountName string
 param keyVaultName string
+param keyVaultUrl string
 param containerAppJobName string
 param containerAppJobResourceGroup string
 param containerAppJobImage string
@@ -116,6 +117,8 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'DASHBOARD_BASE_URL', value: dashboardBaseUrl }
         // Passed through to Container App Job at start time
         { name: 'COSMOS_ENDPOINT', value: cosmosEndpoint }
+        { name: 'COSMOS_PROJECT_POLICIES_CONTAINER', value: 'projectPolicies' }
+        { name: 'COSMOS_MEETING_SECURITY_CONTAINER', value: 'meetingSecurity' }
         { name: 'CLAUDE_MODEL', value: claudeModel }
         // Subscription ID (for Container App API calls)
         { name: 'SUBSCRIPTION_ID', value: subscription().subscriptionId }
@@ -133,6 +136,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
           name: 'WEBHOOK_CLIENT_STATE'
           value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=webhook-client-state)'
         }
+        { name: 'KEY_VAULT_URL', value: keyVaultUrl }
       ]
     }
   }

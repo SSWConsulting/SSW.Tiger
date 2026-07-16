@@ -259,6 +259,24 @@ The dashboard follows [SSW design guidelines](https://www.ssw.com.au/rules/set-d
 ### `CLAUDE.md`
 Contains instructions for Claude on how to process transcripts and generate dashboards.
 
+### Dashboard Security CLI
+
+Local admin CLI:
+
+```powershell
+npm run tiger:security -- <command>
+```
+
+Commands:
+
+```powershell
+npm run tiger:security -- project set --project <project> --password-protection on --env-file .env.test
+npm run tiger:security -- project set --project <project> --password-protection off --env-file .env.test
+npm run tiger:security -- show --dashboard-url <dashboard-url> --env-file .env.test
+npm run tiger:security -- show --project <project> --meeting-id <meeting-id> --env-file .env.test
+npm run tiger:security -- rotate --dashboard-url <dashboard-url> --yes --env-file .env.test
+```
+
 ## 📝 Example Output
 
 After processing a transcript, you'll get:

@@ -16,8 +16,18 @@ const fs = require("fs").promises;
 const os = require("os");
 const path = require("path");
 const { log } = require("../lib/logger");
-const { upsertMeeting, queryMeetings } = require("../lib/cosmosClient");
+const { upsertMeeting, queryMeetings, getProjectPolicy, upsertMeetingSecurity } = require("../lib/cosmosClient");
 const { mergeCurrentMeeting, renderProjectIndex } = require("./projectIndex");
+const {
+  generateDashboardPassword,
+  encryptDashboardHtml,
+  renderUnlockPage,
+} = require("../lib/dashboardEncryption");
+const {
+  getPasswordEncryptionKey,
+  encryptDashboardPassword,
+} = require("../lib/keyVaultPasswords");
+const { DASHBOARD_HTML_CACHE_CONTROL } = require("../lib/dashboardBlob");
 
 /**
  * Check that the dashboard HTML exists at the canonical location.
@@ -60,6 +70,18 @@ async function copyToOutputDirectory({ sourcePath, outputDir, projectName, meeti
   }
 }
 
+function buildDashboardUploadArgs({ dashboardDir, blobDestination, storageAccount }) {
+  return [
+    "storage", "blob", "upload-batch",
+    "--source", dashboardDir,
+    "--destination", blobDestination,
+    "--account-name", storageAccount,
+    "--auth-mode", "login",
+    "--content-cache-control", DASHBOARD_HTML_CACHE_CONTROL,
+    "--overwrite",
+  ];
+}
+
 /**
  * Deploy dashboard to Azure Blob Storage.
  *
@@ -71,7 +93,12 @@ async function deployDashboard({ dashboardPath, projectName, meetingId }) {
     throw new Error("DASHBOARD_STORAGE_ACCOUNT not set");
   }
 
-  const dashboardDir = path.dirname(dashboardPath);
+  const security = await prepareDashboardForDeployment({
+    dashboardPath,
+    projectName,
+    meetingId,
+  });
+  const dashboardDir = security.uploadDir || path.dirname(dashboardPath);
 
   const blobDestination = `$web/${projectName}/${meetingId}`;
 
@@ -103,14 +130,11 @@ async function deployDashboard({ dashboardPath, projectName, meetingId }) {
 
   // Upload dashboard files
   try {
-    execFileSync("az", [
-      "storage", "blob", "upload-batch",
-      "--source", dashboardDir,
-      "--destination", blobDestination,
-      "--account-name", storageAccount,
-      "--auth-mode", "login",
-      "--overwrite",
-    ], { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], shell: isWindows });
+    execFileSync("az", buildDashboardUploadArgs({
+      dashboardDir,
+      blobDestination,
+      storageAccount,
+    }), { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], shell: isWindows });
   } catch (err) {
     log("error", "Blob upload failed", { stderr: err.stderr });
     throw err;
@@ -135,7 +159,117 @@ async function deployDashboard({ dashboardPath, projectName, meetingId }) {
   const storagePath = `${projectName}/${meetingId}`;
   const deployedUrl = `https://${host}/${storagePath}`;
   log("info", "Dashboard deployed", { url: deployedUrl });
-  return { deployedUrl, dashboardPath: storagePath };
+  return {
+    deployedUrl,
+    dashboardPath: storagePath,
+    passwordProtected: security.passwordProtected,
+    dashboardPassword: security.dashboardPassword,
+  };
+}
+
+async function prepareDashboardForDeployment({ dashboardPath, projectName, meetingId }) {
+  const requirePolicy =
+    process.env.REQUIRE_DASHBOARD_SECURITY_POLICY === "true" ||
+    process.env.NODE_ENV === "production";
+
+  log("info", "Evaluating dashboard security policy", {
+    projectName,
+    meetingId,
+    requirePolicy,
+    hasCosmosEndpoint: !!process.env.COSMOS_ENDPOINT,
+    projectPoliciesContainer: process.env.COSMOS_PROJECT_POLICIES_CONTAINER || "projectPolicies",
+    meetingSecurityContainer: process.env.COSMOS_MEETING_SECURITY_CONTAINER || "meetingSecurity",
+  });
+
+  if (!process.env.COSMOS_ENDPOINT) {
+    if (requirePolicy) {
+      throw new Error(
+        "COSMOS_ENDPOINT is required to evaluate dashboard security policy",
+      );
+    }
+    log("warn", "COSMOS_ENDPOINT not set, deploying public dashboard", {
+      projectName,
+      meetingId,
+    });
+    return { passwordProtected: false };
+  }
+
+  let policy = null;
+  try {
+    policy = await getProjectPolicy(projectName, {
+      requireContainer: requirePolicy,
+    });
+  } catch (err) {
+    if (requirePolicy) {
+      throw new Error(
+        `Failed to read dashboard security policy for project '${projectName}': ${err.message}`,
+      );
+    }
+    log("warn", "Could not read project security policy, deploying public dashboard", {
+      projectName,
+      meetingId,
+      error: err.message,
+    });
+    return { passwordProtected: false };
+  }
+
+  log("info", "Dashboard security policy result", {
+    projectName,
+    meetingId,
+    policyFound: !!policy,
+    policyId: policy?.id,
+    policyProjectName: policy?.projectName,
+    passwordProtectionEnabled: !!policy?.passwordProtectionEnabled,
+  });
+
+  if (!policy?.passwordProtectionEnabled) {
+    log("info", "Deploying public dashboard because password protection is not enabled", {
+      projectName,
+      meetingId,
+      policyFound: !!policy,
+      passwordProtectionEnabled: policy?.passwordProtectionEnabled ?? null,
+    });
+    return { passwordProtected: false };
+  }
+
+  const dashboardHtml = await fs.readFile(dashboardPath, "utf-8");
+  const password = generateDashboardPassword();
+  const encryptedPayload = encryptDashboardHtml(dashboardHtml, password);
+  const unlockHtml = renderUnlockPage({
+    projectName,
+    meetingId,
+    encryptedPayload,
+  });
+
+  const uploadDir = await fs.mkdtemp(path.join(os.tmpdir(), `tiger-secure-dashboard-${projectName}-${meetingId}-`));
+  await fs.writeFile(path.join(uploadDir, "index.html"), unlockHtml, "utf-8");
+
+  const passwordEncryptionKey = await getPasswordEncryptionKey();
+  const passwordEncryption = encryptDashboardPassword(
+    password,
+    passwordEncryptionKey,
+  );
+
+  await upsertMeetingSecurity({
+    projectName,
+    meetingId,
+    passwordEnabled: true,
+    passwordEncryption,
+    encryptedAt: new Date().toISOString(),
+    updatedBy: "processor",
+  });
+
+  log("info", "Prepared password-protected dashboard", {
+    projectName,
+    meetingId,
+    keySecretName: passwordEncryption.keySecretName,
+  });
+
+  return {
+    passwordProtected: true,
+    dashboardPassword: password,
+    uploadDir,
+  };
 }
 
 /**
@@ -251,4 +385,12 @@ async function deployProjectIndex({ projectName, displayName, currentMeeting }) 
   return indexUrl;
 }
 
-module.exports = { checkOutputExists, copyToOutputDirectory, deployDashboard, persistToCosmos, deployProjectIndex };
+module.exports = {
+  buildDashboardUploadArgs,
+  checkOutputExists,
+  copyToOutputDirectory,
+  deployDashboard,
+  persistToCosmos,
+  deployProjectIndex,
+  prepareDashboardForDeployment,
+};

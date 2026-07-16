@@ -232,6 +232,9 @@ run_pipeline() {
     # stderr = logs (real-time), stdout = machine output (captured)
     log "info" "Processing transcript with Claude..."
 
+    PROCESSOR_RESULT_FILE=$(mktemp /tmp/tiger-processor-result.XXXXXX.json)
+    export PROCESSOR_RESULT_PATH="$PROCESSOR_RESULT_FILE"
+
     set +e
     # stderr flows through for real-time display
     # stdout (only DEPLOYED_URL) captured to variable
@@ -250,8 +253,26 @@ run_pipeline() {
         exit 1
     fi
 
-    # Extract deployed URL from stdout (minimal data)
+    # Extract deployed URL from stdout and optional security metadata from a private result file.
     DEPLOYED_URL=$(echo "$PROCESSOR_STDOUT" | grep -oP 'DEPLOYED_URL=\K[^\s"]+' | head -1)
+    PASSWORD_PROTECTED=""
+    DASHBOARD_PASSWORD=""
+    if [ ! -s "$PROCESSOR_RESULT_FILE" ]; then
+        log "error" "Processor result metadata missing"
+        rm -f "$PROCESSOR_RESULT_FILE"
+        unset PROCESSOR_RESULT_PATH
+        send_failure_notification
+        exit 1
+    fi
+    PASSWORD_PROTECTED=$(node -pe "JSON.parse(require('fs').readFileSync(process.env.PROCESSOR_RESULT_PATH, 'utf8')).passwordProtected ? 'true' : ''" 2>/dev/null || echo "__parse_error__")
+    DASHBOARD_PASSWORD=$(node -pe "JSON.parse(require('fs').readFileSync(process.env.PROCESSOR_RESULT_PATH, 'utf8')).dashboardPassword || ''" 2>/dev/null || echo "__parse_error__")
+    rm -f "$PROCESSOR_RESULT_FILE"
+    unset PROCESSOR_RESULT_PATH
+    if [ "$PASSWORD_PROTECTED" = "__parse_error__" ] || [ "$DASHBOARD_PASSWORD" = "__parse_error__" ]; then
+        log "error" "Processor result metadata is invalid"
+        send_failure_notification
+        exit 1
+    fi
 
     if [ -z "$DEPLOYED_URL" ]; then
         log "error" "Failed to extract deployed URL"
@@ -266,7 +287,21 @@ run_pipeline() {
         log "info" "Sending completed notification..."
         export NOTIFICATION_TYPE="completed"
         export DASHBOARD_URL="$DEPLOYED_URL"
-        node processor/sendNotification.js >/dev/null || log "warn" "Completed notification failed"
+        export PASSWORD_PROTECTED="$PASSWORD_PROTECTED"
+        export DASHBOARD_PASSWORD="$DASHBOARD_PASSWORD"
+        if [ "$PASSWORD_PROTECTED" = "true" ]; then
+            set +e
+            node processor/sendNotification.js >/dev/null
+            COMPLETED_NOTIFICATION_EXIT_CODE=$?
+            set -e
+            if [ "$COMPLETED_NOTIFICATION_EXIT_CODE" -ne 0 ]; then
+                log "error" "Completed notification failed for password-protected dashboard"
+                send_failure_notification
+                exit 1
+            fi
+        else
+            node processor/sendNotification.js >/dev/null || log "warn" "Completed notification failed"
+        fi
     fi
 }
 
