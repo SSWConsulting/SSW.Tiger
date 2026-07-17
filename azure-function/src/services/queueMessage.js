@@ -63,24 +63,25 @@ function buildDedupKey(data, now = Date.now()) {
 }
 
 function buildJobEnvironment(data, runtimeEnv, tracking = {}) {
-  const dynamic = data.sourceType === "uploadedTranscript"
-    ? [
-        { name: "TRANSCRIPT_SOURCE_TYPE", value: "uploadedTranscript" },
-        { name: "UPLOAD_REQUEST_ID", value: data.requestId },
-        { name: "TRANSCRIPT_STORAGE_ACCOUNT", value: data.source.storageAccount },
-        { name: "TRANSCRIPT_STORAGE_CONTAINER", value: data.source.containerName },
-        { name: "TRANSCRIPT_BLOB_NAME", value: data.source.blobName },
-        { name: "UPLOAD_FILENAME", value: data.source.fileName },
-        { name: "UPLOAD_PROJECT_NAME", value: data.project.displayName },
-        { name: "UPLOAD_PROJECT_SLUG", value: data.project.slug },
-      ]
-    : [
-        { name: "TRANSCRIPT_SOURCE_TYPE", value: "graphTranscript" },
-        { name: "GRAPH_USER_ID", value: data.userId },
-        { name: "GRAPH_MEETING_ID", value: data.meetingId },
-        { name: "GRAPH_TRANSCRIPT_ID", value: data.transcriptId },
-        ...(data.skipSubjectFilter ? [{ name: "SKIP_SUBJECT_FILTER", value: "true" }] : []),
-      ];
+  const dynamic =
+    data.sourceType === "uploadedTranscript"
+      ? [
+          { name: "TRANSCRIPT_SOURCE_TYPE", value: "uploadedTranscript" },
+          { name: "UPLOAD_REQUEST_ID", value: data.requestId },
+          { name: "TRANSCRIPT_STORAGE_ACCOUNT", value: data.source.storageAccount },
+          { name: "TRANSCRIPT_STORAGE_CONTAINER", value: data.source.containerName },
+          { name: "TRANSCRIPT_BLOB_NAME", value: data.source.blobName },
+          { name: "UPLOAD_FILENAME", value: data.source.fileName },
+          { name: "UPLOAD_PROJECT_NAME", value: data.project.displayName },
+          { name: "UPLOAD_PROJECT_SLUG", value: data.project.slug },
+        ]
+      : [
+          { name: "TRANSCRIPT_SOURCE_TYPE", value: "graphTranscript" },
+          { name: "GRAPH_USER_ID", value: data.userId },
+          { name: "GRAPH_MEETING_ID", value: data.meetingId },
+          { name: "GRAPH_TRANSCRIPT_ID", value: data.transcriptId },
+          ...(data.skipSubjectFilter ? [{ name: "SKIP_SUBJECT_FILTER", value: "true" }] : []),
+        ];
 
   return [
     ...dynamic,
@@ -99,8 +100,17 @@ function buildJobEnvironment(data, runtimeEnv, tracking = {}) {
     { name: "GRAPH_TENANT_ID", secretRef: "graph-tenant-id" },
     { name: "LOGIC_APP_URL", secretRef: "logic-app-url" },
     { name: "COSMOS_ENDPOINT", value: runtimeEnv.COSMOS_ENDPOINT || "" },
-    { name: "COSMOS_PROJECT_POLICIES_CONTAINER", value: runtimeEnv.COSMOS_PROJECT_POLICIES_CONTAINER || "projectPolicies" },
-    { name: "COSMOS_MEETING_SECURITY_CONTAINER", value: runtimeEnv.COSMOS_MEETING_SECURITY_CONTAINER || "meetingSecurity" },
+    {
+      name: "COSMOS_PROJECT_POLICIES_CONTAINER",
+      value: runtimeEnv.COSMOS_PROJECT_POLICIES_CONTAINER || "projectPolicies",
+    },
+    {
+      name: "COSMOS_MEETING_SECURITY_CONTAINER",
+      value: runtimeEnv.COSMOS_MEETING_SECURITY_CONTAINER || "meetingSecurity",
+    },
+    // Must match the Portal API's submissions container so upload status write-back
+    // patches the same records the Portal API created.
+    { name: "COSMOS_SUBMISSIONS_CONTAINER", value: runtimeEnv.COSMOS_SUBMISSIONS_CONTAINER || "submissions" },
     { name: "CLAUDE_MODEL", value: runtimeEnv.CLAUDE_MODEL || "" },
   ];
 }

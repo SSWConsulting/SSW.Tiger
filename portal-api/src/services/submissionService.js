@@ -45,6 +45,10 @@ function createSubmissionService({
 
       // History record (owner + status) — written before the queue publish so a
       // publish failure can roll it back alongside the blob.
+      // KNOWN LIMITATION: a hard process kill (host recycle/OOM) between create
+      // and a successful publish can leave an orphan "accepted" record with no
+      // queue message. Rare; the intended remedy is a periodic reconciliation
+      // sweep (stale "accepted" > N min → "failed"), not in scope here.
       if (store) {
         const submittedAtIso = submittedAt.toISOString();
         try {

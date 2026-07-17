@@ -12,8 +12,10 @@ const devPrincipal: ClientPrincipal | null = import.meta.env.DEV
   ? { identityProvider: "dev", userId: "dev-user", userDetails: "dev@ssw.com.au", userRoles: ["authenticated"] }
   : null;
 
-const client = new SubmissionClient(new SameOriginRequestAdapter());
 const auth = new SwaAuthClient(devPrincipal);
+const client = new SubmissionClient(new SameOriginRequestAdapter(), undefined, () =>
+  window.location.assign(auth.loginUrl(window.location.pathname)),
+);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

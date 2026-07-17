@@ -58,6 +58,10 @@ handle_termination() {
     fi
 
     log "warn" "$signal_name signal received"
+    # Non-cancellation termination (job timeout, eviction, scale-in): mark an
+    # uploaded submission failed so it doesn't sit "Processing" forever in the
+    # portal. No-op for the Graph path. Best effort; must not block exit.
+    update_submission_status "failed" || true
     exit "$exit_code"
 }
 

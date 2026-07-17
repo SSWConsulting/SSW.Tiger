@@ -49,7 +49,11 @@ export class SubmissionClient {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 120_000);
     try {
-      const response = await fetch(this.endpoint, { ...init, redirect: "manual", signal: init.signal ?? controller.signal });
+      const response = await fetch(this.endpoint, {
+        ...init,
+        redirect: "manual",
+        signal: init.signal ?? controller.signal,
+      });
       if (this.isAuthChallenge(response)) {
         this.onAuthRequired?.();
         throw new SubmissionError("Your session has expired. Please sign in again.", "unauthenticated");
@@ -80,9 +84,13 @@ export class SubmissionClient {
     const init = await this.adapter.prepare({ method: "GET" });
     let response: Response;
     try {
-      response = await fetch(this.endpoint, init);
+      response = await fetch(this.endpoint, { ...init, redirect: "manual" });
     } catch {
       throw new SubmissionError("Could not load your dashboards. Please try again.", "network_error");
+    }
+    if (this.isAuthChallenge(response)) {
+      this.onAuthRequired?.();
+      throw new SubmissionError("Your session has expired. Please sign in again.", "unauthenticated");
     }
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {

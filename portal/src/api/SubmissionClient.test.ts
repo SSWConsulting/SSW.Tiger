@@ -32,4 +32,15 @@ describe("SubmissionClient", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
     await expect(new SubmissionClient(adapter).submit("Tiger", file)).rejects.toMatchObject({ code: "network_error" });
   });
+
+  it("triggers re-login on an auth challenge instead of parsing HTML", async () => {
+    // redirect:"manual" surfaces the SWA login 302 as an opaqueredirect.
+    const opaque = { type: "opaqueredirect", status: 0, json: async () => ({}) } as unknown as Response;
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(opaque));
+    const onAuthRequired = vi.fn();
+    await expect(new SubmissionClient(adapter, undefined, onAuthRequired).list()).rejects.toMatchObject({
+      code: "unauthenticated",
+    });
+    expect(onAuthRequired).toHaveBeenCalledOnce();
+  });
 });

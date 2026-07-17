@@ -5,17 +5,7 @@ const { createSubmissionService } = require("../services/submissionService");
 const { createSubmissionStore } = require("../services/submissionStore");
 const { MAX_TRANSCRIPT_BYTES, SubmissionValidationError } = require("../services/submissionValidation");
 const { createSubmissionActorResolver } = require("../services/submissionActor");
-
-function json(status, body) {
-  return {
-    status,
-    jsonBody: body,
-    headers: {
-      "Cache-Control": "no-store",
-      "Content-Type": "application/json; charset=utf-8",
-    },
-  };
-}
+const { json } = require("../http");
 
 function createSubmitTranscriptHandler({ service, actorResolver = createSubmissionActorResolver() } = {}) {
   return async function submitTranscript(request, context) {
@@ -78,19 +68,27 @@ function createDefaultService() {
   });
 }
 
+// Memoize the handler (and its Blob/Queue/Cosmos clients + managed-identity
+// credential) at module scope so they are reused across invocations instead of
+// rebuilt — and re-authenticated to IMDS — on every request.
+let _handler = null;
+function getHandler() {
+  if (!_handler) _handler = createSubmitTranscriptHandler({ service: createDefaultService() });
+  return _handler;
+}
+
 // authLevel is "anonymous" because this app sits behind Static Web Apps: SWA
 // forwards the trusted `x-ms-client-principal` header but does NOT inject a
 // function key (that is a SWA managed-functions behaviour, not a linked-backend
-// one). The trust boundary is enforced at the platform level — the app must be
-// reachable ONLY via SWA (access restrictions) so the principal header can't be
-// forged by a direct caller. Identity is resolved by the actor resolver, never
-// from request fields.
+// one). The trust boundary is the auto-provisioned "Azure Static Web Apps
+// (Linked)" EasyAuth provider on this app, which rejects any request not proxied
+// through SWA — verified post-deploy (infra/scripts/portal-post-deploy.sh §2).
+// Identity is resolved by the actor resolver, never from request fields.
 app.http("SubmitTranscript", {
   methods: ["POST"],
   route: "v1/submissions",
   authLevel: "anonymous",
-  handler: async (request, context) =>
-    createSubmitTranscriptHandler({ service: createDefaultService() })(request, context),
+  handler: (request, context) => getHandler()(request, context),
 });
 
 module.exports = { createSubmitTranscriptHandler, createDefaultService };

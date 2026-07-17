@@ -1,18 +1,21 @@
 /**
- * Resolves the authenticated actor from the SWA / Easy Auth `x-ms-client-principal`
- * header. The platform base64-encodes a JSON principal and (critically) strips any
- * client-supplied copy of this header, so a value present here is trustworthy —
- * PROVIDED the Function is only reachable through SWA. Keep authLevel:"function"
- * so the Function key blocks direct, header-forging calls.
+ * Resolves the authenticated actor from the SWA `x-ms-client-principal` header.
+ * SWA base64-encodes a JSON principal and injects it at its edge, so a value here
+ * is trustworthy ONLY because the app is reachable exclusively through SWA: the
+ * "Azure Static Web Apps (Linked)" EasyAuth provider (auto-provisioned when the
+ * backend is linked) rejects any request not proxied by SWA, which is what makes
+ * the anonymous functions safe against forged headers. Functions are therefore
+ * authLevel:"anonymous" — a linked backend gets no function key. That boundary is
+ * a deploy-time control; verify it with infra/scripts/portal-post-deploy.sh §2.
  *
  * We capture a PORTABLE identity (subject + provider + email), not just the
  * provider-specific opaque userId, so future project-admin grants can key off a
  * stable email/UPN. Never accept actor identity from multipart form fields.
  */
 
-// Fallback identity for the current function-key path (no logged-in user, e.g.
-// direct key call in prod or local dev). Shape stays compatible with the default
-// actor in submissionService.
+// Fallback identity when no SWA principal header is present (local dev, or a
+// direct call the platform boundary should already reject). Shape stays
+// compatible with the default actor in submissionService.
 const SERVICE_ACTOR = Object.freeze({
   type: "service",
   subject: "function-key",

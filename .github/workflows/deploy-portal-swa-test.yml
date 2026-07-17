@@ -14,6 +14,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # staticwebapp.config.json ships a placeholder issuer; substitute the real
+      # tenant before the build or every /.auth/login/aad gets invalid-issuer.
+      - name: Inject SSW tenant ID into SWA auth config
+        env:
+          SSW_TENANT_ID: ${{ vars.SSW_TENANT_ID }}
+        run: |
+          if [ -z "$SSW_TENANT_ID" ]; then
+            echo "::error::Repo variable SSW_TENANT_ID is not set — refusing to deploy a broken login."
+            exit 1
+          fi
+          sed -i "s|REPLACE_WITH_SSW_TENANT_ID|${SSW_TENANT_ID}|" portal/public/staticwebapp.config.json
+          if grep -q REPLACE_WITH_SSW_TENANT_ID portal/public/staticwebapp.config.json; then
+            echo "::error::tenant placeholder was not substituted"; exit 1
+          fi
+
       - name: Deploy to Static Web Apps
         uses: Azure/static-web-apps-deploy@v1
         with:

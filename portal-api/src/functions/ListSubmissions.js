@@ -1,17 +1,7 @@
 const { app } = require("@azure/functions");
 const { createSubmissionStore } = require("../services/submissionStore");
 const { createSubmissionActorResolver } = require("../services/submissionActor");
-
-function json(status, body) {
-  return {
-    status,
-    jsonBody: body,
-    headers: {
-      "Cache-Control": "no-store",
-      "Content-Type": "application/json; charset=utf-8",
-    },
-  };
-}
+const { json } = require("../http");
 
 function createListSubmissionsHandler({ store, actorResolver = createSubmissionActorResolver() } = {}) {
   return async function listSubmissions(request, context) {
@@ -42,12 +32,19 @@ function createListSubmissionsHandler({ store, actorResolver = createSubmissionA
   };
 }
 
+// Memoize the handler + its Cosmos client/credential at module scope (see
+// SubmitTranscript for the rationale).
+let _handler = null;
+function getHandler() {
+  if (!_handler) _handler = createListSubmissionsHandler({ store: createSubmissionStore() });
+  return _handler;
+}
+
 app.http("ListSubmissions", {
   methods: ["GET"],
   route: "v1/submissions",
   authLevel: "anonymous",
-  handler: async (request, context) =>
-    createListSubmissionsHandler({ store: createSubmissionStore() })(request, context),
+  handler: (request, context) => getHandler()(request, context),
 });
 
 module.exports = { createListSubmissionsHandler };
