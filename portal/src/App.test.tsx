@@ -1,37 +1,35 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "./App";
+import type { AuthClient, ClientPrincipal } from "./api/authClient";
 
-function makeClient(submit = vi.fn()) {
-  return { submit } as never;
+const principal: ClientPrincipal = {
+  identityProvider: "aad",
+  userId: "u1",
+  userDetails: "willow@ssw.com.au",
+  userRoles: ["authenticated"],
+};
+
+function makeAuth(me: ClientPrincipal | null): AuthClient {
+  return {
+    me: vi.fn().mockResolvedValue(me),
+    loginUrl: () => "/.auth/login/aad",
+    logoutUrl: () => "/.auth/logout",
+  };
 }
 
-describe("Upload UI", () => {
-  it("validates required input without calling the client", async () => {
-    const submit = vi.fn();
-    render(<App client={makeClient(submit)} />);
-    fireEvent.click(screen.getByRole("button", { name: /generate dashboard/i }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Enter a project name");
-    expect(submit).not.toHaveBeenCalled();
+const client = { submit: vi.fn(), list: vi.fn().mockResolvedValue([]) } as never;
+
+describe("App shell", () => {
+  it("shows the sign-in gate when there is no principal", async () => {
+    render(<App client={client} auth={makeAuth(null)} />);
+    expect(await screen.findByRole("link", { name: /sign in with ssw/i })).toBeInTheDocument();
   });
 
-  it("submits through SubmissionClient and shows requestId", async () => {
-    const submit = vi.fn().mockResolvedValue({ requestId: "request-123", status: "accepted" });
-    render(<App client={makeClient(submit)} />);
-    fireEvent.change(screen.getByLabelText("Project name"), { target: { value: "Tiger" } });
-    const file = new File(["WEBVTT\n\nhello"], "meeting.vtt", { type: "text/vtt" });
-    fireEvent.change(screen.getByLabelText("Choose transcript file"), { target: { files: [file] } });
-    fireEvent.click(screen.getByRole("button", { name: /generate dashboard/i }));
-    await waitFor(() => expect(submit).toHaveBeenCalledWith("Tiger", file));
-    expect(await screen.findByText("request-123")).toBeInTheDocument();
-  });
-
-  it("shows an actionable API error", async () => {
-    const submit = vi.fn().mockRejectedValue(new Error("The transcript must start with WEBVTT."));
-    render(<App client={makeClient(submit)} />);
-    fireEvent.change(screen.getByLabelText("Project name"), { target: { value: "Tiger" } });
-    fireEvent.change(screen.getByLabelText("Choose transcript file"), { target: { files: [new File(["bad"], "meeting.vtt")] } });
-    fireEvent.click(screen.getByRole("button", { name: /generate dashboard/i }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("WEBVTT");
+  it("renders the authenticated shell with the upload view and nav", async () => {
+    render(<App client={client} auth={makeAuth(principal)} />);
+    expect(await screen.findByRole("button", { name: /^my dashboards$/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /upload transcript/i })).toBeInTheDocument();
+    expect(screen.getByText("willow@ssw.com.au")).toBeInTheDocument();
   });
 });

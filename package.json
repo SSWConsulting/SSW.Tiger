@@ -6,7 +6,10 @@
   "scripts": {
     "start": "node processor/index.js",
     "test": "node --test lib/**/*.test.js processor/**/*.test.js scripts/**/*.test.js",
-    "tiger:security": "node scripts/tiger-security.js"
+    "tiger:security": "node scripts/tiger-security.js",
+    "lint": "biome check",
+    "lint:fix": "biome check --write",
+    "format": "biome format --write"
   },
   "keywords": [
     "meeting",
@@ -26,5 +29,8 @@
   },
   "engines": {
     "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.4"
   }
 }

@@ -5,4 +5,3 @@ require("./RenewSubscription");
 require("./CancelProcessing");
 require("./TriggerProcessing");
 require("./RestartProcessing");
-require("./SubmitTranscript");

@@ -1,187 +1,95 @@
+@import "tailwindcss";
+
 /* ============================================================
-   Parrot portal — SSW Design System
-   Tokens + component chrome mirror templates/dashboard.html so the
-   upload page and the generated dashboards read as one product.
+   Parrot portal — SSW Design System theme
+   Colours, fonts, radii and shadows are ported VERBATIM from the
+   dashboard's tailwind.config (templates/dashboard.html) so the upload
+   portal and the generated dashboards share one utility vocabulary
+   (text-ssw-charcoal, bg-ssw-red, rounded-ds, shadow-ds-raised, ...).
    ============================================================ */
-:root {
-  /* DS semantic tokens (verbatim from the dashboard template) */
-  --primary: #cd4242;
-  --primary-hover: #bd3b3b;
-  --primary-foreground: #ffffff;
-  --secondary: #333333;
-  --success: #067957;
-  --destructive: #dc2828;
-  --text-strong: #000000e6;
-  --text-error: #c92a2a;
-  --text-success: #067957;
+@theme {
+  /* DS semantic tokens */
+  --color-primary: #cd4242;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #333333;
+  --color-secondary-foreground: #ffffff;
+  --color-success: #067957;
+  --color-warning: #8f6c19;
+  --color-destructive: #dc2828;
+  --color-info: #4e19a9;
+  --color-billable: #01b8aa;
 
-  --border: #0000001a;
-  --card: #ffffff;
-  --foreground: #000000e6;
-  --muted-foreground: #0009;
-  --background-base: #ffffff;
-  --background-sunken: #fafafa;
+  /* SSW Primary Red (DS primary #CD4242) */
+  --color-ssw-red: #cd4242;
+  --color-ssw-red-50: #fce9e9;
+  --color-ssw-red-100: #f8d4d4;
+  --color-ssw-red-200: #f1a9a9;
+  --color-ssw-red-300: #e97d7d;
+  --color-ssw-red-400: #e25252;
+  --color-ssw-red-500: #cd4242;
+  --color-ssw-red-600: #a33636;
+  --color-ssw-red-700: #7a2828;
+  --color-ssw-red-800: #521b1b;
+  --color-ssw-red-900: #290d0d;
 
-  --fill-weak: #0000000a;
-  --shadow-raised: 0px 2px 4px 0px #00000014, 0px 4px 8px 0px #0000000a;
-  --shadow-overlay: 0px 8px 8px 0px #0000000a, 0px 20px 24px 0px #00000014;
+  /* SSW Charcoal (DS secondary #333333) */
+  --color-ssw-charcoal: #333333;
+  --color-ssw-charcoal-50: #f5f5f5;
+  --color-ssw-charcoal-100: #e8e8e8;
+  --color-ssw-charcoal-200: #d1d1d1;
+  --color-ssw-charcoal-300: #b0b0b0;
+  --color-ssw-charcoal-400: #888888;
+  --color-ssw-charcoal-500: #666666;
+  --color-ssw-charcoal-600: #4d4d4d;
+  --color-ssw-charcoal-700: #333333;
+  --color-ssw-charcoal-800: #1a1a1a;
+  --color-ssw-charcoal-900: #0d0d0d;
 
-  --radius-sm: 4px;
-  --radius-lg: 8px;
+  /* SSW Gray */
+  --color-ssw-gray-50: #fafafa;
+  --color-ssw-gray-100: #f4f4f5;
+  --color-ssw-gray-200: #e4e4e7;
+  --color-ssw-gray-300: #d4d4d8;
+  --color-ssw-gray-400: #a1a1aa;
+  --color-ssw-gray-500: #71717a;
+  --color-ssw-gray-600: #52525b;
+  --color-ssw-gray-700: #3f3f46;
+  --color-ssw-gray-800: #27272a;
+  --color-ssw-gray-900: #18181b;
 
-  font-family: Inter, 'Helvetica Neue', Helvetica, ui-sans-serif, system-ui, sans-serif;
-  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
-  color: var(--foreground);
-  background: var(--background-sunken);
-  font-synthesis: none;
-  -webkit-font-smoothing: antialiased;
-}
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  min-width: 320px;
-  background: radial-gradient(circle at 88% -6%, rgba(205, 66, 66, .07), transparent 30rem), var(--background-sunken);
-}
+  --font-sans: Inter, "Helvetica Neue", Helvetica, ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
-/* ---------- DS top bar (mirrors the dashboard's sticky header) ---------- */
-.topbar {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  background: rgba(255, 255, 255, .9);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--border);
-}
-.topbar-inner {
-  width: min(1120px, calc(100% - 40px));
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 0;
-}
-.brand-logo { height: 30px; width: auto; color: var(--secondary); }
-.brand-name { font-weight: 700; font-size: 16px; letter-spacing: -.02em; color: var(--secondary); }
+  --radius-ds: 8px;
+  --radius-ds-sm: 4px;
 
-main {
-  width: min(1120px, calc(100% - 40px));
-  margin: 0 auto;
-  min-height: calc(100vh - 57px);
-  padding: 20px 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
+  --shadow-ds-raised: 0px 2px 4px 0px #00000014, 0px 4px 8px 0px #0000000a;
+  --shadow-ds-overlay: 0px 8px 8px 0px #0000000a, 0px 20px 24px 0px #00000014;
 }
 
-/* ---------- Two-column stage: hero (left) + upload (right) ---------- */
-.stage {
-  display: grid;
-  grid-template-columns: 1fr minmax(0, 600px);
-  gap: clamp(32px, 5vw, 72px);
-  align-items: center;
+@layer base {
+  body {
+    margin: 0;
+    min-width: 320px;
+    font-family: var(--font-sans);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    color: #000000e6;
+    -webkit-font-smoothing: antialiased;
+    background:
+      radial-gradient(circle at 88% -6%, rgba(205, 66, 66, 0.07), transparent 30rem),
+      #fafafa;
+  }
 }
 
-/* ---------- Hero ---------- */
-.hero { margin: 0; max-width: 560px; }
-.eyebrow, .step { color: var(--primary); font-size: 12px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; }
-h1 { margin: 12px 0 16px; font-size: clamp(34px, 4.4vw, 52px); line-height: 1.04; font-weight: 700; letter-spacing: -.03em; color: var(--foreground); }
-h1 em { color: var(--primary); font-style: normal; }
-.intro { max-width: 520px; color: #52525b; line-height: 1.6; font-size: 16px; }
-
-/* Supporting feature list — gives the hero substance and balances the panel height */
-.hero-points { list-style: none; margin: 28px 0 0; padding: 0; display: flex; flex-direction: column; gap: 14px; max-width: 480px; }
-.hero-points li { display: flex; align-items: flex-start; gap: 12px; color: var(--secondary); font-size: 15px; line-height: 1.45; }
-.hero-point-mark { flex: none; display: grid; place-items: center; width: 22px; height: 22px; margin-top: 1px; border-radius: 9999px; background: #cd42421a; color: var(--primary); font-size: 12px; font-weight: 700; }
-
-/* ---------- DS card panel (right column of the stage) ---------- */
-.panel {
-  width: 100%;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-raised);
-}
-form, .success { padding: clamp(22px, 3.5vw, 34px); }
-.panel-heading { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; }
-.step { margin: 0 0 7px; }
-.panel h2 { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -.02em; color: var(--foreground); }
-
-/* ---------- Fields ---------- */
-label { display: block; margin: 16px 0 8px; font-size: 13px; font-weight: 600; color: var(--secondary); }
-input {
-  width: 100%;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--card);
-  padding: 13px 14px;
-  font: inherit;
-  color: var(--foreground);
-  outline: none;
-  transition: border-color .15s ease, box-shadow .15s ease;
-}
-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(205, 66, 66, .14); }
-
-/* ---------- Dropzone ---------- */
-.dropzone {
-  min-height: 148px;
-  border: 1px dashed #00000040;
-  border-radius: var(--radius-lg);
-  background: var(--background-sunken);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 26px;
-  text-align: center;
-  transition: .15s ease;
-}
-.dropzone--active { border-color: var(--primary); background: #fdf3f3; }
-.dropzone strong { color: var(--foreground); }
-.dropzone span { color: var(--muted-foreground); font-size: 13px; }
-.file-icon { display: grid; place-items: center; width: 48px; height: 58px; margin-bottom: 7px; border-radius: var(--radius-sm); background: var(--secondary); color: #fff; font-weight: 700; font-size: 11px; letter-spacing: .08em; }
-
-/* ---------- Buttons (DS) ---------- */
-button { font: inherit; cursor: pointer; }
-.primary-button {
-  width: 100%;
-  margin-top: 20px;
-  border: 1px solid var(--primary);
-  border-radius: var(--radius-sm);
-  padding: 14px 22px;
-  color: #fff;
-  background: var(--primary);
-  font-weight: 600;
-  transition: background .15s ease;
-}
-.primary-button:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
-.primary-button:disabled { opacity: .6; cursor: wait; }
-.secondary-button { margin-top: 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 9px 16px; background: transparent; font-weight: 500; color: var(--foreground); transition: background .15s ease; }
-.secondary-button:hover:not(:disabled) { background: var(--fill-weak); }
-.link-button { border: 0; color: var(--primary); background: transparent; text-decoration: underline; font-weight: 600; }
-
-/* ---------- Error + success ---------- */
-.error { margin-top: 18px; border-radius: var(--radius-sm); border: 1px solid #dc262640; background: #dc26260d; padding: 12px 14px; color: var(--text-error); font-size: 14px; }
-.success { text-align: center; padding-block: 62px; }
-.success-mark { display: grid; place-items: center; width: 58px; height: 58px; margin: 0 auto 22px; border-radius: 50%; background: #0679570f; color: var(--success); font-size: 28px; }
-.success p { color: var(--muted-foreground); }
-.success code { display: block; margin: 18px 0 4px; padding: 13px; border-radius: var(--radius-sm); background: var(--background-sunken); border: 1px solid var(--border); font-family: 'IBM Plex Mono', ui-monospace, monospace; overflow-wrap: anywhere; }
-
-/* ---------- a11y ---------- */
-.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
-
-/* Stack to a single column when the two-column stage gets cramped */
-@media (max-width: 880px) {
-  main { justify-content: flex-start; }
-  .stage { grid-template-columns: 1fr; gap: 28px; }
-  .hero { max-width: 620px; margin-top: 32px; }
-  .panel { max-width: 600px; }
-}
-
-@media (max-width: 640px) {
-  .topbar-inner, main { width: min(100% - 24px, 1120px); }
-  main { padding-top: 30px; }
-  .hero { margin-top: 24px; }
-  h1 { font-size: 44px; }
-  .panel-heading { gap: 14px; }
+/* Visually-hidden helper (used by the file input inside the dropzone) */
+@utility sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }

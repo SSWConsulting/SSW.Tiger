@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 import { resolve } from "node:path";
 
 export default defineConfig(({ mode }) => {
@@ -9,11 +10,24 @@ export default defineConfig(({ mode }) => {
   const envDir = resolve(process.cwd(), "..");
   const env = loadEnv(mode, envDir, "");
   const apiTarget = env.TIGER_API_TARGET || "http://localhost:7071";
-  const functionKey = env.TIGER_FUNCTION_KEY;
+
+  // In production SWA injects the trusted x-ms-client-principal header; locally
+  // there is no SWA edge, so inject a mock principal for the anonymous Portal API
+  // (matches the dev principal used by the SPA). Override via TIGER_DEV_PRINCIPAL.
+  const devPrincipal =
+    env.TIGER_DEV_PRINCIPAL ||
+    Buffer.from(
+      JSON.stringify({
+        identityProvider: "dev",
+        userId: "dev-user",
+        userDetails: "dev@ssw.com.au",
+        userRoles: ["authenticated"],
+      }),
+    ).toString("base64");
 
   return {
     envDir,
-    plugins: [react()],
+    plugins: [react(), tailwindcss()],
     server: {
       proxy: {
         "/api": {
@@ -21,7 +35,7 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           configure(proxy) {
             proxy.on("proxyReq", (proxyRequest) => {
-              if (functionKey) proxyRequest.setHeader("x-functions-key", functionKey);
+              proxyRequest.setHeader("x-ms-client-principal", devPrincipal);
             });
           },
         },

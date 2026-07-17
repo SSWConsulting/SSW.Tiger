@@ -40,6 +40,12 @@ param deployLogicApp bool = false
 @description('Manage the Key Vault Secrets User assignment. Requires Owner or User Access Administrator.')
 param manageKeyVaultRoleAssignment bool = false
 
+@description('Deploy the Parrot portal stack (Portal API Function App + Static Web App). Off by default until the portal is ready to go live.')
+param deployPortal bool = false
+
+@description('Region for the Static Web App. SWA is region-limited (australiaeast is NOT supported); defaults to East Asia.')
+param staticWebAppLocation string = 'eastasia'
+
 
 var containerImage = 'ghcr.io/${githubOrg}/tiger-processor:${imageTag}'
 
@@ -180,10 +186,58 @@ module functionApp 'modules/functionApp.bicep' = {
   }
 }
 
+// 9. Portal API Function App - browser transcript uploads, fronted by SWA.
+//    Separate app so its SWA-only auth boundary never affects the Graph webhook.
+module portalApiApp 'modules/portalApiApp.bicep' = if (deployPortal) {
+  name: 'provision-portal-api-${suffix}'
+  params: {
+    project: project
+    environment: environment
+    costCategoryTag: costCategoryTag
+    location: location
+    storageAccountName: storage.outputs.name
+    managedIdentityId: id.outputs.id
+    managedIdentityClientId: id.outputs.clientId
+    appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
+    transcriptStorageContainerName: storage.outputs.transcriptSubmissionsContainerName
+    cosmosEndpoint: cosmosDb.outputs.endpoint
+    submissionsContainerName: cosmosDb.outputs.submissionsContainerName
+  }
+}
+
+// 10. Static Web App - hosts the Parrot SPA, links the Portal API as /api, and
+//     provisions the "Azure Static Web Apps (Linked)" EasyAuth boundary on it.
+//     Login reuses the existing Graph app registration (clientId + secret from KV).
+//     POST-DEPLOY: (1) verify the backend now has the "Azure Static Web Apps (Linked)"
+//     identity provider under Authentication; (2) register the output redirect URI
+//     on the Graph app registration.
+resource keyVaultRef 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
+  name: kv.outputs.name
+}
+
+module staticWebApp 'modules/staticWebApp.bicep' = if (deployPortal) {
+  name: 'provision-swa-${suffix}'
+  params: {
+    project: project
+    environment: environment
+    costCategoryTag: costCategoryTag
+    location: staticWebAppLocation
+    backendResourceId: portalApiApp.outputs.id
+    backendRegion: location
+    entraClientId: keyVaultRef.getSecret('graph-client-id')
+    entraClientSecret: keyVaultRef.getSecret('graph-client-secret')
+  }
+}
+
 output keyVault object = {
   name: kv.outputs.name
   uri: kv.outputs.keyVaultUrl
 }
+
+output portalApiName string = deployPortal ? portalApiApp.outputs.name : ''
+output portalSwaUrl string = deployPortal ? staticWebApp.outputs.url : ''
+// Register this on the existing Graph app registration once the SWA exists.
+output portalEntraRedirectUri string = deployPortal ? staticWebApp.outputs.redirectUri : ''
 
 output storage object = {
   name: storage.outputs.name

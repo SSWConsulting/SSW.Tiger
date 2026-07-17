@@ -2,6 +2,7 @@ const { app } = require("@azure/functions");
 const { createSubmissionStorage, DEFAULT_CONTAINER } = require("../services/submissionStorage");
 const { createSubmissionQueue } = require("../services/submissionQueue");
 const { createSubmissionService } = require("../services/submissionService");
+const { createSubmissionStore } = require("../services/submissionStore");
 const { MAX_TRANSCRIPT_BYTES, SubmissionValidationError } = require("../services/submissionValidation");
 const { createSubmissionActorResolver } = require("../services/submissionActor");
 
@@ -72,14 +73,24 @@ function createDefaultService() {
     containerName,
     storage: createSubmissionStorage({ accountName, containerName }),
     queue: createSubmissionQueue(),
+    // History persistence is optional — only when Cosmos is configured.
+    store: process.env.COSMOS_ENDPOINT ? createSubmissionStore() : null,
   });
 }
 
+// authLevel is "anonymous" because this app sits behind Static Web Apps: SWA
+// forwards the trusted `x-ms-client-principal` header but does NOT inject a
+// function key (that is a SWA managed-functions behaviour, not a linked-backend
+// one). The trust boundary is enforced at the platform level — the app must be
+// reachable ONLY via SWA (access restrictions) so the principal header can't be
+// forged by a direct caller. Identity is resolved by the actor resolver, never
+// from request fields.
 app.http("SubmitTranscript", {
   methods: ["POST"],
   route: "v1/submissions",
-  authLevel: "function",
-  handler: async (request, context) => createSubmitTranscriptHandler({ service: createDefaultService() })(request, context),
+  authLevel: "anonymous",
+  handler: async (request, context) =>
+    createSubmitTranscriptHandler({ service: createDefaultService() })(request, context),
 });
 
 module.exports = { createSubmitTranscriptHandler, createDefaultService };

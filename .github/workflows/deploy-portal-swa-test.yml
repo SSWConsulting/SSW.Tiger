@@ -1,0 +1,27 @@
+name: Deploy Portal SWA Test
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          # Token from the SWA resource (Portal test). Add after the SWA exists:
+          # az staticwebapp secrets list -n swa-tiger-portal-test --query "properties.apiKey" -o tsv
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_PORTAL_TEST }}
+          action: upload
+          app_location: portal
+          output_location: dist
+          # Empty: the API is a linked standalone Function App, NOT a managed SWA API.
+          api_location: ""

@@ -125,9 +125,20 @@ EOF
     fi
 }
 
-# Send failure notification
+# Update a portal submission's history status (upload path only; best effort).
+# $1 = status (processing|completed|failed), $2 = dashboard URL (completed only).
+update_submission_status() {
+    if [ "$TRANSCRIPT_SOURCE_TYPE" = "uploadedTranscript" ]; then
+        SUBMISSION_STATUS="$1" SUBMISSION_DASHBOARD_URL="$2" node processor/updateSubmissionStatus.js || true
+    fi
+}
+
+# Send failure notification. Uploaded transcripts have no Logic App notification;
+# instead their history record is marked "failed" so the portal list reflects it.
 send_failure_notification() {
-    if [ "$TRANSCRIPT_SOURCE_TYPE" != "uploadedTranscript" ] && [ -n "$LOGIC_APP_URL" ] && [ -n "$PARTICIPANTS_JSON" ]; then
+    if [ "$TRANSCRIPT_SOURCE_TYPE" = "uploadedTranscript" ]; then
+        update_submission_status "failed"
+    elif [ -n "$LOGIC_APP_URL" ] && [ -n "$PARTICIPANTS_JSON" ]; then
         export NOTIFICATION_TYPE="failed"
         node processor/sendNotification.js >/dev/null || true
     fi
@@ -227,6 +238,9 @@ run_pipeline() {
     export INVITEES_JSON="$INVITEES_JSON"
     export VTT_INFO_JSON="$VTT_INFO_JSON"
 
+    # Portal upload: mark the submission in-progress so its history shows "Processing".
+    update_submission_status "processing"
+
     # Step 2: Send "started" notification (if configured)
     # Includes cancel URL if available, allowing users to cancel processing
     if [ "$TRANSCRIPT_SOURCE_TYPE" != "uploadedTranscript" ] && [ -n "$LOGIC_APP_URL" ]; then
@@ -289,6 +303,9 @@ run_pipeline() {
     fi
 
     log "info" "Deployed: $DEPLOYED_URL"
+
+    # Portal upload: record completion + dashboard URL so the history shows "Ready".
+    update_submission_status "completed" "$DEPLOYED_URL"
 
     # Step 4: Send "completed" notification (if configured)
     if [ "$TRANSCRIPT_SOURCE_TYPE" != "uploadedTranscript" ] && [ -n "$LOGIC_APP_URL" ]; then

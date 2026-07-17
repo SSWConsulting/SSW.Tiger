@@ -42,10 +42,12 @@ function slugifyProjectName(value) {
 
 function sanitizeOriginalFileName(value) {
   const base = path.basename(String(value || "transcript.vtt"));
-  return base
-    .replace(/[\x00-\x1f\x7f]/g, "")
-    .replace(/[^a-zA-Z0-9._ -]/g, "_")
-    .slice(0, 120) || "transcript.vtt";
+  return (
+    base
+      .replace(/[\x00-\x1f\x7f]/g, "")
+      .replace(/[^a-zA-Z0-9._ -]/g, "_")
+      .slice(0, 120) || "transcript.vtt"
+  );
 }
 
 function decodeAndValidateVtt(buffer, fileName) {
@@ -76,7 +78,11 @@ function decodeAndValidateVtt(buffer, fileName) {
     throw new SubmissionValidationError("The transcript has an invalid WEBVTT header.", 400, "invalid_vtt");
   }
   if (!VTT_CUE_PATTERN.test(withoutBom)) {
-    throw new SubmissionValidationError("The transcript must contain at least one valid WEBVTT cue.", 400, "invalid_vtt");
+    throw new SubmissionValidationError(
+      "The transcript must contain at least one valid WEBVTT cue.",
+      400,
+      "invalid_vtt",
+    );
   }
   return withoutBom;
 }

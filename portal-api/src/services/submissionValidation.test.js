@@ -9,7 +9,10 @@ const {
 
 test("normalizes a project name and accepts a valid VTT", () => {
   assert.deepEqual(slugifyProjectName("  Tiger Portal  "), { displayName: "Tiger Portal", slug: "tiger-portal" });
-  assert.equal(decodeAndValidateVtt(Buffer.from("WEBVTT\n\n00:00.000 --> 00:01.000\nHello"), "meeting.vtt").startsWith("WEBVTT"), true);
+  assert.equal(
+    decodeAndValidateVtt(Buffer.from("WEBVTT\n\n00:00.000 --> 00:01.000\nHello"), "meeting.vtt").startsWith("WEBVTT"),
+    true,
+  );
 });
 
 test("rejects invalid extension, encoding, header, and oversize input", () => {

@@ -34,6 +34,22 @@ function readConfig(env = process.env) {
   return config;
 }
 
+/**
+ * Detect <v> speaker labels in the uploaded VTT. Mirrors detectVttSpeakerLabels
+ * in downloadTranscript.js so uploaded transcripts get the same boardroom /
+ * profile-photo handling. The Graph path derives this from the meeting; the
+ * upload path has no meeting object, so we recompute it from the VTT text.
+ * @returns {{hasSpeakerLabels: boolean, taggedSpeakerCount: number, taggedSpeakers: string[]}}
+ */
+function detectVttSpeakers(content) {
+  const speakerMatches = content.match(/<v ([^>]+)>/g);
+  if (!speakerMatches || speakerMatches.length === 0) {
+    return { hasSpeakerLabels: false, taggedSpeakerCount: 0, taggedSpeakers: [] };
+  }
+  const taggedSpeakers = [...new Set(speakerMatches.map((m) => m.replace(/<v ([^>]+)>/, "$1")))];
+  return { hasSpeakerLabels: true, taggedSpeakerCount: taggedSpeakers.length, taggedSpeakers };
+}
+
 function validateDownloadedVtt(buffer) {
   if (!Buffer.isBuffer(buffer)) buffer = Buffer.from(buffer || []);
   if (!buffer.length) throw new Error("Uploaded transcript is empty");
@@ -81,7 +97,7 @@ async function downloadUploadedTranscript({ env = process.env, credential, blobS
     participants: [],
     invitees: [],
     meetingDuration: "",
-    vttInfo: {},
+    vttInfo: detectVttSpeakers(content),
     requestId: config.requestId,
   };
 }
@@ -99,4 +115,4 @@ async function main() {
 
 if (require.main === module) main();
 
-module.exports = { MAX_TRANSCRIPT_BYTES, readConfig, validateDownloadedVtt, downloadUploadedTranscript };
+module.exports = { MAX_TRANSCRIPT_BYTES, readConfig, validateDownloadedVtt, detectVttSpeakers, downloadUploadedTranscript };
