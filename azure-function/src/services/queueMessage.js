@@ -52,36 +52,71 @@ function normalizeQueueMessage(message) {
     };
   }
 
+  if (data.sourceType === "meetingLink") {
+    if (data.schemaVersion !== 2 || !data.requestId || !data.project?.slug || !data.project?.displayName) {
+      throw new Error("Invalid meeting link queue message");
+    }
+    if (!data.joinUrl || !data.organizerId) {
+      throw new Error("Missing meeting link locator");
+    }
+    return {
+      schemaVersion: 2,
+      sourceType: "meetingLink",
+      requestId: data.requestId,
+      submittedAt: data.submittedAt,
+      project: { displayName: data.project.displayName, slug: data.project.slug },
+      joinUrl: data.joinUrl,
+      organizerId: data.organizerId,
+    };
+  }
+
   throw new Error(`Unsupported transcript source type: ${data.sourceType}`);
 }
 
 function buildDedupKey(data, now = Date.now()) {
   if (data.sourceType === "uploadedTranscript") return `upload-${data.requestId}`;
+  if (data.sourceType === "meetingLink") return `meeting-${data.requestId}`;
   if (data.restartTrigger) return `restart-${data.restartId || `${data.meetingId}-${data.transcriptId}-${now}`}`;
   if (data.manualTrigger) return `manual-${data.meetingId}-${data.transcriptId}`;
   return `${data.meetingId}-${data.transcriptId}`;
 }
 
+function buildDynamicJobEnvironment(data) {
+  if (data.sourceType === "uploadedTranscript") {
+    return [
+      { name: "TRANSCRIPT_SOURCE_TYPE", value: "uploadedTranscript" },
+      { name: "UPLOAD_REQUEST_ID", value: data.requestId },
+      { name: "TRANSCRIPT_STORAGE_ACCOUNT", value: data.source.storageAccount },
+      { name: "TRANSCRIPT_STORAGE_CONTAINER", value: data.source.containerName },
+      { name: "TRANSCRIPT_BLOB_NAME", value: data.source.blobName },
+      { name: "UPLOAD_FILENAME", value: data.source.fileName },
+      { name: "UPLOAD_PROJECT_NAME", value: data.project.displayName },
+      { name: "UPLOAD_PROJECT_SLUG", value: data.project.slug },
+    ];
+  }
+  if (data.sourceType === "meetingLink") {
+    return [
+      { name: "TRANSCRIPT_SOURCE_TYPE", value: "meetingLink" },
+      // UPLOAD_REQUEST_ID / UPLOAD_PROJECT_* are reused for the shared history
+      // record + status write-back (same as the upload path).
+      { name: "UPLOAD_REQUEST_ID", value: data.requestId },
+      { name: "MEETING_JOIN_URL", value: data.joinUrl },
+      { name: "MEETING_ORGANIZER_ID", value: data.organizerId },
+      { name: "UPLOAD_PROJECT_NAME", value: data.project.displayName },
+      { name: "UPLOAD_PROJECT_SLUG", value: data.project.slug },
+    ];
+  }
+  return [
+    { name: "TRANSCRIPT_SOURCE_TYPE", value: "graphTranscript" },
+    { name: "GRAPH_USER_ID", value: data.userId },
+    { name: "GRAPH_MEETING_ID", value: data.meetingId },
+    { name: "GRAPH_TRANSCRIPT_ID", value: data.transcriptId },
+    ...(data.skipSubjectFilter ? [{ name: "SKIP_SUBJECT_FILTER", value: "true" }] : []),
+  ];
+}
+
 function buildJobEnvironment(data, runtimeEnv, tracking = {}) {
-  const dynamic =
-    data.sourceType === "uploadedTranscript"
-      ? [
-          { name: "TRANSCRIPT_SOURCE_TYPE", value: "uploadedTranscript" },
-          { name: "UPLOAD_REQUEST_ID", value: data.requestId },
-          { name: "TRANSCRIPT_STORAGE_ACCOUNT", value: data.source.storageAccount },
-          { name: "TRANSCRIPT_STORAGE_CONTAINER", value: data.source.containerName },
-          { name: "TRANSCRIPT_BLOB_NAME", value: data.source.blobName },
-          { name: "UPLOAD_FILENAME", value: data.source.fileName },
-          { name: "UPLOAD_PROJECT_NAME", value: data.project.displayName },
-          { name: "UPLOAD_PROJECT_SLUG", value: data.project.slug },
-        ]
-      : [
-          { name: "TRANSCRIPT_SOURCE_TYPE", value: "graphTranscript" },
-          { name: "GRAPH_USER_ID", value: data.userId },
-          { name: "GRAPH_MEETING_ID", value: data.meetingId },
-          { name: "GRAPH_TRANSCRIPT_ID", value: data.transcriptId },
-          ...(data.skipSubjectFilter ? [{ name: "SKIP_SUBJECT_FILTER", value: "true" }] : []),
-        ];
+  const dynamic = buildDynamicJobEnvironment(data);
 
   return [
     ...dynamic,

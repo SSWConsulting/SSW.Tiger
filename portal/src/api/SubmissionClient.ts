@@ -31,6 +31,7 @@ export class SubmissionClient {
     // Called when the SWA session has expired (so the app can send the user to
     // re-login instead of silently showing an empty/failed state).
     private readonly onAuthRequired?: () => void,
+    private readonly meetingsEndpoint = "/api/v1/meetings",
   ) {}
 
   // An expired SWA session returns 401, which staticwebapp.config.json rewrites
@@ -78,6 +79,35 @@ export class SubmissionClient {
     } finally {
       window.clearTimeout(timeout);
     }
+  }
+
+  async submitLink(projectName: string, meetingLink: string): Promise<SubmissionResult> {
+    const init = await this.adapter.prepare({
+      method: "POST",
+      body: JSON.stringify({ projectName, meetingLink }),
+      headers: { "Content-Type": "application/json" },
+    });
+    let response: Response;
+    try {
+      response = await fetch(this.meetingsEndpoint, { ...init, redirect: "manual" });
+    } catch {
+      throw new SubmissionError("The meeting link could not be submitted. Please try again.", "network_error");
+    }
+    if (this.isAuthChallenge(response)) {
+      this.onAuthRequired?.();
+      throw new SubmissionError("Your session has expired. Please sign in again.", "unauthenticated");
+    }
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new SubmissionError(
+        payload?.error?.message || "The meeting link could not be submitted. Please try again.",
+        payload?.error?.code,
+      );
+    }
+    if (payload?.status !== "accepted" || typeof payload?.requestId !== "string" || !payload.requestId.trim()) {
+      throw new SubmissionError("The server returned an invalid submission response.", "invalid_response");
+    }
+    return { requestId: payload.requestId, status: "accepted" };
   }
 
   async list(): Promise<SubmissionSummary[]> {

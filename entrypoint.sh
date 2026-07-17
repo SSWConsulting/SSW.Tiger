@@ -12,6 +12,13 @@ log() {
     echo "{\"level\":\"$level\",\"message\":\"$message\"}" >&2
 }
 
+# Portal submissions (browser upload OR pasted meeting link) share the history
+# record + status write-back, and suppress the Graph-path Logic App notifications.
+PORTAL_SUBMISSION="false"
+if [ "$TRANSCRIPT_SOURCE_TYPE" = "uploadedTranscript" ] || [ "$TRANSCRIPT_SOURCE_TYPE" = "meetingLink" ]; then
+    PORTAL_SUBMISSION="true"
+fi
+
 # Background cancellation checker
 # Polls CHECK_CANCELLATION_URL every 15 seconds and exits if cancelled
 CANCEL_CHECKER_PID=""
@@ -132,15 +139,15 @@ EOF
 # Update a portal submission's history status (upload path only; best effort).
 # $1 = status (processing|completed|failed), $2 = dashboard URL (completed only).
 update_submission_status() {
-    if [ "$TRANSCRIPT_SOURCE_TYPE" = "uploadedTranscript" ]; then
+    if [ "$PORTAL_SUBMISSION" = "true" ]; then
         SUBMISSION_STATUS="$1" SUBMISSION_DASHBOARD_URL="$2" node processor/updateSubmissionStatus.js || true
     fi
 }
 
-# Send failure notification. Uploaded transcripts have no Logic App notification;
+# Send failure notification. Portal submissions have no Logic App notification;
 # instead their history record is marked "failed" so the portal list reflects it.
 send_failure_notification() {
-    if [ "$TRANSCRIPT_SOURCE_TYPE" = "uploadedTranscript" ]; then
+    if [ "$PORTAL_SUBMISSION" = "true" ]; then
         update_submission_status "failed"
     elif [ -n "$LOGIC_APP_URL" ] && [ -n "$PARTICIPANTS_JSON" ]; then
         export NOTIFICATION_TYPE="failed"
@@ -158,6 +165,8 @@ run_pipeline() {
     set +e
     if [ "$TRANSCRIPT_SOURCE_TYPE" = "uploadedTranscript" ]; then
         DOWNLOAD_RESULT=$(node processor/downloadUploadedTranscript.js)
+    elif [ "$TRANSCRIPT_SOURCE_TYPE" = "meetingLink" ]; then
+        DOWNLOAD_RESULT=$(node processor/downloadFromMeetingLink.js)
     else
         DOWNLOAD_RESULT=$(node processor/downloadTranscript.js)
     fi
@@ -168,8 +177,8 @@ run_pipeline() {
         # Try to extract error message from JSON output
         ERROR_MSG=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).message" 2>/dev/null || echo "Unknown error")
         # Log with meeting identifiers for debugging
-        if [ "$TRANSCRIPT_SOURCE_TYPE" = "uploadedTranscript" ]; then
-            log "error" "Failed to download uploaded transcript [request=$UPLOAD_REQUEST_ID]: $ERROR_MSG"
+        if [ "$PORTAL_SUBMISSION" = "true" ]; then
+            log "error" "Failed to download portal transcript [source=$TRANSCRIPT_SOURCE_TYPE, request=$UPLOAD_REQUEST_ID]: $ERROR_MSG"
         else
             log "error" "Failed to download transcript [user=$GRAPH_USER_ID, meeting=$GRAPH_MEETING_ID]: $ERROR_MSG"
         fi
@@ -247,7 +256,7 @@ run_pipeline() {
 
     # Step 2: Send "started" notification (if configured)
     # Includes cancel URL if available, allowing users to cancel processing
-    if [ "$TRANSCRIPT_SOURCE_TYPE" != "uploadedTranscript" ] && [ -n "$LOGIC_APP_URL" ]; then
+    if [ "$PORTAL_SUBMISSION" != "true" ] && [ -n "$LOGIC_APP_URL" ]; then
         export NOTIFICATION_TYPE="started"
         # CANCEL_URL and JOB_EXECUTION_ID are passed from Azure Function
         # They will be included in the notification payload for the Cancel button
@@ -312,7 +321,7 @@ run_pipeline() {
     update_submission_status "completed" "$DEPLOYED_URL"
 
     # Step 4: Send "completed" notification (if configured)
-    if [ "$TRANSCRIPT_SOURCE_TYPE" != "uploadedTranscript" ] && [ -n "$LOGIC_APP_URL" ]; then
+    if [ "$PORTAL_SUBMISSION" != "true" ] && [ -n "$LOGIC_APP_URL" ]; then
         log "info" "Sending completed notification..."
         export NOTIFICATION_TYPE="completed"
         export DASHBOARD_URL="$DEPLOYED_URL"
@@ -335,7 +344,7 @@ run_pipeline() {
 }
 
 # Check mode
-if [ "$TRANSCRIPT_SOURCE_TYPE" = "uploadedTranscript" ] || { [ -n "$GRAPH_MEETING_ID" ] && [ -n "$GRAPH_TRANSCRIPT_ID" ] && [ -n "$GRAPH_USER_ID" ]; }; then
+if [ "$PORTAL_SUBMISSION" = "true" ] || { [ -n "$GRAPH_MEETING_ID" ] && [ -n "$GRAPH_TRANSCRIPT_ID" ] && [ -n "$GRAPH_USER_ID" ]; }; then
     # Azure mode: full pipeline
     setup_claude_auth
     run_pipeline
