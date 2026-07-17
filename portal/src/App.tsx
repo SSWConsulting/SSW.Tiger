@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import { TranscriptDropzone } from "./components/TranscriptDropzone";
+import { SswLogo } from "./components/SswLogo";
 import type { SubmissionClient } from "./api/SubmissionClient";
 
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -44,12 +45,24 @@ export function App({ client }: Props) {
   }
 
   return (
-    <main>
-      <header className="brand"><span className="brand-mark">T</span><span>T.I.G.E.R.</span></header>
+    <>
+      <header className="topbar">
+        <div className="topbar-inner">
+          <SswLogo className="brand-logo" />
+          <span className="brand-name">Parrot</span>
+        </div>
+      </header>
+      <main>
+      <div className="stage">
       <section className="hero">
-        <p className="eyebrow">Meeting intelligence</p>
-        <h1>Turn a transcript into<br /><em>actionable insight.</em></h1>
-        <p className="intro">Upload a Microsoft Teams WebVTT transcript. Tiger will analyse the conversation and generate a meeting dashboard.</p>
+        <p className="eyebrow">AI meeting analysis</p>
+        <h1>Turn a transcript<br />into <em>actionable insight.</em></h1>
+        <p className="intro">Upload a Microsoft Teams WebVTT transcript. Parrot will analyse the conversation and generate a meeting dashboard.</p>
+        <ul className="hero-points">
+          <li><span className="hero-point-mark" aria-hidden="true">✓</span>Speaker-by-speaker breakdown and contribution scoring</li>
+          <li><span className="hero-point-mark" aria-hidden="true">✓</span>Decisions, action items, and risks surfaced automatically</li>
+          <li><span className="hero-point-mark" aria-hidden="true">✓</span>A shareable multi-tab dashboard in minutes</li>
+        </ul>
       </section>
 
       <section className="panel" aria-labelledby="upload-title">
@@ -64,9 +77,9 @@ export function App({ client }: Props) {
           </div>
         ) : (
           <form onSubmit={submit} noValidate>
-            <div className="panel-heading"><div><p className="step">01 / Submit</p><h2 id="upload-title">Upload transcript</h2></div><span className="private-note">Private transcript source</span></div>
+            <div className="panel-heading"><div><p className="step">01 / Submit</p><h2 id="upload-title">Upload transcript</h2></div></div>
             <label htmlFor="projectName">Project name</label>
-            <input id="projectName" name="projectName" maxLength={100} value={projectName} disabled={state === "uploading"} onChange={(event) => setProjectName(event.target.value)} placeholder="e.g. Tiger" />
+            <input id="projectName" name="projectName" maxLength={100} value={projectName} disabled={state === "uploading"} onChange={(event) => setProjectName(event.target.value)} placeholder="e.g. Acme Rebuild" />
             <label>Transcript file</label>
             <TranscriptDropzone file={file} disabled={state === "uploading"} onSelect={setFile} />
             {state === "failed" && <div className="error" role="alert">{message}</div>}
@@ -76,8 +89,9 @@ export function App({ client }: Props) {
           </form>
         )}
       </section>
-      <footer>Transcript content is sent directly to Tiger and is never stored in this browser.</footer>
-    </main>
+      </div>
+      </main>
+    </>
   );
 }
 
