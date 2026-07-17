@@ -2,7 +2,7 @@ const { CosmosClient } = require("@azure/cosmos");
 const { DefaultAzureCredential } = require("@azure/identity");
 
 // Polyfill globalThis.crypto for @azure/identity where Web Crypto isn't global.
-if (!globalThis.crypto) globalThis.crypto = require("crypto");
+if (!globalThis.crypto) globalThis.crypto = require("node:crypto");
 
 const DB_NAME = process.env.COSMOS_DATABASE || "tiger";
 const DEFAULT_CONTAINER = "submissions";

@@ -1,7 +1,7 @@
 const { app } = require("@azure/functions");
 const { DefaultAzureCredential } = require("@azure/identity");
 const { ContainerAppsAPIClient } = require("@azure/arm-appcontainers");
-const crypto = require("crypto");
+const crypto = require("node:crypto");
 const {
   normalizeQueueMessage,
   buildDedupKey,

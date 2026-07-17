@@ -1,8 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const fs = require("fs").promises;
-const os = require("os");
-const path = require("path");
+const fs = require("node:fs").promises;
+const os = require("node:os");
+const path = require("node:path");
 const { readConfig, validateDownloadedVtt, detectVttSpeakers, downloadUploadedTranscript } = require("./downloadUploadedTranscript");
 
 const baseEnv = {

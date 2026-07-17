@@ -8,7 +8,7 @@ function createListSubmissionsHandler({ store, actorResolver = createSubmissionA
     const actor = await actorResolver.resolve(request);
     // Only a real signed-in user has a history. The service-identity fallback
     // (no SWA principal header) must never enumerate submissions.
-    if (!actor || actor.type !== "user" || !actor.subject) {
+    if (actor?.type !== "user" || !actor.subject) {
       return json(401, { error: { code: "unauthenticated", message: "Sign in to view your dashboards." } });
     }
 

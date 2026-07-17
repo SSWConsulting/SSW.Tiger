@@ -17,6 +17,7 @@ export function TranscriptDropzone({ file, disabled, onSelect }: Props) {
   };
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: drag-and-drop is a progressive enhancement; the accessible control is the labelled <input> and "Choose file" button inside.
     <div
       className={`flex min-h-[148px] flex-col items-center justify-center gap-2 rounded-ds border border-dashed p-6 text-center transition ${
         dragging ? "border-primary bg-ssw-red-50" : "border-black/25 bg-ssw-gray-50"

@@ -1,5 +1,5 @@
-const path = require("path");
-const crypto = require("crypto");
+const path = require("node:path");
+const crypto = require("node:crypto");
 
 const MAX_TRANSCRIPT_BYTES = 10 * 1024 * 1024;
 const VTT_CUE_PATTERN = /^\s*(?:\d{2}:)?\d{2}:\d{2}\.\d{3}\s+-->\s+(?:\d{2}:)?\d{2}:\d{2}\.\d{3}(?:\s|$)/m;
@@ -44,6 +44,7 @@ function sanitizeOriginalFileName(value) {
   const base = path.basename(String(value || "transcript.vtt"));
   return (
     base
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: intentional — strip control chars from an untrusted filename before it is stored/echoed.
       .replace(/[\x00-\x1f\x7f]/g, "")
       .replace(/[^a-zA-Z0-9._ -]/g, "_")
       .slice(0, 120) || "transcript.vtt"

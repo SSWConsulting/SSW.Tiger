@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-const fs = require("fs").promises;
-const path = require("path");
+const fs = require("node:fs").promises;
+const path = require("node:path");
 const { BlobServiceClient } = require("@azure/storage-blob");
 const { DefaultAzureCredential } = require("@azure/identity");
 const { log } = require("../lib/logger");

@@ -58,7 +58,7 @@ export function principalName(principal: ClientPrincipal): string {
 export function principalEmail(principal: ClientPrincipal): string | null {
   if (principal.userDetails?.includes("@")) return principal.userDetails.toLowerCase();
   const claim = principal.claims?.find((c) => EMAIL_CLAIM_TYPES.includes(c.typ) || c.typ.endsWith("/emailaddress"));
-  return claim && claim.val.includes("@") ? claim.val.toLowerCase() : null;
+  return claim?.val.includes("@") ? claim.val.toLowerCase() : null;
 }
 
 export function principalInitials(principal: ClientPrincipal): string {

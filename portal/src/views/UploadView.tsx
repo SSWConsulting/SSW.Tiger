@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { type FormEvent, useState } from "react";
 import { TranscriptDropzone } from "../components/TranscriptDropzone";
 import type { SubmissionClient } from "../api/SubmissionClient";
 
@@ -146,7 +146,7 @@ export function UploadView({ client, onViewDashboards }: Props) {
               placeholder="e.g. Acme Rebuild"
               className="w-full rounded-ds-sm border border-black/10 bg-white px-3.5 py-3 outline-none transition focus:border-primary focus:shadow-[0_0_0_3px_rgba(205,66,66,0.14)]"
             />
-            <label className="mb-2 mt-4 block text-[13px] font-semibold text-ssw-charcoal">Transcript file</label>
+            <p className="mb-2 mt-4 block text-[13px] font-semibold text-ssw-charcoal">Transcript file</p>
             <TranscriptDropzone file={file} disabled={state === "uploading"} onSelect={setFile} />
             {state === "failed" && (
               <div
