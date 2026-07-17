@@ -665,7 +665,14 @@
                 img.replaceWith(placeholder);
             });
         });
+    </script>
 
+    <!-- Chart rendering code - the one region that is still model-authored
+         (see GitHub issue #125). Kept in its own <script> tag, separate from
+         the static chrome above, so a syntax error here cannot take down
+         sswColors, Chart.defaults, the date-weekday prefix, or the
+         profile-image fallback - those already ran in the tag above. -->
+    <script>
         {{CHART_SCRIPTS}}
     </script>
 </body>

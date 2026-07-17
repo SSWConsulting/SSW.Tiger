@@ -148,8 +148,10 @@ projects/{project-name}/
 │   │   ├── analytics.json           # Intermediate
 │   │   ├── longitudinal.json        # Intermediate
 │   │   └── consolidated.json        # Definitive — dashboard reads this
+│   ├── dashboard-parts/              # Claude's fragment files, one per {{PLACEHOLDER}}
+│   │   └── *.html
 │   └── dashboard/
-│       └── index.html               # Final deliverable
+│       └── index.html               # Final deliverable — assembled deterministically by processor/index.js, never written by Claude
 ```
 
 ## Best Practices
@@ -190,7 +192,7 @@ secrets: [{
 
 **Always consolidate before generating dashboards.** Without the consolidator: names are inconsistent across tabs, metrics conflict between agents, and cross-references are missing. The consolidator resolves conflicts with explicit rules — use the more granular count for numbers, reconcile assessments by evidence, call out contradictions rather than papering over them.
 
-**Use the template, don't write HTML from scratch.** Dashboards are generated from `templates/dashboard.html` by replacing `{{PLACEHOLDER}}` variables with content from `consolidated.json`. This ensures consistent branding and structure.
+**Use the template, don't write HTML from scratch.** Dashboards are built from `templates/dashboard.html`. Claude writes one raw-HTML fragment per `{{PLACEHOLDER}}` (content from `consolidated.json`) to `dashboard-parts/`; `processor/index.js` deterministically substitutes each fragment into the template and writes the final `dashboard/index.html` itself. Claude never authors the static chrome (tailwind config, colors, Chart.js setup, the profile-image fallback script) or the full HTML file - this ensures consistent branding and structure regardless of what Claude writes. See GitHub issue #125.
 
 ### Dashboard Content
 
@@ -245,7 +247,7 @@ secrets: [{
 
 1. Add `{{NEW_PLACEHOLDER}}` in the template
 2. Document expected HTML structure in CLAUDE.md
-3. Update dashboard generation logic to populate from `consolidated.json`
+3. Claude will pick it up automatically and write `dashboard-parts/NEW_PLACEHOLDER.html` populated from `consolidated.json` - no code change needed in `processor/claudeRunner.js` or `processor/templateFiller.js`, both derive the placeholder list from the template at runtime
 
 ## Infrastructure Reference
 

@@ -3,6 +3,7 @@ const path = require("path");
 const { spawn } = require("child_process");
 const readline = require("readline");
 const { log, truncate } = require("../lib/logger");
+const { extractPlaceholderNames, DETERMINISTIC_PLACEHOLDERS } = require("./templateFiller");
 
 // Configuration
 const CONFIG = {
@@ -137,6 +138,16 @@ async function invokeClaude({ projectName, projectSlug, meetingId, meetingDate, 
 
   const authConfig = getClaudeAuthMethod();
 
+  const templatePath = path.join(rootDir, "templates", "dashboard.html");
+  const template = await fs.readFile(templatePath, "utf-8");
+  // Deterministic placeholders (e.g. GENERATED_AT) are filled directly by
+  // templateFiller.js from real-world state the model can't know reliably -
+  // exclude them from the model's fragment-writing contract entirely.
+  const placeholderNames = extractPlaceholderNames(template).filter(
+    (name) => !DETERMINISTIC_PLACEHOLDERS.has(name),
+  );
+  const fragmentsDirRel = `projects/${projectSlug}/${meetingId}/dashboard-parts`;
+
   const prompt = `Read CLAUDE.md and process the meeting transcript following the complete workflow.
 
 Project: ${projectName}
@@ -148,7 +159,22 @@ Attendees (meeting invite list - use as suggestion for name resolution): project
 Dashboard template: templates/dashboard.html
 
 Follow all steps in CLAUDE.md EXCEPT deployment. Do NOT deploy or upload the dashboard.
-Generate the dashboard HTML to: projects/${projectSlug}/${meetingId}/dashboard/index.html`;
+
+Dashboard output contract - fragment files, NOT a full HTML file:
+Do NOT write projects/${projectSlug}/${meetingId}/dashboard/index.html yourself. The template's static chrome (tailwind config, SSW brand colors, Chart.js defaults, the profile-image fallback script, tab navigation, page structure - everything outside a {{PLACEHOLDER}} region) is filled in automatically by deterministic code after you finish, so you must never author it.
+
+Your only job is to write the content for each of the template's ${placeholderNames.length} placeholders, one raw HTML fragment file per placeholder, to:
+  ${fragmentsDirRel}/<PLACEHOLDER_NAME>.html
+
+Write exactly these fragment files (filenames must match exactly):
+${placeholderNames.map((name) => `  - ${fragmentsDirRel}/${name}.html`).join("\n")}
+
+Rules for fragment files:
+- Each file contains ONLY the raw HTML that replaces that placeholder in the template - no surrounding <html>/<head>/<body> tags, no markdown code fences.
+- CHART_SCRIPTS.html is the one exception: it contains raw JavaScript (Chart.js setup code), not HTML, exactly as before.
+- If a section legitimately has nothing to show (e.g. a ceremony was skipped, per CLAUDE.md), write an empty file rather than inventing content - a missing or empty fragment is substituted with an empty string, not an error.
+- Do NOT write a GENERATED_AT.html fragment - the generation timestamp is deterministic metadata filled in automatically, not something you author.
+- Do NOT create projects/${projectSlug}/${meetingId}/dashboard/index.html - that file is generated deterministically from the template plus your fragments after you finish.`;
 
   return new Promise((resolve, reject) => {
     const args = [
