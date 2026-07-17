@@ -7,20 +7,20 @@ const {
 } = require("../lib/sswPeopleResolver");
 
 /**
- * Validate transcript filename matches YYYY-MM-DD-HHmmss.vtt pattern.
+ * Validate transcript filename matches YYYY-MM-DD-HHmmss[-request].vtt pattern.
  * @returns {{ meetingId: string, meetingDate: string, meetingTime: string }}
  */
 function validateTranscriptFilename(transcriptPath) {
   const filename = path.basename(transcriptPath, ".vtt");
 
-  const dateTimePattern = /^(\d{4}-\d{2}-\d{2})-(\d{6})$/;
+  const dateTimePattern = /^(\d{4}-\d{2}-\d{2})-(\d{6})(?:-[a-f0-9]{8})?$/;
   const match = filename.match(dateTimePattern);
 
   if (!match) {
     throw new Error(
       `Invalid transcript filename: ${path.basename(transcriptPath)}\n` +
-        "Transcript files must be named: YYYY-MM-DD-HHmmss.vtt\n" +
-        "Example: 2026-01-22-094557.vtt",
+        "Transcript files must be named: YYYY-MM-DD-HHmmss[-request].vtt\n" +
+        "Example: 2026-01-22-094557-a1b2c3d4.vtt",
     );
   }
 

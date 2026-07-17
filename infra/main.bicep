@@ -83,6 +83,7 @@ module storage 'modules/storage.bicep' = {
     environment: environment
     costCategoryTag: costCategoryTag
     location: location
+    managedIdentityPrincipalId: id.outputs.principalId
   }
 }
 
@@ -138,6 +139,8 @@ module containerApp 'modules/containerApp.bicep' = {
     claudeModel: claudeModel
     dashboardStorageAccountName: dashboardStorage.outputs.name
     cosmosEndpoint: cosmosDb.outputs.endpoint
+    transcriptStorageAccountName: storage.outputs.name
+    transcriptStorageContainerName: storage.outputs.transcriptSubmissionsContainerName
   }
 }
 
@@ -173,6 +176,7 @@ module functionApp 'modules/functionApp.bicep' = {
     dashboardStorageAccountName: dashboardStorage.outputs.name
     cosmosEndpoint: cosmosDb.outputs.endpoint
     claudeModel: claudeModel
+    transcriptStorageContainerName: storage.outputs.transcriptSubmissionsContainerName
   }
 }
 

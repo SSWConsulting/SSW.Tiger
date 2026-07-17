@@ -26,6 +26,10 @@ param claudeModel string = 'claude-opus-4-5-20251101'
 
 @description('Storage account name for dashboard static website hosting')
 param dashboardStorageAccountName string
+@description('Storage account that contains private transcript submissions')
+param transcriptStorageAccountName string
+@description('Private transcript submissions container')
+param transcriptStorageContainerName string
 
 @description('Cosmos DB endpoint for meeting metadata persistence')
 param cosmosEndpoint string = ''
@@ -145,6 +149,8 @@ resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
             { name: 'CLAUDE_CODE_OAUTH_TOKEN', secretRef: 'anthropic-oauth-token' }
             { name: 'DASHBOARD_STORAGE_ACCOUNT', value: dashboardStorageAccountName }
             { name: 'DASHBOARD_BASE_URL', value: dashboardBaseUrl }
+            { name: 'TRANSCRIPT_STORAGE_ACCOUNT', value: transcriptStorageAccountName }
+            { name: 'TRANSCRIPT_STORAGE_CONTAINER', value: transcriptStorageContainerName }
             { name: 'CLAUDE_MODEL', value: claudeModel }
             { name: 'NODE_ENV', value: environment == 'prod' ? 'production' : 'development' }
             { name: 'GRAPH_CLIENT_ID', secretRef: 'graph-client-id' }

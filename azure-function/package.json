@@ -4,17 +4,20 @@
   "description": "Azure Function for T.I.G.E.R. - Receives Graph webhook, triggers Container App Job (Option B)",
   "main": "src/functions/index.js",
   "scripts": {
-    "start": "func start"
+    "start": "func start",
+    "test": "node --test src/**/*.test.js"
   },
   "dependencies": {
     "@azure/arm-appcontainers": "^2.0.0",
     "@azure/functions": "^4.0.0",
-    "@azure/identity": "^4.13.0"
+    "@azure/identity": "^4.13.0",
+    "@azure/storage-blob": "12.27.0",
+    "@azure/storage-queue": "12.26.0"
   },
   "devDependencies": {
     "azure-functions-core-tools": "^4.x"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   }
 }

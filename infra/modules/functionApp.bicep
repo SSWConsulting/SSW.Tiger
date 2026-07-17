@@ -15,6 +15,8 @@ param containerAppJobImage string
 param managedIdentityId string
 param managedIdentityClientId string
 param dashboardStorageAccountName string
+@description('Private container used for uploaded transcript sources')
+param transcriptStorageContainerName string
 
 // Application Insights for logging
 param appInsightsConnectionString string
@@ -96,6 +98,8 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'FUNCTIONS_EXTENSION_VERSION', value: '~4' }
         { name: 'FUNCTIONS_WORKER_RUNTIME', value: 'node' }
         { name: 'WEBSITE_NODE_DEFAULT_VERSION', value: '~20' }
+        // Reject oversized HTTP bodies before multipart parsing allocates memory.
+        { name: 'FUNCTIONS_REQUEST_BODY_SIZE_LIMIT', value: '12582912' }
         // Key Vault references for Graph API credentials
         {
           name: 'GRAPH_CLIENT_ID'
@@ -115,6 +119,8 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'CONTAINER_APP_JOB_IMAGE', value: containerAppJobImage }
         { name: 'DASHBOARD_STORAGE_ACCOUNT', value: dashboardStorageAccountName }
         { name: 'DASHBOARD_BASE_URL', value: dashboardBaseUrl }
+        { name: 'TRANSCRIPT_STORAGE_ACCOUNT', value: storageAccountName }
+        { name: 'TRANSCRIPT_STORAGE_CONTAINER', value: transcriptStorageContainerName }
         // Passed through to Container App Job at start time
         { name: 'COSMOS_ENDPOINT', value: cosmosEndpoint }
         { name: 'COSMOS_PROJECT_POLICIES_CONTAINER', value: 'projectPolicies' }

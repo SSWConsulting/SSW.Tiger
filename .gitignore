@@ -52,6 +52,8 @@ tmpclaude-*
 azure-function/local.settings.json
 azure-function/node_modules/
 azure-function/.python_packages/
+portal/dist/
+portal/*.tsbuildinfo
 
 # Azurite (local Azure Storage emulator) - can be in root or azure-function/
 __azurite_db*.json

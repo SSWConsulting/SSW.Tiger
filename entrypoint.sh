@@ -127,7 +127,7 @@ EOF
 
 # Send failure notification
 send_failure_notification() {
-    if [ -n "$LOGIC_APP_URL" ] && [ -n "$PARTICIPANTS_JSON" ]; then
+    if [ "$TRANSCRIPT_SOURCE_TYPE" != "uploadedTranscript" ] && [ -n "$LOGIC_APP_URL" ] && [ -n "$PARTICIPANTS_JSON" ]; then
         export NOTIFICATION_TYPE="failed"
         node processor/sendNotification.js >/dev/null || true
     fi
@@ -141,7 +141,11 @@ run_pipeline() {
     # Step 1: Download transcript
     # stderr flows through for real-time logs, stdout captured (JSON result)
     set +e
-    DOWNLOAD_RESULT=$(node processor/downloadTranscript.js)
+    if [ "$TRANSCRIPT_SOURCE_TYPE" = "uploadedTranscript" ]; then
+        DOWNLOAD_RESULT=$(node processor/downloadUploadedTranscript.js)
+    else
+        DOWNLOAD_RESULT=$(node processor/downloadTranscript.js)
+    fi
     DOWNLOAD_EXIT_CODE=$?
     set -e
 
@@ -149,7 +153,11 @@ run_pipeline() {
         # Try to extract error message from JSON output
         ERROR_MSG=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).message" 2>/dev/null || echo "Unknown error")
         # Log with meeting identifiers for debugging
-        log "error" "Failed to download transcript [user=$GRAPH_USER_ID, meeting=$GRAPH_MEETING_ID]: $ERROR_MSG"
+        if [ "$TRANSCRIPT_SOURCE_TYPE" = "uploadedTranscript" ]; then
+            log "error" "Failed to download uploaded transcript [request=$UPLOAD_REQUEST_ID]: $ERROR_MSG"
+        else
+            log "error" "Failed to download transcript [user=$GRAPH_USER_ID, meeting=$GRAPH_MEETING_ID]: $ERROR_MSG"
+        fi
 
         # Best-effort "failed" notification. The download script emits the
         # meeting subject and any participants it managed to fetch before
@@ -221,7 +229,7 @@ run_pipeline() {
 
     # Step 2: Send "started" notification (if configured)
     # Includes cancel URL if available, allowing users to cancel processing
-    if [ -n "$LOGIC_APP_URL" ]; then
+    if [ "$TRANSCRIPT_SOURCE_TYPE" != "uploadedTranscript" ] && [ -n "$LOGIC_APP_URL" ]; then
         export NOTIFICATION_TYPE="started"
         # CANCEL_URL and JOB_EXECUTION_ID are passed from Azure Function
         # They will be included in the notification payload for the Cancel button
@@ -283,7 +291,7 @@ run_pipeline() {
     log "info" "Deployed: $DEPLOYED_URL"
 
     # Step 4: Send "completed" notification (if configured)
-    if [ -n "$LOGIC_APP_URL" ]; then
+    if [ "$TRANSCRIPT_SOURCE_TYPE" != "uploadedTranscript" ] && [ -n "$LOGIC_APP_URL" ]; then
         log "info" "Sending completed notification..."
         export NOTIFICATION_TYPE="completed"
         export DASHBOARD_URL="$DEPLOYED_URL"
@@ -306,7 +314,7 @@ run_pipeline() {
 }
 
 # Check mode
-if [ -n "$GRAPH_MEETING_ID" ] && [ -n "$GRAPH_TRANSCRIPT_ID" ] && [ -n "$GRAPH_USER_ID" ]; then
+if [ "$TRANSCRIPT_SOURCE_TYPE" = "uploadedTranscript" ] || { [ -n "$GRAPH_MEETING_ID" ] && [ -n "$GRAPH_TRANSCRIPT_ID" ] && [ -n "$GRAPH_USER_ID" ]; }; then
     # Azure mode: full pipeline
     setup_claude_auth
     run_pipeline

@@ -2,6 +2,11 @@ const { app } = require("@azure/functions");
 const { DefaultAzureCredential } = require("@azure/identity");
 const { ContainerAppsAPIClient } = require("@azure/arm-appcontainers");
 const crypto = require("crypto");
+const {
+  normalizeQueueMessage,
+  buildDedupKey,
+  buildJobEnvironment,
+} = require("../services/queueMessage");
 
 /**
  * Processes transcript notifications from the queue.
@@ -198,27 +203,20 @@ app.storageQueue("ProcessTranscriptQueue", {
   queueName: "transcript-notifications",
   connection: "AzureWebJobsStorage",
   handler: async (message, context) => {
-    structuredLog(context, "info", "Processing queue message", { message });
-
-    // Parse message (handle both string and object)
     let data;
-    if (typeof message === "string") {
-      try {
-        data = JSON.parse(message);
-      } catch {
-        structuredLog(context, "error", "Invalid JSON in queue message");
-        throw new Error("Invalid JSON in queue message");
-      }
-    } else {
-      data = message;
+    try {
+      data = normalizeQueueMessage(message);
+    } catch (error) {
+      structuredLog(context, "error", "Invalid queue message", { error: error.message });
+      throw error;
     }
-
-    const { userId, meetingId, transcriptId, skipSubjectFilter, manualTrigger, restartTrigger, restartId, restartedFromExecutionId } = data;
-
-    if (!userId || !meetingId || !transcriptId) {
-      structuredLog(context, "error", "Missing IDs in queue message", { userId, meetingId, transcriptId });
-      throw new Error("Missing required IDs in queue message");
-    }
+    const { userId, meetingId, transcriptId, manualTrigger, restartTrigger, restartedFromExecutionId } = data;
+    structuredLog(context, "info", "Processing queue message", {
+      sourceType: data.sourceType,
+      requestId: data.requestId,
+      meetingId,
+      transcriptId,
+    });
 
     if (manualTrigger) {
       structuredLog(context, "info", "Manual trigger - subject filter will be skipped", { meetingId });
@@ -239,14 +237,7 @@ app.storageQueue("ProcessTranscriptQueue", {
     //   Queue redelivery of the same message; multiple legitimate restart
     //   clicks each get their own restartId. RestartProcessing blocks rapid
     //   user double-clicks before enqueueing.
-    let dedupKey;
-    if (restartTrigger) {
-      dedupKey = `restart-${restartId || `${meetingId}-${transcriptId}-${Date.now()}`}`;
-    } else if (manualTrigger) {
-      dedupKey = `manual-${meetingId}-${transcriptId}`;
-    } else {
-      dedupKey = `${meetingId}-${transcriptId}`;
-    }
+    const dedupKey = buildDedupKey(data);
     if (processedCache.has(dedupKey) && Date.now() - processedCache.get(dedupKey) < CACHE_TTL_MS) {
       structuredLog(context, "info", "SKIP: Duplicate notification", {
         meetingId,
@@ -262,7 +253,7 @@ app.storageQueue("ProcessTranscriptQueue", {
     processedCache.set(dedupKey, Date.now());
 
     try {
-      await triggerContainerAppJob({ userId, meetingId, transcriptId, skipSubjectFilter }, context);
+      await triggerContainerAppJob(data, context);
     } catch (err) {
       // Remove from cache on failure to allow retry
       processedCache.delete(dedupKey);
@@ -272,7 +263,8 @@ app.storageQueue("ProcessTranscriptQueue", {
 });
 
 async function triggerContainerAppJob(params, context) {
-  const { userId, meetingId, transcriptId, skipSubjectFilter } = params;
+  const { userId, meetingId, transcriptId } = params;
+  const isGraph = params.sourceType === "graphTranscript";
 
   // Validate all required environment variables
   const subscriptionId = process.env.SUBSCRIPTION_ID;
@@ -304,11 +296,13 @@ async function triggerContainerAppJob(params, context) {
   }
 
   // Generate a unique execution ID for this job run
-  const executionId = `${meetingId}-${transcriptId}-${Date.now()}`;
-  const restartTokenExpiresAt = cancelFunctionUrl
+  const executionId = isGraph
+    ? `${meetingId}-${transcriptId}-${Date.now()}`
+    : `${params.requestId}-${Date.now()}`;
+  const restartTokenExpiresAt = isGraph && cancelFunctionUrl
     ? Date.now() + RESTART_TOKEN_TTL_MS
     : null;
-  const restartToken = cancelFunctionUrl
+  const restartToken = isGraph && cancelFunctionUrl
     ? createRestartSignature({
         executionId,
         userId,
@@ -321,7 +315,7 @@ async function triggerContainerAppJob(params, context) {
   // Build cancel URL if cancel function is configured
   // Include subscriptionId so cancel can work without in-memory cache (cross-instance)
   // Include userId so cancelled notification can be sent to the organizer
-  const cancelUrl = cancelFunctionUrl
+  const cancelUrl = isGraph && cancelFunctionUrl
     ? appendQueryParams(cancelFunctionUrl, {
         executionId,
         jobName,
@@ -334,7 +328,7 @@ async function triggerContainerAppJob(params, context) {
     : "";
 
   // Build restart URL (same Function host, different endpoint)
-  const restartUrl = cancelFunctionUrl
+  const restartUrl = isGraph && cancelFunctionUrl
     ? appendQueryParams(
         buildSiblingFunctionUrl(cancelFunctionUrl, "RestartProcessing"),
         {
@@ -349,7 +343,7 @@ async function triggerContainerAppJob(params, context) {
     : "";
 
   // Build check cancellation URL (same host, different endpoint)
-  const checkCancellationUrl = cancelFunctionUrl
+  const checkCancellationUrl = isGraph && cancelFunctionUrl
     ? appendQueryParams(
         buildSiblingFunctionUrl(cancelFunctionUrl, "CheckCancellation"),
         {
@@ -361,7 +355,13 @@ async function triggerContainerAppJob(params, context) {
   // Use singleton client for better performance
   const client = getContainerAppsClient(subscriptionId);
 
-  structuredLog(context, "info", "Starting Container App Job", { jobName, userId, meetingId, transcriptId });
+  structuredLog(context, "info", "Starting Container App Job", {
+    jobName,
+    sourceType: params.sourceType,
+    requestId: params.requestId,
+    meetingId,
+    transcriptId,
+  });
 
   try {
     // beginStart() returns a poller for the LRO (Long Running Operation)
@@ -373,40 +373,12 @@ async function triggerContainerAppJob(params, context) {
           {
             name: "tiger-processor",
             image: containerImage,
-            env: [
-              // Dynamic values passed from queue message
-              { name: "GRAPH_USER_ID", value: userId },
-              { name: "GRAPH_MEETING_ID", value: meetingId },
-              { name: "GRAPH_TRANSCRIPT_ID", value: transcriptId },
-              // Execution tracking for cancel functionality
-              { name: "JOB_EXECUTION_ID", value: executionId },
-              { name: "CANCEL_URL", value: cancelUrl },
-              { name: "CHECK_CANCELLATION_URL", value: checkCancellationUrl },
-              // Restart URL — sent in failed/cancelled Teams cards so users can re-run
-              { name: "RESTART_URL", value: restartUrl },
-              // Manual trigger: skip subject filter when explicitly requested
-              ...(skipSubjectFilter
-                ? [{ name: "SKIP_SUBJECT_FILTER", value: "true" }]
-                : []),
-              // Static values - must be included as template override replaces the env array
-              { name: "NODE_ENV", value: "production" },
-              { name: "AZURE_CLIENT_ID", value: process.env.AZURE_CLIENT_ID },
-              { name: "DASHBOARD_STORAGE_ACCOUNT", value: process.env.DASHBOARD_STORAGE_ACCOUNT },
-              { name: "DASHBOARD_BASE_URL", value: process.env.DASHBOARD_BASE_URL },
-              { name: "KEY_VAULT_URL", value: process.env.KEY_VAULT_URL || "" },
-              // Secrets from job configuration (defined in containerApp.bicep)
-              { name: "CLAUDE_CODE_OAUTH_TOKEN", secretRef: "anthropic-oauth-token" },
-              { name: "GRAPH_CLIENT_ID", secretRef: "graph-client-id" },
-              { name: "GRAPH_CLIENT_SECRET", secretRef: "graph-client-secret" },
-              { name: "GRAPH_TENANT_ID", secretRef: "graph-tenant-id" },
-              { name: "LOGIC_APP_URL", secretRef: "logic-app-url" },
-              // Cosmos DB for meeting metadata persistence
-              { name: "COSMOS_ENDPOINT", value: process.env.COSMOS_ENDPOINT || "" },
-              { name: "COSMOS_PROJECT_POLICIES_CONTAINER", value: process.env.COSMOS_PROJECT_POLICIES_CONTAINER || "projectPolicies" },
-              { name: "COSMOS_MEETING_SECURITY_CONTAINER", value: process.env.COSMOS_MEETING_SECURITY_CONTAINER || "meetingSecurity" },
-              // Claude model override
-              { name: "CLAUDE_MODEL", value: process.env.CLAUDE_MODEL || "" },
-            ],
+            env: buildJobEnvironment(params, process.env, {
+              executionId,
+              cancelUrl,
+              checkCancellationUrl,
+              restartUrl,
+            }),
           },
         ],
       },
@@ -427,6 +399,8 @@ async function triggerContainerAppJob(params, context) {
       subscriptionId,
       meetingId,
       transcriptId,
+      requestId: params.requestId,
+      sourceType: params.sourceType,
       startedAt: Date.now(),
     });
 
@@ -438,6 +412,8 @@ async function triggerContainerAppJob(params, context) {
       userId,
       meetingId,
       transcriptId,
+      requestId: params.requestId,
+      sourceType: params.sourceType,
     });
   } catch (err) {
     structuredLog(context, "error", "Container App Job failed", {
@@ -445,6 +421,8 @@ async function triggerContainerAppJob(params, context) {
       userId,
       meetingId,
       transcriptId,
+      requestId: params.requestId,
+      sourceType: params.sourceType,
       error: err.message,
     });
     throw err; // Re-throw to trigger queue retry
