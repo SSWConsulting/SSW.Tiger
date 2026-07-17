@@ -47,6 +47,7 @@ tmpclaude-*
 
 # Local Claude settings (user-specific permissions)
 .claude/settings.local.json
+.claude/launch.json
 
 # Azure Functions
 azure-function/local.settings.json
