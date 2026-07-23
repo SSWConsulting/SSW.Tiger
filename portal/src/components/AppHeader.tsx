@@ -11,7 +11,7 @@ type Props = {
 };
 
 const TABS: { id: View; label: string }[] = [
-  { id: "upload", label: "Upload" },
+  { id: "upload", label: "Submit a meeting" },
   { id: "dashboards", label: "My dashboards" },
 ];
 

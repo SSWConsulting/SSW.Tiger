@@ -64,7 +64,7 @@ export function DashboardsView({ client, onUpload }: Props) {
           type="button"
           onClick={onUpload}
         >
-          Upload transcript
+          Submit a meeting
         </button>
       </div>
 
@@ -91,14 +91,14 @@ export function DashboardsView({ client, onUpload }: Props) {
         <div className="rounded-ds border border-black/10 bg-white p-12 text-center shadow-ds-raised">
           <h2 className="text-lg font-semibold text-ssw-charcoal">No dashboards yet</h2>
           <p className="mx-auto mt-2 max-w-[380px] text-sm text-ssw-gray-500">
-            Upload a Teams transcript and it will appear here once Parrot has generated the dashboard.
+            Submit a Teams meeting link or transcript and it will appear here once Parrot has generated the dashboard.
           </p>
           <button
             className="mt-5 rounded-ds-sm border border-primary bg-primary px-5 py-3 font-semibold text-white transition hover:bg-ssw-red-600"
             type="button"
             onClick={onUpload}
           >
-            Upload your first transcript
+            Submit your first meeting
           </button>
         </div>
       )}

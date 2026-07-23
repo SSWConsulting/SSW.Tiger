@@ -38,7 +38,9 @@ export function App({ client, auth }: Props) {
     <>
       <AppHeader view={view} onNavigate={setView} principal={principal} logoutUrl={auth.logoutUrl()} />
       <main
-        className="mx-auto flex w-[min(1120px,calc(100%-40px))] flex-col justify-center py-8"
+        className={`mx-auto flex w-[min(1120px,calc(100%-40px))] flex-col py-8 ${
+          view === "upload" ? "justify-center" : "justify-start"
+        }`}
         style={{ minHeight: "calc(100vh - 57px)" }}
       >
         {view === "upload" ? (

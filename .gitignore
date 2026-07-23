@@ -58,6 +58,9 @@ portal-api/node_modules/
 portal/dist/
 portal/*.tsbuildinfo
 
+# SWA CLI local emulator output
+.swa/
+
 # Azurite (local Azure Storage emulator) - can be in root or azure-function/
 __azurite_db*.json
 __blobstorage__/
