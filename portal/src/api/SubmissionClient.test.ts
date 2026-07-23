@@ -43,4 +43,25 @@ describe("SubmissionClient", () => {
     });
     expect(onAuthRequired).toHaveBeenCalledOnce();
   });
+
+  it("surfaces a 403 message instead of forcing a re-login loop", async () => {
+    // "Signed in, but not allowed" — re-logging in yields the same identity and
+    // the same 403, so the server's explanation must reach the user instead.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ error: { code: "not_a_participant", message: "You were not in this meeting." } }),
+          {
+            status: 403,
+          },
+        ),
+      ),
+    );
+    const onAuthRequired = vi.fn();
+    await expect(
+      new SubmissionClient(adapter, undefined, onAuthRequired).submitLink("Tiger", "https://teams.microsoft.com/l/x"),
+    ).rejects.toMatchObject({ code: "not_a_participant", message: "You were not in this meeting." });
+    expect(onAuthRequired).not.toHaveBeenCalled();
+  });
 });

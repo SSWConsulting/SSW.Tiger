@@ -13,6 +13,10 @@ export type SubmissionSummary = {
   status: SubmissionStatus;
   dashboardUrl: string | null;
   submittedAt: string;
+  // Present for completed, password-protected dashboards — shown in the list so the
+  // owner can find their password (portal submissions get no Teams notification).
+  passwordProtected?: boolean;
+  dashboardPassword?: string | null;
 };
 
 export class SubmissionError extends Error {
@@ -36,10 +40,16 @@ export class SubmissionClient {
 
   // An expired SWA session returns 401, which staticwebapp.config.json rewrites
   // to a 302 → login page. With redirect:"manual" that surfaces as an
-  // opaqueredirect (or a bare 401/403) rather than a followed HTML page that
-  // would break JSON parsing — turn it into a re-login.
+  // opaqueredirect (or a bare 401) rather than a followed HTML page that would
+  // break JSON parsing — turn it into a re-login.
+  //
+  // 403 is deliberately NOT an auth challenge: it means "signed in, but not
+  // allowed" (e.g. the planned participant-level check on meeting links).
+  // Re-logging in returns the same identity and the same 403 — a login loop —
+  // and it would also discard the server's real explanation. Let 403 fall
+  // through to the !response.ok path so payload.error.message reaches the user.
   private isAuthChallenge(response: Response): boolean {
-    return response.type === "opaqueredirect" || response.status === 401 || response.status === 403;
+    return response.type === "opaqueredirect" || response.status === 401;
   }
 
   async submit(projectName: string, file: File): Promise<SubmissionResult> {
@@ -81,10 +91,10 @@ export class SubmissionClient {
     }
   }
 
-  async submitLink(projectName: string, meetingLink: string): Promise<SubmissionResult> {
+  async submitLink(projectName: string, meetingLink: string, attendeeEmail = ""): Promise<SubmissionResult> {
     const init = await this.adapter.prepare({
       method: "POST",
-      body: JSON.stringify({ projectName, meetingLink }),
+      body: JSON.stringify({ projectName, meetingLink, attendeeEmail }),
       headers: { "Content-Type": "application/json" },
     });
     let response: Response;

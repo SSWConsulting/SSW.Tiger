@@ -12,7 +12,7 @@ type Props = {
 
 const TABS: { id: View; label: string }[] = [
   { id: "upload", label: "Submit a meeting" },
-  { id: "dashboards", label: "My dashboards" },
+  { id: "dashboards", label: "My submissions" },
 ];
 
 export function AppHeader({ view, onNavigate, principal, logoutUrl }: Props) {

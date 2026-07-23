@@ -31,20 +31,40 @@ function StatusBadge({ status }: { status: SubmissionStatus }) {
   );
 }
 
+// Per-tab cache so a refresh renders the last-known list instantly and only
+// revalidates in the background (the list endpoint is on a cold-startable Function).
+// Passwords are stripped before caching so the plaintext never lingers in storage —
+// they re-appear from the live fetch a moment later.
+const CACHE_KEY = "tiger.submissions";
+function readCache(): SubmissionSummary[] | null {
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY);
+    return raw ? (JSON.parse(raw) as SubmissionSummary[]) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function DashboardsView({ client, onUpload }: Props) {
-  const [state, setState] = useState<LoadState>("loading");
-  const [items, setItems] = useState<SubmissionSummary[]>([]);
+  const [items, setItems] = useState<SubmissionSummary[]>(() => readCache() ?? []);
+  const [state, setState] = useState<LoadState>(() => (readCache() ? "loaded" : "loading"));
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
-    setState("loading");
     setError("");
     try {
-      setItems(await client.list());
+      const next = await client.list();
+      setItems(next);
       setState("loaded");
+      try {
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify(next.map((s) => ({ ...s, dashboardPassword: null }))));
+      } catch {
+        /* cache is best-effort */
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load your dashboards.");
-      setState("failed");
+      setError(err instanceof Error ? err.message : "Could not load your submissions.");
+      // Keep any cached rows visible; only show the error page when there's nothing.
+      setState((prev) => (prev === "loaded" ? "loaded" : "failed"));
     }
   }, [client]);
 
@@ -57,7 +77,7 @@ export function DashboardsView({ client, onUpload }: Props) {
       <div className="mb-6 flex items-end justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Your history</p>
-          <h1 className="mt-1 text-3xl font-bold tracking-[-0.02em] text-ssw-charcoal-800">My dashboards</h1>
+          <h1 className="mt-1 text-3xl font-bold tracking-[-0.02em] text-ssw-charcoal-800">My submissions</h1>
         </div>
         <button
           className="rounded-ds-sm border border-primary bg-primary px-4 py-2.5 font-semibold text-white transition hover:bg-ssw-red-600"
@@ -70,7 +90,7 @@ export function DashboardsView({ client, onUpload }: Props) {
 
       {state === "loading" && (
         <div className="rounded-ds border border-black/10 bg-white p-10 text-center text-ssw-gray-500 shadow-ds-raised">
-          Loading your dashboards…
+          Loading your submissions…
         </div>
       )}
 
@@ -89,7 +109,7 @@ export function DashboardsView({ client, onUpload }: Props) {
 
       {state === "loaded" && items.length === 0 && (
         <div className="rounded-ds border border-black/10 bg-white p-12 text-center shadow-ds-raised">
-          <h2 className="text-lg font-semibold text-ssw-charcoal">No dashboards yet</h2>
+          <h2 className="text-lg font-semibold text-ssw-charcoal">No submissions yet</h2>
           <p className="mx-auto mt-2 max-w-[380px] text-sm text-ssw-gray-500">
             Submit a Teams meeting link or transcript and it will appear here once Parrot has generated the dashboard.
           </p>
@@ -116,13 +136,21 @@ export function DashboardsView({ client, onUpload }: Props) {
                   <StatusBadge status={item.status} />
                 </div>
                 <p className="mt-1 text-[13px] text-ssw-gray-500">Submitted {formatDate(item.submittedAt)}</p>
+                {item.status === "completed" && item.passwordProtected && item.dashboardPassword ? (
+                  <p className="mt-1 text-[13px] text-ssw-charcoal">
+                    <span className="font-medium">Password:</span>{" "}
+                    <code className="rounded bg-ssw-gray-100 px-1.5 py-0.5 font-mono text-[12px]">
+                      {item.dashboardPassword}
+                    </code>
+                  </p>
+                ) : null}
               </div>
               {item.status === "completed" && item.dashboardUrl ? (
                 <a
                   href={item.dashboardUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex-none rounded-ds-sm border border-black/10 bg-transparent px-4 py-2 font-medium text-ssw-charcoal transition hover:bg-black/5"
+                  className="flex-none rounded-ds-sm border border-primary bg-primary px-4 py-2 font-semibold text-white transition hover:bg-ssw-red-600"
                 >
                   Open dashboard
                 </a>

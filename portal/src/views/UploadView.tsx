@@ -4,6 +4,24 @@ import type { SubmissionClient } from "../api/SubmissionClient";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
+// Decorative field markers — aria-hidden so the accessible name stays the field label.
+function RequiredMark() {
+  return (
+    <span aria-hidden="true" className="text-primary">
+      {" "}
+      *
+    </span>
+  );
+}
+function OptionalMark() {
+  return (
+    <span aria-hidden="true" className="font-normal text-ssw-gray-500">
+      {" "}
+      (optional)
+    </span>
+  );
+}
+
 type Props = {
   client: SubmissionClient;
   onViewDashboards: () => void;
@@ -12,18 +30,20 @@ type Mode = "file" | "link";
 type State = "idle" | "uploading" | "accepted" | "failed";
 
 function validate(mode: Mode, projectName: string, file: File | null, meetingLink: string) {
-  if (!projectName.trim()) return "Enter a project name.";
   if (mode === "file") {
+    if (!projectName.trim()) return "Enter a project name.";
     if (!file) return "Choose a transcript file.";
     if (!file.name.toLowerCase().endsWith(".vtt")) return "Choose a .vtt transcript file.";
     if (file.size === 0) return "The transcript file is empty.";
     if (file.size > MAX_BYTES) return "The transcript must be 10 MB or smaller.";
   } else {
+    // Project name is optional for meeting links — the meeting subject fills it in.
+    // Format is only checked loosely here; the server does the real resolution.
     const link = meetingLink.trim();
-    if (!link) return "Paste a Teams meeting link.";
-    if (!/^https?:\/\/teams\.(microsoft|live)\.com\//i.test(link))
-      return "That doesn't look like a Teams meeting link.";
-    if (!link.includes("context=")) return "Copy the full meeting link from Teams — this one is missing meeting info.";
+    if (!link) return "Paste a meeting link or Meeting ID.";
+    const isMeetingId = /^\d{9,20}$/.test(link.replace(/\s+/g, ""));
+    const isTeamsUrl = /^https?:\/\/teams\.(microsoft|live)\.com\//i.test(link);
+    if (!isMeetingId && !isTeamsUrl) return "Enter a Teams meeting link or the numeric Meeting ID.";
   }
   return "";
 }
@@ -33,6 +53,7 @@ export function UploadView({ client, onViewDashboards }: Props) {
   const [projectName, setProjectName] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [meetingLink, setMeetingLink] = useState("");
+  const [attendeeEmail, setAttendeeEmail] = useState("");
   const [state, setState] = useState<State>("idle");
   const [message, setMessage] = useState("");
   const [requestId, setRequestId] = useState("");
@@ -51,7 +72,7 @@ export function UploadView({ client, onViewDashboards }: Props) {
       const result =
         mode === "file"
           ? await client.submit(projectName.trim(), file!)
-          : await client.submitLink(projectName.trim(), meetingLink.trim());
+          : await client.submitLink(projectName.trim(), meetingLink.trim(), attendeeEmail.trim());
       setRequestId(result.requestId);
       setState("accepted");
     } catch (error) {
@@ -63,6 +84,7 @@ export function UploadView({ client, onViewDashboards }: Props) {
   function reset() {
     setFile(null);
     setMeetingLink("");
+    setAttendeeEmail("");
     setProjectName("");
     setRequestId("");
     setMessage("");
@@ -126,7 +148,7 @@ export function UploadView({ client, onViewDashboards }: Props) {
               Your meeting is in the queue.
             </h2>
             <p className="mt-3 text-black/60">
-              Track its progress and open the dashboard from My dashboards. Reference ID:
+              Track its progress and open the dashboard from My submissions. Reference ID:
             </p>
             <code className="mx-auto mt-4 block max-w-full overflow-hidden text-ellipsis rounded-ds-sm border border-black/10 bg-ssw-gray-50 p-3 font-mono text-sm">
               {requestId}
@@ -137,7 +159,7 @@ export function UploadView({ client, onViewDashboards }: Props) {
                 type="button"
                 onClick={onViewDashboards}
               >
-                View my dashboards
+                View my submissions
               </button>
               <button
                 className="rounded-ds-sm border border-black/10 bg-transparent px-4 py-2.5 font-medium text-ssw-charcoal transition hover:bg-black/5"
@@ -151,7 +173,7 @@ export function UploadView({ client, onViewDashboards }: Props) {
         ) : (
           <form onSubmit={submit} noValidate className="p-[clamp(1.375rem,3.5vw,2.125rem)]">
             <div className="mb-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">01 / Submit</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Submit</p>
               <h2 id="upload-title" className="mt-1 text-3xl font-bold tracking-[-0.02em] text-ssw-charcoal-800">
                 Submit a meeting
               </h2>
@@ -187,7 +209,7 @@ export function UploadView({ client, onViewDashboards }: Props) {
             </div>
 
             <label htmlFor="projectName" className="mb-2 mt-4 block text-[13px] font-semibold text-ssw-charcoal">
-              Project name
+              Project name{mode === "file" ? <RequiredMark /> : <OptionalMark />}
             </label>
             <input
               id="projectName"
@@ -196,19 +218,26 @@ export function UploadView({ client, onViewDashboards }: Props) {
               value={projectName}
               disabled={busy}
               onChange={(event) => setProjectName(event.target.value)}
-              placeholder="e.g. Acme Rebuild"
+              placeholder="e.g. Northwind"
               className="w-full rounded-ds-sm border border-black/10 bg-white px-3.5 py-3 outline-none transition focus:border-primary focus:shadow-[0_0_0_3px_rgba(205,66,66,0.14)]"
             />
+            {mode === "link" && (
+              <p className="mt-2 text-[13px] text-ssw-gray-500">We'll use the meeting name if you leave this blank.</p>
+            )}
 
             {mode === "file" ? (
               <>
-                <p className="mb-2 mt-4 block text-[13px] font-semibold text-ssw-charcoal">Transcript file</p>
+                <p className="mb-2 mt-4 block text-[13px] font-semibold text-ssw-charcoal">
+                  Transcript file
+                  <RequiredMark />
+                </p>
                 <TranscriptDropzone file={file} disabled={busy} onSelect={setFile} />
               </>
             ) : (
               <>
                 <label htmlFor="meetingLink" className="mb-2 mt-4 block text-[13px] font-semibold text-ssw-charcoal">
-                  Teams meeting link
+                  Meeting Join link or Meeting ID
+                  <RequiredMark />
                 </label>
                 <input
                   id="meetingLink"
@@ -216,12 +245,27 @@ export function UploadView({ client, onViewDashboards }: Props) {
                   value={meetingLink}
                   disabled={busy}
                   onChange={(event) => setMeetingLink(event.target.value)}
-                  placeholder="https://teams.microsoft.com/l/meetup-join/…"
+                  placeholder="teams.microsoft.com/meet/… or Meeting ID"
                   className="w-full rounded-ds-sm border border-black/10 bg-white px-3.5 py-3 outline-none transition focus:border-primary focus:shadow-[0_0_0_3px_rgba(205,66,66,0.14)]"
                 />
                 <p className="mt-2 text-[13px] text-ssw-gray-500">
-                  Paste the full link from Teams. The transcript must already be generated (it can take a while after
-                  the meeting ends).
+Enter a Teams join link or Meeting ID from the invite. The transcript must already be available.                </p>
+                <label htmlFor="attendeeEmail" className="mb-2 mt-4 block text-[13px] font-semibold text-ssw-charcoal">
+                  Attendee email
+                  <OptionalMark />
+                </label>
+                <input
+                  id="attendeeEmail"
+                  name="attendeeEmail"
+                  type="email"
+                  value={attendeeEmail}
+                  disabled={busy}
+                  onChange={(event) => setAttendeeEmail(event.target.value)}
+                  placeholder="colleague@ssw.com.au"
+                  className="w-full rounded-ds-sm border border-black/10 bg-white px-3.5 py-3 outline-none transition focus:border-primary focus:shadow-[0_0_0_3px_rgba(205,66,66,0.14)]"
+                />
+                <p className="mt-2 text-[13px] text-ssw-gray-500">
+                  Enter someone listed on the calendar invite. Leave blank if you’re already invited. People added during the meeting may not be found.
                 </p>
               </>
             )}

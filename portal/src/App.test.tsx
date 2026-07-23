@@ -28,7 +28,7 @@ describe("App shell", () => {
 
   it("renders the authenticated shell with the upload view and nav", async () => {
     render(<App client={client} auth={makeAuth(principal)} />);
-    expect(await screen.findByRole("button", { name: /^my dashboards$/i })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /^my submissions$/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /submit a meeting/i })).toBeInTheDocument();
     expect(screen.getByText("willow@ssw.com.au")).toBeInTheDocument();
   });
