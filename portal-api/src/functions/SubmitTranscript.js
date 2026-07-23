@@ -1,5 +1,5 @@
 const { app } = require("@azure/functions");
-const { createSubmissionStorage, DEFAULT_CONTAINER } = require("../services/submissionStorage");
+const { createSubmissionStorage, DEFAULT_BLOB_CONTAINER } = require("../services/submissionStorage");
 const { createSubmissionQueue } = require("../services/submissionQueue");
 const { createSubmissionService } = require("../services/submissionService");
 const { createSubmissionStore } = require("../services/submissionStore");
@@ -64,7 +64,7 @@ function createSubmitTranscriptHandler({ service, actorResolver = createSubmissi
 
 function createDefaultService() {
   const accountName = process.env.TRANSCRIPT_STORAGE_ACCOUNT;
-  const containerName = process.env.TRANSCRIPT_STORAGE_CONTAINER || DEFAULT_CONTAINER;
+  const containerName = process.env.TRANSCRIPT_STORAGE_CONTAINER || DEFAULT_BLOB_CONTAINER;
   return createSubmissionService({
     accountName,
     containerName,

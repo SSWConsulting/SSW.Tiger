@@ -28,7 +28,7 @@ const fs = require("node:fs").promises;
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { log } = require("../lib/logger");
-const { validateDownloadedVtt, detectVttSpeakers } = require("./downloadUploadedTranscript");
+const { validateDownloadedVtt, detectVttSpeakers, describeError } = require("./downloadUploadedTranscript");
 const { parseSubject } = require("./parseSubject");
 
 function readConfig(env = process.env) {
@@ -152,11 +152,27 @@ function createGraphClient(config, fetchImpl = fetch) {
     if (!response.ok) throw new Error(`Failed to acquire Graph token: ${response.status}`);
     return (await response.json()).access_token;
   }
-  async function get(accessToken, url, accept) {
+  // `what` names the call (findMeeting / latestTranscript / …) and the response body
+  // carries Graph's real reason — a bare "Graph request failed: 403" cannot tell
+  // "permission not granted to the app" from "Teams application access policy does
+  // not cover this user", which need completely different fixes.
+  async function get(accessToken, url, accept, what = "request") {
     const response = await fetchImpl(url, {
       headers: { Authorization: `Bearer ${accessToken}`, ...(accept ? { Accept: accept } : {}) },
     });
-    if (!response.ok) throw new Error(`Graph request failed: ${response.status}`);
+    if (!response.ok) {
+      let detail = "";
+      try {
+        const body = await response.text();
+        const parsed = JSON.parse(body);
+        const code = parsed?.error?.code;
+        const message = parsed?.error?.message;
+        detail = [code, message].filter(Boolean).join(": ") || body.slice(0, 300);
+      } catch {
+        /* non-JSON or unreadable body — status alone is all we have */
+      }
+      throw new Error(`Graph ${what} failed: ${response.status}${detail ? ` — ${detail}` : ""}`);
+    }
     return response;
   }
   return {
@@ -198,12 +214,23 @@ async function resolveMeeting(client, token, config) {
   // transcripts as the meeting's REAL organizer (always authorized). Fall back to the
   // candidate that found it if Graph omitted the organizer identity.
   if (config.joinMeetingId) {
+    const failures = [];
     for (const uid of config.resolverUserIds) {
-      const meeting = await client.findMeetingByJoinMeetingId(token, uid, config.joinMeetingId);
-      if (meeting) return { meeting, transcriptUserId: organizerIdOf(meeting) || uid };
+      try {
+        const meeting = await client.findMeetingByJoinMeetingId(token, uid, config.joinMeetingId);
+        if (meeting) return { meeting, transcriptUserId: organizerIdOf(meeting) || uid };
+        failures.push(`${uid}: no match`);
+      } catch (error) {
+        // A candidate can fail for reasons that say nothing about the next one:
+        // 403 = the Teams application access policy does not cover THIS user,
+        // 404/other = this user cannot see the meeting. Neither should end the
+        // search — record it and try the next candidate.
+        failures.push(`${uid}: ${error.message}`);
+      }
     }
     throw new Error(
-      "No meeting was found for that Meeting ID. If you did not attend it, add the email of someone who did.",
+      "No meeting was found for that Meeting ID. If you did not attend it, add the email of someone who did." +
+        (failures.length ? ` (tried — ${failures.join("; ")})` : ""),
     );
   }
 
@@ -272,8 +299,11 @@ async function main() {
     const result = await downloadFromMeetingLink();
     console.log(JSON.stringify(result));
   } catch (error) {
-    log("error", "Failed to download from meeting link", { error: error.message });
-    console.log(JSON.stringify({ error: true, message: error.message }));
+    // Shared with the upload path — surfaces statusCode/code when the message is
+    // empty (e.g. a HEAD 403, or a Graph error the SDK could not describe).
+    const message = describeError(error);
+    log("error", "Failed to download from meeting link", { error: message });
+    console.log(JSON.stringify({ error: true, message }));
     process.exitCode = 1;
   }
 }

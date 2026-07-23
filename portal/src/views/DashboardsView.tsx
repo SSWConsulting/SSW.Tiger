@@ -74,18 +74,9 @@ export function DashboardsView({ client, onUpload }: Props) {
 
   return (
     <div className="mx-auto w-full max-w-[860px]">
-      <div className="mb-6 flex items-end justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Your history</p>
-          <h1 className="mt-1 text-3xl font-bold tracking-[-0.02em] text-ssw-charcoal-800">My submissions</h1>
-        </div>
-        <button
-          className="rounded-ds-sm border border-primary bg-primary px-4 py-2.5 font-semibold text-white transition hover:bg-ssw-red-600"
-          type="button"
-          onClick={onUpload}
-        >
-          Submit a meeting
-        </button>
+      <div className="mb-6">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Your history</p>
+        <h1 className="mt-1 text-3xl font-bold tracking-[-0.02em] text-ssw-charcoal-800">My submissions</h1>
       </div>
 
       {state === "loading" && (
@@ -111,7 +102,7 @@ export function DashboardsView({ client, onUpload }: Props) {
         <div className="rounded-ds border border-black/10 bg-white p-12 text-center shadow-ds-raised">
           <h2 className="text-lg font-semibold text-ssw-charcoal">No submissions yet</h2>
           <p className="mx-auto mt-2 max-w-[380px] text-sm text-ssw-gray-500">
-            Submit a Teams meeting link or transcript and it will appear here once Parrot has generated the dashboard.
+            Submit a Teams meeting link or transcript and it will appear here once Tiger has generated the dashboard.
           </p>
           <button
             className="mt-5 rounded-ds-sm border border-primary bg-primary px-5 py-3 font-semibold text-white transition hover:bg-ssw-red-600"

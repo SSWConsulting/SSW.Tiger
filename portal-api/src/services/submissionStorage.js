@@ -1,7 +1,7 @@
 const { BlobServiceClient } = require("@azure/storage-blob");
 const { DefaultAzureCredential } = require("@azure/identity");
 
-const DEFAULT_CONTAINER = "transcript-submissions";
+const DEFAULT_BLOB_CONTAINER = "transcript-submissions";
 
 /**
  * Local-dev seam, mirroring createSubmissionQueue's connection-string support.
@@ -20,7 +20,7 @@ const DEFAULT_CONTAINER = "transcript-submissions";
  */
 function createSubmissionStorage({
   accountName,
-  containerName = DEFAULT_CONTAINER,
+  containerName = DEFAULT_BLOB_CONTAINER,
   credential,
   connectionString,
 } = {}) {
@@ -53,4 +53,4 @@ function createSubmissionStorage({
   };
 }
 
-module.exports = { DEFAULT_CONTAINER, createSubmissionStorage };
+module.exports = { DEFAULT_BLOB_CONTAINER, createSubmissionStorage };

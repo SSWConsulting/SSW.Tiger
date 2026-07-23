@@ -83,3 +83,15 @@ test("downloads to the canonical processor filename and returns Graph-compatible
   assert.deepEqual(result.vttInfo, { hasSpeakerLabels: true, taggedSpeakerCount: 1, taggedSpeakers: ["Willow Lyu"] });
   assert.equal(await fs.readFile(result.transcriptPath, "utf8"), bytes.toString());
 });
+
+test("describes errors that carry no message (HEAD 403 from a missing Blob Data role)", () => {
+  const { describeError } = require("./downloadUploadedTranscript");
+  // A HEAD response has no body, so the Storage SDK builds a RestError with an
+  // empty message — status/code are the only usable signal.
+  assert.equal(
+    describeError({ message: "", code: "AuthorizationPermissionMismatch", statusCode: 403 }),
+    "code=AuthorizationPermissionMismatch status=403",
+  );
+  assert.equal(describeError(new Error("boom")), "boom");
+  assert.match(describeError({}), /Unknown error/);
+});

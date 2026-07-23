@@ -17,7 +17,7 @@ describe("UploadView", () => {
     expect(submit).not.toHaveBeenCalled();
   });
 
-  it("submits a transcript file and shows the reference id", async () => {
+  it("submits a transcript file and confirms acceptance", async () => {
     const submit = vi.fn().mockResolvedValue({ requestId: "request-123", status: "accepted" });
     render(<UploadView client={makeClient({ submit })} onViewDashboards={vi.fn()} />);
     fireEvent.change(screen.getByLabelText(/^project name/i), { target: { value: "Tiger" } });
@@ -25,7 +25,7 @@ describe("UploadView", () => {
     fireEvent.change(screen.getByLabelText("Choose transcript file"), { target: { files: [file] } });
     fireEvent.click(screen.getByRole("button", { name: /generate dashboard/i }));
     await waitFor(() => expect(submit).toHaveBeenCalledWith("Tiger", file));
-    expect(await screen.findByText("request-123")).toBeInTheDocument();
+    expect(await screen.findByText(/your meeting is in the queue/i)).toBeInTheDocument();
   });
 
   it("submits a meeting link when in link mode", async () => {
@@ -36,7 +36,7 @@ describe("UploadView", () => {
     fireEvent.change(screen.getByLabelText(/link or meeting id/i), { target: { value: validLink } });
     fireEvent.click(screen.getByRole("button", { name: /generate dashboard/i }));
     await waitFor(() => expect(submitLink).toHaveBeenCalledWith("Tiger", validLink, ""));
-    expect(await screen.findByText("request-999")).toBeInTheDocument();
+    expect(await screen.findByText(/your meeting is in the queue/i)).toBeInTheDocument();
   });
 
   it("accepts a bare Meeting ID with no project name and passes the optional attendee email", async () => {

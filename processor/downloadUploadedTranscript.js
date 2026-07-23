@@ -116,13 +116,30 @@ async function downloadUploadedTranscript({ env = process.env, credential, blobS
   };
 }
 
+/**
+ * Azure Storage errors are not always self-describing: getProperties() is a HEAD
+ * request, and a HEAD response carries no body, so the SDK has nothing to build a
+ * message from — a 403 from a missing Blob Data role surfaces as message:"".
+ * Always surface statusCode/code so the cause is visible in the Job logs.
+ */
+function describeError(error) {
+  const statusCode = error?.statusCode ?? error?.response?.status;
+  const message = error?.message || error?.details?.message || "";
+  // error.name only adds information when there is no message — otherwise it is
+  // just the noise "code=Error" on every ordinary throw.
+  const code = error?.code || (message ? undefined : error?.name);
+  const parts = [message, code && `code=${code}`, statusCode && `status=${statusCode}`].filter(Boolean);
+  return parts.length ? parts.join(" ") : "Unknown error (no message, code or status)";
+}
+
 async function main() {
   try {
     const result = await downloadUploadedTranscript();
     console.log(JSON.stringify(result));
   } catch (error) {
-    log("error", "Failed to download uploaded transcript", { error: error.message });
-    console.log(JSON.stringify({ error: true, message: error.message }));
+    const message = describeError(error);
+    log("error", "Failed to download uploaded transcript", { error: message });
+    console.log(JSON.stringify({ error: true, message }));
     process.exitCode = 1;
   }
 }
@@ -134,5 +151,6 @@ module.exports = {
   readConfig,
   validateDownloadedVtt,
   detectVttSpeakers,
+  describeError,
   downloadUploadedTranscript,
 };

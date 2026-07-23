@@ -9,6 +9,9 @@ param costCategoryTag object
 @description('Principal that uploads and downloads private transcript submissions')
 param managedIdentityPrincipalId string
 
+@description('Create the Blob Data Contributor assignment on the transcript container. Requires Owner or User Access Administrator — Contributor cannot write Microsoft.Authorization/roleAssignments, so this is off by default to keep the deployment runnable by a Contributor. Mirrors manageKeyVaultRoleAssignment in main.bicep.')
+param manageTranscriptBlobRoleAssignment bool = false
+
 // Storage account names must be 3-24 chars, lowercase alphanumeric only
 var baseName = toLower(replace(replace('sa${project}${environment}', '-', ''), '_', ''))
 var name = length(baseName) > 24 ? substring(baseName, 0, 24) : baseName
@@ -57,7 +60,11 @@ resource transcriptSubmissionsContainer 'Microsoft.Storage/storageAccounts/blobS
 
 // The shared user-assigned identity is used by the Function to upload and by
 // the Container App Job to download. Scope is limited to this container.
-resource transcriptBlobDataContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+// Gated: see manageTranscriptBlobRoleAssignment above. The assignment is NOT
+// optional at runtime — without it the Container App Job cannot download an
+// uploaded transcript — it is only opt-in at deploy time so that a Contributor
+// (who cannot write role assignments) can still deploy everything else.
+resource transcriptBlobDataContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (manageTranscriptBlobRoleAssignment) {
   name: guid(transcriptSubmissionsContainer.id, managedIdentityPrincipalId, 'transcript-blob-data-contributor')
   scope: transcriptSubmissionsContainer
   properties: {

@@ -5,7 +5,7 @@ const { DefaultAzureCredential } = require("@azure/identity");
 if (!globalThis.crypto) globalThis.crypto = require("node:crypto");
 
 const DB_NAME = process.env.COSMOS_DATABASE || "tiger";
-const DEFAULT_CONTAINER = "submissions";
+const DEFAULT_COSMOS_CONTAINER = "submissions";
 
 /**
  * Per-user submission history store.
@@ -27,7 +27,7 @@ const DEFAULT_CONTAINER = "submissions";
  */
 function createSubmissionStore({
   endpoint = process.env.COSMOS_ENDPOINT,
-  containerName = process.env.COSMOS_SUBMISSIONS_CONTAINER || DEFAULT_CONTAINER,
+  containerName = process.env.COSMOS_SUBMISSIONS_CONTAINER || DEFAULT_COSMOS_CONTAINER,
   credential,
   client,
 } = {}) {
@@ -66,4 +66,4 @@ function createSubmissionStore({
   };
 }
 
-module.exports = { DEFAULT_SUBMISSIONS_CONTAINER: DEFAULT_CONTAINER, createSubmissionStore };
+module.exports = { DEFAULT_COSMOS_CONTAINER, createSubmissionStore };

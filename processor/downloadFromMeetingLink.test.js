@@ -115,7 +115,10 @@ test("mode B: resolves by joinMeetingId trying candidates, then fetches transcri
       return "WEBVTT\n\n00:00.000 --> 00:01.000\n<v Willow Lyu>Hi";
     },
   };
-  const result = await downloadFromMeetingLink({ env: { ...meetingIdEnv, OUTPUT_PATH: path.join(dir, "out.vtt") }, graph });
+  const result = await downloadFromMeetingLink({
+    env: { ...meetingIdEnv, OUTPUT_PATH: path.join(dir, "out.vtt") },
+    graph,
+  });
   assert.deepEqual(tried, ["missing@ssw.com.au", "attendee@ssw.com.au"]); // in order, stops at first hit
   assert.equal(transcriptUser, "organizer-real"); // transcript fetched as the discovered organizer, not the attendee
   assert.equal(contentUser, "organizer-real");
@@ -174,4 +177,54 @@ test("readConfig rejects a Meeting ID with no resolver candidates, and a config 
   };
   assert.throws(() => readConfig({ ...base, MEETING_JOIN_MEETING_ID: "123" }), /resolverUserIds/);
   assert.throws(() => readConfig(base), /joinUrl or joinMeetingId/);
+});
+
+test("mode B: a candidate that throws (403 app access policy) does not abort the search", async () => {
+  // Real Graph THROWS on 403 — the previous fake only returned null, so the
+  // candidate loop looked like it tolerated failures when it did not.
+  const tried = [];
+  const graph = {
+    token: async () => "tok",
+    findMeetingByJoinMeetingId: async (_t, uid) => {
+      tried.push(uid);
+      if (uid === "me@ssw.com.au") throw new Error("Graph findMeetingByJoinMeetingId failed: 403 — Forbidden");
+      return { id: "meeting-7", participants: { organizer: { identity: { user: { id: "organizer-9" } } } } };
+    },
+    latestTranscript: async (_t, uid) => {
+      assert.equal(uid, "organizer-9", "transcripts must be fetched as the real organizer");
+      return { id: "t1", createdDateTime: "2026-07-10T04:05:06Z" };
+    },
+    content: async () => "WEBVTT\n\n00:00.000 --> 00:01.000\n<v Willow Lyu>Hello",
+  };
+  const result = await downloadFromMeetingLink({
+    env: { ...meetingIdEnv, MEETING_RESOLVER_USER_IDS: "me@ssw.com.au,attendee@ssw.com.au" },
+    graph,
+  });
+  assert.deepEqual(tried, ["me@ssw.com.au", "attendee@ssw.com.au"], "must continue past the 403");
+  assert.equal(result.success, true);
+});
+
+test("mode B: when every candidate fails, the error names each reason", async () => {
+  const graph = {
+    token: async () => "tok",
+    findMeetingByJoinMeetingId: async (_t, uid) => {
+      throw new Error(`Graph findMeetingByJoinMeetingId failed: 403 — Forbidden (${uid})`);
+    },
+    latestTranscript: async () => {
+      throw new Error("should not be called");
+    },
+    content: async () => {
+      throw new Error("should not be called");
+    },
+  };
+  await assert.rejects(
+    downloadFromMeetingLink({
+      env: { ...meetingIdEnv, MEETING_RESOLVER_USER_IDS: "me@ssw.com.au,attendee@ssw.com.au" },
+      graph,
+    }),
+    (error) =>
+      /did not attend/.test(error.message) &&
+      /me@ssw\.com\.au: .*403/.test(error.message) &&
+      /attendee@ssw\.com\.au: .*403/.test(error.message),
+  );
 });

@@ -40,6 +40,9 @@ param deployLogicApp bool = false
 @description('Manage the Key Vault Secrets User assignment. Requires Owner or User Access Administrator.')
 param manageKeyVaultRoleAssignment bool = false
 
+@description('Manage the Storage Blob Data Contributor assignment on the transcript-submissions container. Requires Owner or User Access Administrator (Contributor cannot write Microsoft.Authorization/roleAssignments). Off by default so a Contributor can still deploy; the assignment must exist before the Container App Job can download uploaded transcripts, so run once with this true (or create it out of band).')
+param manageTranscriptBlobRoleAssignment bool = false
+
 @description('Deploy the Parrot portal stack (Portal API Function App + Static Web App). Off by default until the portal is ready to go live.')
 param deployPortal bool = false
 
@@ -90,6 +93,7 @@ module storage 'modules/storage.bicep' = {
     costCategoryTag: costCategoryTag
     location: location
     managedIdentityPrincipalId: id.outputs.principalId
+    manageTranscriptBlobRoleAssignment: manageTranscriptBlobRoleAssignment
   }
 }
 

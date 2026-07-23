@@ -5,7 +5,7 @@ const {
   decodeAndValidateVtt,
   createCanonicalFileName,
 } = require("./submissionValidation");
-const { DEFAULT_CONTAINER } = require("./submissionStorage");
+const { DEFAULT_BLOB_CONTAINER } = require("./submissionStorage");
 
 // store is optional: when Cosmos isn't configured (local/tests) the submission
 // still succeeds, it just doesn't get a history record.
@@ -14,7 +14,7 @@ function createSubmissionService({
   queue,
   store = null,
   accountName,
-  containerName = DEFAULT_CONTAINER,
+  containerName = DEFAULT_BLOB_CONTAINER,
   now = () => new Date(),
   randomUUID = crypto.randomUUID,
 } = {}) {
@@ -32,6 +32,9 @@ function createSubmissionService({
       const requestId = randomUUID();
       const submittedAt = now();
       const canonicalFileName = createCanonicalFileName(submittedAt, requestId);
+      // Path prefix INSIDE the `transcript-submissions` blob container. Unrelated to
+      // the Cosmos container also called `submissions` (see submissionStore.js) —
+      // three similar names, three different layers.
       const blobName = `submissions/${requestId}/${canonicalFileName}`;
       const originalFileName = sanitizeOriginalFileName(fileName);
       const normalizedBytes = Buffer.from(content, "utf8");

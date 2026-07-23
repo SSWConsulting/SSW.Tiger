@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from "react";
-import { TranscriptDropzone } from "../components/TranscriptDropzone";
 import type { SubmissionClient } from "../api/SubmissionClient";
+import { TranscriptDropzone } from "../components/TranscriptDropzone";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
@@ -56,7 +56,6 @@ export function UploadView({ client, onViewDashboards }: Props) {
   const [attendeeEmail, setAttendeeEmail] = useState("");
   const [state, setState] = useState<State>("idle");
   const [message, setMessage] = useState("");
-  const [requestId, setRequestId] = useState("");
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -69,11 +68,9 @@ export function UploadView({ client, onViewDashboards }: Props) {
     setState("uploading");
     setMessage("");
     try {
-      const result =
-        mode === "file"
-          ? await client.submit(projectName.trim(), file!)
-          : await client.submitLink(projectName.trim(), meetingLink.trim(), attendeeEmail.trim());
-      setRequestId(result.requestId);
+      await (mode === "file"
+        ? client.submit(projectName.trim(), file!)
+        : client.submitLink(projectName.trim(), meetingLink.trim(), attendeeEmail.trim()));
       setState("accepted");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The transcript could not be submitted.");
@@ -86,7 +83,6 @@ export function UploadView({ client, onViewDashboards }: Props) {
     setMeetingLink("");
     setAttendeeEmail("");
     setProjectName("");
-    setRequestId("");
     setMessage("");
     setState("idle");
   }
@@ -109,7 +105,7 @@ export function UploadView({ client, onViewDashboards }: Props) {
           into <em className="not-italic text-primary">actionable insight.</em>
         </h1>
         <p className="max-w-[520px] text-base leading-relaxed text-ssw-gray-600">
-          Upload a Microsoft Teams transcript or paste a meeting link. Parrot will analyse the conversation and generate
+          Upload a Microsoft Teams transcript or paste a meeting link. Tiger will analyse the conversation and generate
           a meeting dashboard.
         </p>
         <ul className="mt-7 flex max-w-[480px] flex-col gap-3.5">
@@ -147,12 +143,7 @@ export function UploadView({ client, onViewDashboards }: Props) {
             <h2 className="mt-2 text-2xl font-bold tracking-[-0.02em] text-ssw-charcoal-800">
               Your meeting is in the queue.
             </h2>
-            <p className="mt-3 text-black/60">
-              Track its progress and open the dashboard from My submissions. Reference ID:
-            </p>
-            <code className="mx-auto mt-4 block max-w-full overflow-hidden text-ellipsis rounded-ds-sm border border-black/10 bg-ssw-gray-50 p-3 font-mono text-sm">
-              {requestId}
-            </code>
+            <p className="mt-3 text-black/60">Track its progress and open the dashboard from My submissions.</p>
             <div className="mt-6 flex flex-col gap-2.5">
               <button
                 className="rounded-ds-sm border border-primary bg-primary px-5 py-3.5 font-semibold text-white transition hover:bg-ssw-red-600"
@@ -249,7 +240,8 @@ export function UploadView({ client, onViewDashboards }: Props) {
                   className="w-full rounded-ds-sm border border-black/10 bg-white px-3.5 py-3 outline-none transition focus:border-primary focus:shadow-[0_0_0_3px_rgba(205,66,66,0.14)]"
                 />
                 <p className="mt-2 text-[13px] text-ssw-gray-500">
-Enter a Teams join link or Meeting ID from the invite. The transcript must already be available.                </p>
+                  Enter a Teams join link or Meeting ID from the invite. The transcript must already be available.{" "}
+                </p>
                 <label htmlFor="attendeeEmail" className="mb-2 mt-4 block text-[13px] font-semibold text-ssw-charcoal">
                   Attendee email
                   <OptionalMark />
@@ -265,7 +257,8 @@ Enter a Teams join link or Meeting ID from the invite. The transcript must alrea
                   className="w-full rounded-ds-sm border border-black/10 bg-white px-3.5 py-3 outline-none transition focus:border-primary focus:shadow-[0_0_0_3px_rgba(205,66,66,0.14)]"
                 />
                 <p className="mt-2 text-[13px] text-ssw-gray-500">
-                  Enter someone listed on the calendar invite. Leave blank if you’re already invited. People added during the meeting may not be found.
+                  Enter someone listed on the calendar invite. Leave blank if you’re already invited. People added
+                  during the meeting may not be found.
                 </p>
               </>
             )}
