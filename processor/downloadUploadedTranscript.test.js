@@ -3,7 +3,12 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs").promises;
 const os = require("node:os");
 const path = require("node:path");
-const { readConfig, validateDownloadedVtt, detectVttSpeakers, downloadUploadedTranscript } = require("./downloadUploadedTranscript");
+const {
+  readConfig,
+  validateDownloadedVtt,
+  detectVttSpeakers,
+  downloadUploadedTranscript,
+} = require("./downloadUploadedTranscript");
 
 const baseEnv = {
   TRANSCRIPT_STORAGE_ACCOUNT: "satiger",
@@ -22,8 +27,23 @@ test("validates uploaded source configuration", () => {
   assert.throws(() => readConfig({ ...baseEnv, UPLOAD_PROJECT_SLUG: "Bad Slug" }), /slug/);
 });
 
+test("accepts a connection string instead of an account name, but requires one of them", () => {
+  const { TRANSCRIPT_STORAGE_ACCOUNT, ...noAccount } = baseEnv;
+  // Local-dev path: a key/SAS connection string carries its own BlobEndpoint.
+  assert.equal(
+    readConfig({ ...noAccount, TRANSCRIPT_STORAGE_CONNECTION: "UseDevelopmentStorage=true" }).connectionString,
+    "UseDevelopmentStorage=true",
+  );
+  // Neither configured is still an error — the connection string must not make
+  // the account optional by accident.
+  assert.throws(() => readConfig(noAccount), /accountName/);
+});
+
 test("strictly validates the downloaded bytes", () => {
-  assert.equal(validateDownloadedVtt(Buffer.from("WEBVTT\n\n00:00.000 --> 00:01.000\nhello")).startsWith("WEBVTT"), true);
+  assert.equal(
+    validateDownloadedVtt(Buffer.from("WEBVTT\n\n00:00.000 --> 00:01.000\nhello")).startsWith("WEBVTT"),
+    true,
+  );
   assert.throws(() => validateDownloadedVtt(Buffer.from([0xc3, 0x28])), /UTF-8/);
   assert.throws(() => validateDownloadedVtt(Buffer.from("hello")), /WEBVTT/);
   assert.throws(() => validateDownloadedVtt(Buffer.from("WEBVTT\n\nnotes only")), /cue/);
@@ -36,7 +56,9 @@ test("detects <v> speaker labels for boardroom/profile handling", () => {
     taggedSpeakers: [],
   });
   assert.deepEqual(
-    detectVttSpeakers("WEBVTT\n\n00:00.000 --> 00:01.000\n<v Tiago Araujo [SSW]>Hi\n\n00:01.000 --> 00:02.000\n<v Willow Lyu>Hey\n\n00:02.000 --> 00:03.000\n<v Tiago Araujo [SSW]>Again"),
+    detectVttSpeakers(
+      "WEBVTT\n\n00:00.000 --> 00:01.000\n<v Tiago Araujo [SSW]>Hi\n\n00:01.000 --> 00:02.000\n<v Willow Lyu>Hey\n\n00:02.000 --> 00:03.000\n<v Tiago Araujo [SSW]>Again",
+    ),
     { hasSpeakerLabels: true, taggedSpeakerCount: 2, taggedSpeakers: ["Tiago Araujo [SSW]", "Willow Lyu"] },
   );
 });
@@ -52,7 +74,10 @@ test("downloads to the canonical processor filename and returns Graph-compatible
       }),
     }),
   };
-  const result = await downloadUploadedTranscript({ env: { ...baseEnv, OUTPUT_PATH: path.join(dir, baseEnv.UPLOAD_FILENAME) }, blobServiceClient: client });
+  const result = await downloadUploadedTranscript({
+    env: { ...baseEnv, OUTPUT_PATH: path.join(dir, baseEnv.UPLOAD_FILENAME) },
+    blobServiceClient: client,
+  });
   assert.equal(result.projectName, "tiger-portal");
   assert.deepEqual(result.participants, []);
   assert.deepEqual(result.vttInfo, { hasSpeakerLabels: true, taggedSpeakerCount: 1, taggedSpeakers: ["Willow Lyu"] });

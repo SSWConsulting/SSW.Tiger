@@ -62,6 +62,65 @@ test("rejects a link that is missing the context/organizer", async () => {
   assert.equal(response.jsonBody.error.code, "link_missing_context");
 });
 
+test("meeting ID mode: enqueues joinMeetingId with the submitter as the resolver", async () => {
+  const published = [];
+  const handler = createSubmitMeetingLinkHandler({
+    actorResolver: { resolve: async () => userActor },
+    queue: { publish: async (m) => published.push(m) },
+    randomUUID: () => "req-2",
+  });
+  const response = await handler(
+    requestWith({ projectName: "Tiger", meetingLink: "https://teams.microsoft.com/meet/47769649877490?p=x" }),
+    {},
+  );
+  assert.equal(response.status, 202);
+  assert.equal(published[0].joinMeetingId, "47769649877490");
+  assert.deepEqual(published[0].resolverUserIds, ["willow@ssw.com.au"]);
+  assert.equal(published[0].joinUrl, undefined);
+});
+
+test("meeting ID mode: appends a supplied attendee email (deduped, lowercased) to the resolver list", async () => {
+  const published = [];
+  const handler = createSubmitMeetingLinkHandler({
+    actorResolver: { resolve: async () => userActor },
+    queue: { publish: async (m) => published.push(m) },
+    randomUUID: () => "req-3",
+  });
+  await handler(
+    requestWith({ projectName: "Tiger", meetingLink: "477 696 498 774 90", attendeeEmail: "Bob@ssw.com.au" }),
+    {},
+  );
+  assert.deepEqual(published[0].resolverUserIds, ["willow@ssw.com.au", "bob@ssw.com.au"]);
+});
+
+test("meeting ID mode without a project name: blank displayName + generated slug (Job fills the name)", async () => {
+  const published = [];
+  const handler = createSubmitMeetingLinkHandler({
+    actorResolver: { resolve: async () => userActor },
+    queue: { publish: async (m) => published.push(m) },
+    randomUUID: () => "abcd1234-0000-0000-0000-000000000000",
+  });
+  const response = await handler(requestWith({ meetingLink: "477696498774" }), {});
+  assert.equal(response.status, 202);
+  assert.equal(published[0].project.displayName, "");
+  assert.equal(published[0].project.slug, "meeting-abcd1234");
+});
+
+test("meeting ID mode: 400 when the submitter has no email and no attendee is provided", async () => {
+  const handler = createSubmitMeetingLinkHandler({
+    actorResolver: { resolve: async () => ({ type: "user", subject: "u-9", email: null }) },
+    queue: {
+      publish: async () => {
+        throw new Error("should not publish");
+      },
+    },
+    randomUUID: () => "req-4",
+  });
+  const response = await handler(requestWith({ projectName: "Tiger", meetingLink: "477696498774" }), {});
+  assert.equal(response.status, 400);
+  assert.equal(response.jsonBody.error.code, "attendee_required");
+});
+
 test("rolls back the history record when publish fails", async () => {
   const removed = [];
   const handler = createSubmitMeetingLinkHandler({

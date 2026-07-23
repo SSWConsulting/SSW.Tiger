@@ -140,7 +140,12 @@ EOF
 # $1 = status (processing|completed|failed), $2 = dashboard URL (completed only).
 update_submission_status() {
     if [ "$PORTAL_SUBMISSION" = "true" ]; then
-        SUBMISSION_STATUS="$1" SUBMISSION_DASHBOARD_URL="$2" node processor/updateSubmissionStatus.js || true
+        # PROJECT_NAME holds the resolved display title (the meeting subject when the
+        # submitter left the name blank); it's exported after download, so it's empty
+        # on an early failure — updateSubmissionStatus ignores an empty display name.
+        SUBMISSION_STATUS="$1" SUBMISSION_DASHBOARD_URL="$2" SUBMISSION_DISPLAY_NAME="$PROJECT_NAME" \
+            SUBMISSION_PASSWORD_PROTECTED="$PASSWORD_PROTECTED" SUBMISSION_DASHBOARD_PASSWORD="$DASHBOARD_PASSWORD" \
+            node processor/updateSubmissionStatus.js || true
     fi
 }
 

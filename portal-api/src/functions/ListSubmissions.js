@@ -21,6 +21,10 @@ function createListSubmissionsHandler({ store, actorResolver = createSubmissionA
         status: row.status,
         dashboardUrl: row.dashboardUrl ?? null,
         submittedAt: row.submittedAt,
+        // Password-protected dashboards surface the password here (owner-scoped list)
+        // because portal submissions get no Teams notification carrying it.
+        passwordProtected: !!row.passwordProtected,
+        dashboardPassword: row.dashboardPassword ?? null,
       }));
       return json(200, { submissions });
     } catch (error) {

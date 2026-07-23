@@ -55,7 +55,8 @@ function createSubmissionStore({
       const { resources } = await getContainer()
         .items.query({
           query:
-            "SELECT c.requestId, c.displayName, c.projectName, c.status, c.dashboardUrl, c.submittedAt " +
+            "SELECT c.requestId, c.displayName, c.projectName, c.status, c.dashboardUrl, c.submittedAt, " +
+            "c.passwordProtected, c.dashboardPassword " +
             "FROM c WHERE c.type = 'submission' AND c.userSubject = @sub ORDER BY c.submittedAt DESC",
           parameters: [{ name: "@sub", value: userSubject }],
         })

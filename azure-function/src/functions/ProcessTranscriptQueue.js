@@ -52,22 +52,18 @@ let azureCredential = null;
 const processedCache = new Map();
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
-function isDuplicate(meetingId, transcriptId) {
-  const key = `${meetingId}-${transcriptId}`;
-  const cachedTime = processedCache.get(key);
-
-  if (cachedTime && Date.now() - cachedTime < CACHE_TTL_MS) {
-    return true;
-  }
-
-  return false;
+// Accept a pre-computed dedup key (buildDedupKey handles graph/upload/meetingLink/
+// restart/manual), so this works for every message type — unlike the old
+// meetingId/transcriptId-only helpers this replaced.
+function isRecentlyProcessed(key) {
+  const at = processedCache.get(key);
+  return Boolean(at) && Date.now() - at < CACHE_TTL_MS;
 }
 
-function markAsProcessed(meetingId, transcriptId) {
-  const key = `${meetingId}-${transcriptId}`;
+function markProcessed(key) {
   processedCache.set(key, Date.now());
 
-  // Cleanup old entries to prevent memory leak
+  // Cleanup old entries to prevent unbounded growth (per-instance cache).
   if (processedCache.size > 1000) {
     const now = Date.now();
     for (const [k, v] of processedCache) {
@@ -76,11 +72,6 @@ function markAsProcessed(meetingId, transcriptId) {
       }
     }
   }
-}
-
-function removeFromCache(meetingId, transcriptId) {
-  const key = `${meetingId}-${transcriptId}`;
-  processedCache.delete(key);
 }
 
 /**
@@ -210,12 +201,12 @@ app.storageQueue("ProcessTranscriptQueue", {
       structuredLog(context, "error", "Invalid queue message", { error: error.message });
       throw error;
     }
-    const { userId, meetingId, transcriptId, manualTrigger, restartTrigger, restartedFromExecutionId } = data;
+    const { meetingId, transcriptId, manualTrigger, restartTrigger, restartedFromExecutionId } = data;
+    // meetingId/transcriptId only exist on the Graph path; omit them for portal
+    // submissions instead of logging a pair of undefineds on every message.
     structuredLog(context, "info", "Processing queue message", {
       sourceType: data.sourceType,
-      requestId: data.requestId,
-      meetingId,
-      transcriptId,
+      ...(data.requestId ? { requestId: data.requestId } : { meetingId, transcriptId }),
     });
 
     if (manualTrigger) {
@@ -238,7 +229,7 @@ app.storageQueue("ProcessTranscriptQueue", {
     //   clicks each get their own restartId. RestartProcessing blocks rapid
     //   user double-clicks before enqueueing.
     const dedupKey = buildDedupKey(data);
-    if (processedCache.has(dedupKey) && Date.now() - processedCache.get(dedupKey) < CACHE_TTL_MS) {
+    if (isRecentlyProcessed(dedupKey)) {
       structuredLog(context, "info", "SKIP: Duplicate notification", {
         meetingId,
         transcriptId,
@@ -250,7 +241,7 @@ app.storageQueue("ProcessTranscriptQueue", {
 
     // Mark as processed BEFORE triggering to prevent race conditions
     // If two messages arrive simultaneously, only the first will proceed
-    processedCache.set(dedupKey, Date.now());
+    markProcessed(dedupKey);
 
     try {
       await triggerContainerAppJob(data, context);

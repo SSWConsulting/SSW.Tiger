@@ -53,10 +53,16 @@ function normalizeQueueMessage(message) {
   }
 
   if (data.sourceType === "meetingLink") {
-    if (data.schemaVersion !== 2 || !data.requestId || !data.project?.slug || !data.project?.displayName) {
+    // displayName may be "" — the Portal API leaves it blank when the submitter did
+    // not name the project, and the Job fills it from the meeting subject.
+    if (data.schemaVersion !== 2 || !data.requestId || !data.project?.slug) {
       throw new Error("Invalid meeting link queue message");
     }
-    if (!data.joinUrl || !data.organizerId) {
+    // Two locator shapes: a long link (organizer embedded) OR a Meeting ID plus the
+    // candidate user ids to resolve it under (submitter + optional attendee).
+    const hasLink = !!(data.joinUrl && data.organizerId);
+    const hasMeetingId = !!(data.joinMeetingId && Array.isArray(data.resolverUserIds) && data.resolverUserIds.length);
+    if (!hasLink && !hasMeetingId) {
       throw new Error("Missing meeting link locator");
     }
     return {
@@ -64,9 +70,10 @@ function normalizeQueueMessage(message) {
       sourceType: "meetingLink",
       requestId: data.requestId,
       submittedAt: data.submittedAt,
-      project: { displayName: data.project.displayName, slug: data.project.slug },
-      joinUrl: data.joinUrl,
-      organizerId: data.organizerId,
+      project: { displayName: data.project.displayName || "", slug: data.project.slug },
+      ...(hasLink
+        ? { joinUrl: data.joinUrl, organizerId: data.organizerId }
+        : { joinMeetingId: String(data.joinMeetingId), resolverUserIds: data.resolverUserIds.map(String) }),
     };
   }
 
@@ -95,16 +102,26 @@ function buildDynamicJobEnvironment(data) {
     ];
   }
   if (data.sourceType === "meetingLink") {
-    return [
+    const env = [
       { name: "TRANSCRIPT_SOURCE_TYPE", value: "meetingLink" },
       // UPLOAD_REQUEST_ID / UPLOAD_PROJECT_* are reused for the shared history
       // record + status write-back (same as the upload path).
       { name: "UPLOAD_REQUEST_ID", value: data.requestId },
-      { name: "MEETING_JOIN_URL", value: data.joinUrl },
-      { name: "MEETING_ORGANIZER_ID", value: data.organizerId },
       { name: "UPLOAD_PROJECT_NAME", value: data.project.displayName },
       { name: "UPLOAD_PROJECT_SLUG", value: data.project.slug },
     ];
+    if (data.joinMeetingId) {
+      env.push(
+        { name: "MEETING_JOIN_MEETING_ID", value: data.joinMeetingId },
+        { name: "MEETING_RESOLVER_USER_IDS", value: data.resolverUserIds.join(",") },
+      );
+    } else {
+      env.push(
+        { name: "MEETING_JOIN_URL", value: data.joinUrl },
+        { name: "MEETING_ORGANIZER_ID", value: data.organizerId },
+      );
+    }
+    return env;
   }
   return [
     { name: "TRANSCRIPT_SOURCE_TYPE", value: "graphTranscript" },

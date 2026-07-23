@@ -3,7 +3,8 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs").promises;
 const os = require("node:os");
 const path = require("node:path");
-const { parseJoinUrl, downloadFromMeetingLink } = require("./downloadFromMeetingLink");
+const { parseJoinUrl, readConfig, downloadFromMeetingLink, createGraphClient } = require("./downloadFromMeetingLink");
+const { parseSubject } = require("./parseSubject");
 
 const joinUrl = `https://teams.microsoft.com/l/meetup-join/19%3ameeting_x%40thread.v2/0?context=${encodeURIComponent(
   JSON.stringify({ Tid: "tenant-1", Oid: "organizer-1" }),
@@ -43,6 +44,26 @@ test("resolves the latest transcript and returns a Graph-compatible shape", asyn
   assert.equal((await fs.readFile(result.transcriptPath, "utf8")).startsWith("WEBVTT"), true);
 });
 
+test("percent-encodes the join URL into the OData filter query", async () => {
+  const calls = [];
+  const fetchImpl = async (url) => {
+    calls.push(url);
+    return { ok: true, json: async () => ({ value: [{ id: "m1" }] }) };
+  };
+  const client = createGraphClient({ tenantId: "t", clientId: "c", clientSecret: "s" }, fetchImpl);
+
+  // A real join URL carries its own "?" plus extra "&" params — both must survive.
+  const link = `${joinUrl}&anon=true`;
+  await client.findMeeting("tok", "organizer-1", link);
+
+  const requested = new URL(calls[0]);
+  // The whole filter is ONE query param and decodes back to the exact join URL.
+  assert.equal(requested.searchParams.get("$filter"), `JoinWebUrl eq '${link}'`);
+  // Regression guard: the raw URL must have exactly one "?" (the join URL's own
+  // "?" must be encoded, not leak a second query separator into the Graph URL).
+  assert.equal(calls[0].split("?").length, 2);
+});
+
 test("surfaces a clear error when no transcript exists yet", async () => {
   const graph = {
     token: async () => "tok",
@@ -53,4 +74,104 @@ test("surfaces a clear error when no transcript exists yet", async () => {
     },
   };
   await assert.rejects(downloadFromMeetingLink({ env: baseEnv, graph }), /No transcript is available/);
+});
+
+// --- Mode B: short link / Meeting ID (no organizer in hand) ---
+
+const meetingIdEnv = {
+  MEETING_JOIN_MEETING_ID: "47769649877490",
+  MEETING_RESOLVER_USER_IDS: "missing@ssw.com.au, attendee@ssw.com.au",
+  UPLOAD_REQUEST_ID: "r2",
+  UPLOAD_PROJECT_NAME: "Tiger Portal",
+  UPLOAD_PROJECT_SLUG: "tiger-portal",
+  GRAPH_TENANT_ID: "tenant-1",
+  GRAPH_CLIENT_ID: "client-1",
+  GRAPH_CLIENT_SECRET: "secret-1",
+};
+
+test("mode B: resolves by joinMeetingId trying candidates, then fetches transcript as the REAL organizer", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "tiger-jmi-"));
+  const tried = [];
+  let transcriptUser = null;
+  let contentUser = null;
+  const meeting = {
+    id: "meeting-xyz",
+    subject: "Sprint Review",
+    // The submitter is only an attendee; the true organizer differs (YakShaver case).
+    participants: { organizer: { identity: { user: { id: "organizer-real" } } } },
+  };
+  const graph = {
+    token: async () => "tok",
+    findMeetingByJoinMeetingId: async (_t, uid) => {
+      tried.push(uid);
+      return uid === "attendee@ssw.com.au" ? meeting : null; // first candidate can't see it
+    },
+    latestTranscript: async (_t, uid) => {
+      transcriptUser = uid;
+      return { id: "t9", createdDateTime: "2026-07-10T04:05:06Z" };
+    },
+    content: async (_t, uid) => {
+      contentUser = uid;
+      return "WEBVTT\n\n00:00.000 --> 00:01.000\n<v Willow Lyu>Hi";
+    },
+  };
+  const result = await downloadFromMeetingLink({ env: { ...meetingIdEnv, OUTPUT_PATH: path.join(dir, "out.vtt") }, graph });
+  assert.deepEqual(tried, ["missing@ssw.com.au", "attendee@ssw.com.au"]); // in order, stops at first hit
+  assert.equal(transcriptUser, "organizer-real"); // transcript fetched as the discovered organizer, not the attendee
+  assert.equal(contentUser, "organizer-real");
+  assert.match(result.meetingSubject, /Sprint Review/);
+});
+
+test("mode B without a project name: name from subject, project derived from subject (not the synthetic slug)", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "tiger-noname-"));
+  const subject = "SSW.AI - Sprint Review";
+  const meeting = {
+    id: "m",
+    subject,
+    participants: { organizer: { identity: { user: { id: "org" } } } },
+  };
+  const graph = {
+    token: async () => "tok",
+    findMeetingByJoinMeetingId: async () => meeting,
+    latestTranscript: async () => ({ id: "t", createdDateTime: "2026-07-10T04:05:06Z" }),
+    content: async () => "WEBVTT\n\n00:00.000 --> 00:01.000\nHi",
+  };
+  // meetingIdEnv carries UPLOAD_PROJECT_SLUG "tiger-portal"; with no project NAME the
+  // dashboard should instead file under the project parsed from the subject.
+  const env = { ...meetingIdEnv, UPLOAD_PROJECT_NAME: "", OUTPUT_PATH: path.join(dir, "o.vtt") };
+  const result = await downloadFromMeetingLink({ env, graph });
+  assert.equal(result.displayName, subject);
+  assert.equal(result.meetingSubject, subject);
+  assert.equal(result.projectName, parseSubject(subject).projectSlug);
+  assert.notEqual(result.projectName, "tiger-portal");
+});
+
+test("mode B: clear, actionable error when no candidate can see the meeting", async () => {
+  const graph = {
+    token: async () => "tok",
+    findMeetingByJoinMeetingId: async () => null,
+    latestTranscript: async () => {
+      throw new Error("should not be called");
+    },
+    content: async () => {
+      throw new Error("should not be called");
+    },
+  };
+  await assert.rejects(
+    downloadFromMeetingLink({ env: { ...meetingIdEnv, MEETING_RESOLVER_USER_IDS: "me@ssw.com.au" }, graph }),
+    /did not attend/,
+  );
+});
+
+test("readConfig rejects a Meeting ID with no resolver candidates, and a config with neither link nor Meeting ID", () => {
+  const base = {
+    UPLOAD_REQUEST_ID: "r",
+    UPLOAD_PROJECT_NAME: "P",
+    UPLOAD_PROJECT_SLUG: "p",
+    GRAPH_TENANT_ID: "t",
+    GRAPH_CLIENT_ID: "c",
+    GRAPH_CLIENT_SECRET: "s",
+  };
+  assert.throws(() => readConfig({ ...base, MEETING_JOIN_MEETING_ID: "123" }), /resolverUserIds/);
+  assert.throws(() => readConfig(base), /joinUrl or joinMeetingId/);
 });

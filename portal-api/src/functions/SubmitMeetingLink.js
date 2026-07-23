@@ -2,7 +2,7 @@ const { app } = require("@azure/functions");
 const crypto = require("node:crypto");
 const { json } = require("../http");
 const { slugifyProjectName, SubmissionValidationError } = require("../services/submissionValidation");
-const { validateMeetingLink } = require("../services/meetingLinkValidation");
+const { validateMeetingLink, validateAttendeeEmail } = require("../services/meetingLinkValidation");
 const { createSubmissionQueue } = require("../services/submissionQueue");
 const { createSubmissionStore } = require("../services/submissionStore");
 const { createSubmissionActorResolver } = require("../services/submissionActor");
@@ -31,10 +31,37 @@ function createSubmitMeetingLinkHandler({
     }
 
     try {
-      const project = slugifyProjectName(body?.projectName);
       const link = validateMeetingLink(body?.meetingLink);
       const requestId = randomUUID();
       const submittedAtIso = now().toISOString();
+
+      // Project name is optional for meeting links — when blank the Job fills the
+      // history display name from the meeting subject once it resolves; until then
+      // the record shows a neutral placeholder.
+      const named = String(body?.projectName || "").trim() ? slugifyProjectName(body.projectName) : null;
+      const project = {
+        slug: named ? named.slug : `meeting-${requestId.slice(0, 8)}`,
+        displayName: named ? named.displayName : "", // "" → resolve from the subject in the Job
+      };
+      const recordDisplayName =
+        project.displayName || (link.mode === "joinMeetingId" ? `Meeting ${link.joinMeetingId}` : "Meeting link");
+
+      // Long link carries the organizer; a Meeting ID does not, so the Job resolves
+      // it under candidate user ids — the submitter first (works if they attended),
+      // then an optional attendee they supplied.
+      let locator;
+      if (link.mode === "joinMeetingId") {
+        const attendeeEmail = validateAttendeeEmail(body?.attendeeEmail);
+        const resolverUserIds = [...new Set([actor.email, attendeeEmail].filter(Boolean))];
+        if (!resolverUserIds.length) {
+          return json(400, {
+            error: { code: "attendee_required", message: "Add the email of someone who attended this meeting." },
+          });
+        }
+        locator = { joinMeetingId: link.joinMeetingId, resolverUserIds };
+      } else {
+        locator = { joinUrl: link.joinUrl, organizerId: link.organizerId };
+      }
 
       if (store) {
         await store.create({
@@ -42,7 +69,7 @@ function createSubmitMeetingLinkHandler({
           type: "submission",
           projectName: project.slug,
           requestId,
-          displayName: project.displayName,
+          displayName: recordDisplayName,
           userSubject: actor.subject,
           userEmail: actor.email || null,
           status: "accepted",
@@ -58,8 +85,7 @@ function createSubmitMeetingLinkHandler({
         requestId,
         submittedAt: submittedAtIso,
         project,
-        joinUrl: link.joinUrl,
-        organizerId: link.organizerId,
+        ...locator,
         actor,
       };
       try {

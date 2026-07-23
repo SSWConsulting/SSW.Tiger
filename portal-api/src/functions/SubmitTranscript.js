@@ -14,6 +14,14 @@ function createSubmitTranscriptHandler({ service, actorResolver = createSubmissi
       return json(413, { error: { code: "file_too_large", message: "The transcript must be 10 MB or smaller." } });
     }
 
+    // Only a real signed-in user may submit — never the service-identity fallback.
+    // Kept consistent with SubmitMeetingLink / ListSubmissions so the endpoint
+    // fails closed even if the SWA linked-backend boundary is ever misconfigured.
+    const actor = await actorResolver.resolve(request);
+    if (actor?.type !== "user" || !actor.subject) {
+      return json(401, { error: { code: "unauthenticated", message: "Sign in to submit a transcript." } });
+    }
+
     try {
       const contentType = request.headers?.get?.("content-type") || "";
       if (!contentType.toLowerCase().startsWith("multipart/form-data")) {
@@ -31,7 +39,6 @@ function createSubmitTranscriptHandler({ service, actorResolver = createSubmissi
         throw new SubmissionValidationError("A transcript file is required.", 400, "file_required");
       }
 
-      const actor = await actorResolver.resolve(request);
       const result = await service.submit({
         projectName,
         fileName: file.name,

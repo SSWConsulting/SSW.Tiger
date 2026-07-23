@@ -37,6 +37,8 @@ test("returns the caller's submissions mapped to the client contract", async () 
             status: "completed",
             dashboardUrl: "https://x/y",
             submittedAt: "2026-07-17T01:02:03.000Z",
+            passwordProtected: true,
+            dashboardPassword: "AB12CD",
           },
           {
             requestId: "r2",
@@ -60,8 +62,12 @@ test("returns the caller's submissions mapped to the client contract", async () 
     status: "completed",
     dashboardUrl: "https://x/y",
     submittedAt: "2026-07-17T01:02:03.000Z",
+    passwordProtected: true,
+    dashboardPassword: "AB12CD",
   });
   assert.equal(response.jsonBody.submissions[1].dashboardUrl, null);
+  assert.equal(response.jsonBody.submissions[1].passwordProtected, false);
+  assert.equal(response.jsonBody.submissions[1].dashboardPassword, null);
 });
 
 test("503s when the store query fails", async () => {

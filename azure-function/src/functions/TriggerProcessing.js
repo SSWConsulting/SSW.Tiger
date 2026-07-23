@@ -1,4 +1,5 @@
 const { app, output } = require("@azure/functions");
+const { buildMeetingFilterUrl } = require("../services/graphMeetingUrl");
 
 /**
  * Manual trigger for transcript processing.
@@ -313,10 +314,7 @@ async function getGraphToken() {
  * GET /users/{userId}/onlineMeetings?$filter=JoinWebUrl eq '{joinUrl}'
  */
 async function findMeetingByJoinUrl(token, userId, joinUrl) {
-  // The JoinWebUrl filter requires the exact URL as stored by Graph.
-  // We need to escape single quotes in the URL for the OData filter.
-  const escapedUrl = joinUrl.replace(/'/g, "''");
-  const graphUrl = `https://graph.microsoft.com/v1.0/users/${userId}/onlineMeetings?$filter=JoinWebUrl eq '${escapedUrl}'`;
+  const graphUrl = buildMeetingFilterUrl(userId, joinUrl);
 
   const response = await fetch(graphUrl, {
     method: "GET",

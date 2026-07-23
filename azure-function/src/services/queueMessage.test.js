@@ -42,6 +42,22 @@ test("normalizes v2 meeting link and builds join-url job env", () => {
   assert.equal(env.some((item) => item.name === "GRAPH_MEETING_ID"), false);
 });
 
+test("normalizes v2 meeting link by Meeting ID and builds resolver job env", () => {
+  const normalized = normalizeQueueMessage({
+    schemaVersion: 2,
+    sourceType: "meetingLink",
+    requestId: "r5",
+    project: { displayName: "Tiger", slug: "tiger" },
+    joinMeetingId: "47769649877490",
+    resolverUserIds: ["me@ssw.com.au", "bob@ssw.com.au"],
+  });
+  assert.equal(buildDedupKey(normalized), "meeting-r5");
+  const env = buildJobEnvironment(normalized, {});
+  assert.equal(env.find((item) => item.name === "MEETING_JOIN_MEETING_ID").value, "47769649877490");
+  assert.equal(env.find((item) => item.name === "MEETING_RESOLVER_USER_IDS").value, "me@ssw.com.au,bob@ssw.com.au");
+  assert.equal(env.some((item) => item.name === "MEETING_JOIN_URL"), false);
+});
+
 test("rejects malformed or unsupported messages", () => {
   assert.throws(() => normalizeQueueMessage("not-json"), /Invalid JSON/);
   assert.throws(() => normalizeQueueMessage({ sourceType: "uploadedTranscript" }), /Invalid uploaded/);

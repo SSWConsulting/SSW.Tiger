@@ -22,6 +22,11 @@ function createSubmissionService({
 
   return {
     async submit({ projectName, fileName, bytes, actor }) {
+      // Programming-error guard, not user input: every caller resolves a signed-in
+      // actor first (SubmitTranscript returns 401 otherwise). Without this a missing
+      // actor would surface as a TypeError on actor.subject far below, which the
+      // handler turns into an opaque 503.
+      if (!actor?.subject) throw new Error("An authenticated actor is required");
       const project = slugifyProjectName(projectName);
       const content = decodeAndValidateVtt(bytes, fileName);
       const requestId = randomUUID();
@@ -30,12 +35,6 @@ function createSubmissionService({
       const blobName = `submissions/${requestId}/${canonicalFileName}`;
       const originalFileName = sanitizeOriginalFileName(fileName);
       const normalizedBytes = Buffer.from(content, "utf8");
-      const resolvedActor = actor || {
-        type: "service",
-        subject: "function-key",
-        email: null,
-        roles: ["submission:create"],
-      };
 
       await storage.upload(blobName, normalizedBytes, {
         requestid: requestId,
@@ -58,8 +57,8 @@ function createSubmissionService({
             projectName: project.slug,
             requestId,
             displayName: project.displayName,
-            userSubject: resolvedActor.subject,
-            userEmail: resolvedActor.email || null,
+            userSubject: actor.subject,
+            userEmail: actor.email || null,
             status: "accepted",
             dashboardUrl: null,
             submittedAt: submittedAtIso,
@@ -88,7 +87,7 @@ function createSubmissionService({
           fileName: canonicalFileName,
           originalFileName,
         },
-        actor: resolvedActor,
+        actor,
       };
 
       try {

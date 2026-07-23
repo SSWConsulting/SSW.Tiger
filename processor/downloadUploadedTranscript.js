@@ -19,12 +19,19 @@ function readConfig(env = process.env) {
     requestId: env.UPLOAD_REQUEST_ID,
     projectName: env.UPLOAD_PROJECT_NAME,
     projectSlug: env.UPLOAD_PROJECT_SLUG,
+    connectionString: env.TRANSCRIPT_STORAGE_CONNECTION,
     outputDir: env.OUTPUT_PATH ? path.dirname(env.OUTPUT_PATH) : path.join(process.cwd(), "dropzone"),
   };
-  const missing = Object.entries(config)
-    .filter(([key, value]) => key !== "outputDir" && !value)
-    .map(([key]) => key);
+  // Explicit required list (matches downloadFromMeetingLink.readConfig) rather than
+  // "everything except outputDir" — adding an optional field must not make it required.
+  const required = ["containerName", "blobName", "fileName", "requestId", "projectName", "projectSlug"];
+  const missing = required.filter((key) => !config[key]);
   if (missing.length) throw new Error(`Missing uploaded transcript configuration: ${missing.join(", ")}`);
+  // accountName is only needed for the managed-identity path; a connection string
+  // carries its own BlobEndpoint.
+  if (!config.accountName && !config.connectionString) {
+    throw new Error("Missing uploaded transcript configuration: accountName");
+  }
   if (!FILE_NAME_PATTERN.test(config.fileName) || path.basename(config.fileName) !== config.fileName) {
     throw new Error("Invalid canonical uploaded transcript filename");
   }
@@ -71,10 +78,17 @@ function validateDownloadedVtt(buffer) {
 
 async function downloadUploadedTranscript({ env = process.env, credential, blobServiceClient } = {}) {
   const config = readConfig(env);
-  const service = blobServiceClient || new BlobServiceClient(
-    `https://${config.accountName}.blob.core.windows.net`,
-    credential || new DefaultAzureCredential(),
-  );
+  // Same local-dev seam as portal-api/src/services/submissionStorage.js — see the
+  // rationale there. In Azure the Job uses its managed identity; a developer with
+  // only control-plane Contributor supplies an account-key/SAS connection string.
+  const service =
+    blobServiceClient ||
+    (config.connectionString
+      ? BlobServiceClient.fromConnectionString(config.connectionString)
+      : new BlobServiceClient(
+          `https://${config.accountName}.blob.core.windows.net`,
+          credential || new DefaultAzureCredential(),
+        ));
   const blob = service.getContainerClient(config.containerName).getBlockBlobClient(config.blobName);
   const properties = await blob.getProperties();
   if (properties.contentLength > MAX_TRANSCRIPT_BYTES) throw new Error("Uploaded transcript exceeds 10 MB");
@@ -115,4 +129,10 @@ async function main() {
 
 if (require.main === module) main();
 
-module.exports = { MAX_TRANSCRIPT_BYTES, readConfig, validateDownloadedVtt, detectVttSpeakers, downloadUploadedTranscript };
+module.exports = {
+  MAX_TRANSCRIPT_BYTES,
+  readConfig,
+  validateDownloadedVtt,
+  detectVttSpeakers,
+  downloadUploadedTranscript,
+};
