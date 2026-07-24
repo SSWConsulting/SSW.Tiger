@@ -3,7 +3,13 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs").promises;
 const os = require("node:os");
 const path = require("node:path");
-const { parseJoinUrl, readConfig, downloadFromMeetingLink, createGraphClient } = require("./downloadFromMeetingLink");
+const {
+  parseJoinUrl,
+  readConfig,
+  downloadFromMeetingLink,
+  createGraphClient,
+  buildJoinMeetingIdFilterUrl,
+} = require("./downloadFromMeetingLink");
 const { parseSubject } = require("./parseSubject");
 
 const joinUrl = `https://teams.microsoft.com/l/meetup-join/19%3ameeting_x%40thread.v2/0?context=${encodeURIComponent(
@@ -62,6 +68,35 @@ test("percent-encodes the join URL into the OData filter query", async () => {
   // Regression guard: the raw URL must have exactly one "?" (the join URL's own
   // "?" must be encoded, not leak a second query separator into the Graph URL).
   assert.equal(calls[0].split("?").length, 2);
+});
+
+test("mode B: builds an encoded onlineMeetings filter URL for a joinMeetingId", () => {
+  // Symmetric with the mode-A "percent-encodes the join URL" test above, so both
+  // filter-building paths have a regression guard on their URL shape.
+  const url = buildJoinMeetingIdFilterUrl("user-1", "47769649877490");
+  const parsed = new URL(url);
+  assert.equal(parsed.searchParams.get("$filter"), "joinMeetingIdSettings/joinMeetingId eq '47769649877490'");
+  assert.equal(url.split("?").length, 2, "exactly one query separator — the filter must be a single encoded value");
+  assert.ok(url.includes("/users/user-1/onlineMeetings"));
+});
+
+test("mode B: picks the newest transcript even if one is missing createdDateTime", async () => {
+  // A null createdDateTime must not make the comparator return NaN and scramble the
+  // "latest" pick — the dated transcript must still win. Drive the real client so
+  // the sort inside latestTranscript is actually exercised.
+  const fetchImpl = async () => ({
+    ok: true,
+    json: async () => ({
+      value: [
+        { id: "no-date" }, // missing createdDateTime
+        { id: "newest", createdDateTime: "2026-07-10T04:05:06Z" },
+        { id: "older", createdDateTime: "2026-01-01T00:00:00Z" },
+      ],
+    }),
+  });
+  const client = createGraphClient({ tenantId: "t", clientId: "c", clientSecret: "s" }, fetchImpl);
+  const latest = await client.latestTranscript("tok", "org", "m");
+  assert.equal(latest.id, "newest");
 });
 
 test("surfaces a clear error when no transcript exists yet", async () => {

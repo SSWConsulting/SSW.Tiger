@@ -31,7 +31,7 @@ describe("UploadView", () => {
   it("submits a meeting link when in link mode", async () => {
     const submitLink = vi.fn().mockResolvedValue({ requestId: "request-999", status: "accepted" });
     render(<UploadView client={makeClient({ submitLink })} onViewDashboards={vi.fn()} />);
-    fireEvent.click(screen.getByRole("tab", { name: /paste meeting link/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /meeting link \/ id/i }));
     fireEvent.change(screen.getByLabelText(/^project name/i), { target: { value: "Tiger" } });
     fireEvent.change(screen.getByLabelText(/link or meeting id/i), { target: { value: validLink } });
     fireEvent.click(screen.getByRole("button", { name: /generate dashboard/i }));
@@ -42,7 +42,7 @@ describe("UploadView", () => {
   it("accepts a bare Meeting ID with no project name and passes the optional attendee email", async () => {
     const submitLink = vi.fn().mockResolvedValue({ requestId: "req-id", status: "accepted" });
     render(<UploadView client={makeClient({ submitLink })} onViewDashboards={vi.fn()} />);
-    fireEvent.click(screen.getByRole("tab", { name: /paste meeting link/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /meeting link \/ id/i }));
     fireEvent.change(screen.getByLabelText(/link or meeting id/i), { target: { value: "477 696 498 774 90" } });
     fireEvent.change(screen.getByLabelText(/attendee email/i), { target: { value: "bob@ssw.com.au" } });
     fireEvent.click(screen.getByRole("button", { name: /generate dashboard/i }));
@@ -52,7 +52,7 @@ describe("UploadView", () => {
   it("rejects input that is neither a Teams link nor a Meeting ID", async () => {
     const submitLink = vi.fn();
     render(<UploadView client={makeClient({ submitLink })} onViewDashboards={vi.fn()} />);
-    fireEvent.click(screen.getByRole("tab", { name: /paste meeting link/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /meeting link \/ id/i }));
     fireEvent.change(screen.getByLabelText(/link or meeting id/i), { target: { value: "hello world" } });
     fireEvent.click(screen.getByRole("button", { name: /generate dashboard/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/Teams meeting link or the numeric Meeting ID/i);

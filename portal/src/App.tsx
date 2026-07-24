@@ -9,16 +9,17 @@ import type { AuthClient, ClientPrincipal } from "./api/authClient";
 type Props = { client: SubmissionClient; auth: AuthClient };
 type AuthState = "checking" | "in" | "out";
 
-// The active tab lives in the URL hash so a refresh (SWA serves index.html for
-// every path) and browser back/forward preserve which tab you're on.
-function viewFromHash(): View {
-  return window.location.hash.replace(/^#/, "") === "submissions" ? "dashboards" : "upload";
+// The active tab lives in the URL PATH (/submit, /submissions) — no "#". A refresh
+// or deep link still works because SWA's navigationFallback rewrites every unknown
+// path to index.html; browser back/forward is handled via popstate below.
+function viewFromPath(): View {
+  return window.location.pathname === "/submissions" ? "dashboards" : "upload";
 }
 
 export function App({ client, auth }: Props) {
   const [authState, setAuthState] = useState<AuthState>("checking");
   const [principal, setPrincipal] = useState<ClientPrincipal | null>(null);
-  const [view, setView] = useState<View>(viewFromHash);
+  const [view, setView] = useState<View>(viewFromPath);
 
   useEffect(() => {
     let active = true;
@@ -33,14 +34,16 @@ export function App({ client, auth }: Props) {
   }, [auth]);
 
   useEffect(() => {
-    const onHash = () => setView(viewFromHash());
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
+    const onPop = () => setView(viewFromPath());
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
   }, []);
 
-  // Navigating updates the hash; the listener above is the single source of truth.
+  // Navigating pushes a real path so back/forward works; the popstate listener
+  // above is the single source of truth on history navigation.
   const navigate = (next: View) => {
-    window.location.hash = next === "dashboards" ? "#submissions" : "#submit";
+    const path = next === "dashboards" ? "/submissions" : "/submit";
+    if (window.location.pathname !== path) window.history.pushState(null, "", path);
     setView(next);
   };
 

@@ -178,7 +178,7 @@ export function UploadView({ client, onViewDashboards }: Props) {
               {(
                 [
                   { id: "file", label: "Upload transcript" },
-                  { id: "link", label: "Paste meeting link" },
+                  { id: "link", label: "Meeting link / ID" },
                 ] as const
               ).map((tab) => (
                 <button

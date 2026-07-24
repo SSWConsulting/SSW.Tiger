@@ -138,6 +138,19 @@ function buildMeetingFilterUrl(userId, joinUrl) {
   );
 }
 
+// Sibling of buildMeetingFilterUrl for the Meeting-ID path. Extracted (rather than
+// inlined) and given its own regression test so the two filter-building paths stay
+// symmetric. The joinMeetingId is validated to ^\d{9,20}$ upstream, so the OData
+// quote-escaping here can never actually fire — it is kept only so this builder is
+// identical in shape to the mode-A one and safe if that constraint ever loosens.
+function buildJoinMeetingIdFilterUrl(userId, joinMeetingId) {
+  const filter = `joinMeetingIdSettings/joinMeetingId eq '${String(joinMeetingId).replace(/'/g, "''")}'`;
+  return (
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(userId)}` +
+    `/onlineMeetings?$filter=${encodeURIComponent(filter)}`
+  );
+}
+
 // Default Graph client (client-credentials). Injectable for tests.
 function createGraphClient(config, fetchImpl = fetch) {
   async function token() {
@@ -204,11 +217,7 @@ function createGraphClient(config, fetchImpl = fetch) {
     // `userId` need NOT be the organizer — any invited attendee's collection returns
     // the meeting, which is what lets the submitter resolve a meeting they attended.
     async findMeetingByJoinMeetingId(accessToken, userId, joinMeetingId) {
-      const filter = `joinMeetingIdSettings/joinMeetingId eq '${String(joinMeetingId).replace(/'/g, "''")}'`;
-      const url =
-        `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(userId)}` +
-        `/onlineMeetings?$filter=${encodeURIComponent(filter)}`;
-      const body = await (await get(accessToken, url)).json();
+      const body = await (await get(accessToken, buildJoinMeetingIdFilterUrl(userId, joinMeetingId))).json();
       return body.value?.[0] || null;
     },
     async latestTranscript(accessToken, userId, meetingId) {
@@ -216,7 +225,11 @@ function createGraphClient(config, fetchImpl = fetch) {
       const body = await (await get(accessToken, url)).json();
       const transcripts = body.value || [];
       if (!transcripts.length) return null;
-      return transcripts.sort((a, b) => new Date(b.createdDateTime) - new Date(a.createdDateTime))[0];
+      // A missing/invalid createdDateTime yields NaN, which makes a comparator
+      // non-total and the "latest" pick unstable — coerce to 0 so the sort stays
+      // well-defined even if Graph ever omits the field.
+      const createdMs = (t) => Number(new Date(t.createdDateTime)) || 0;
+      return transcripts.sort((a, b) => createdMs(b) - createdMs(a))[0];
     },
     async content(accessToken, userId, meetingId, transcriptId) {
       const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(userId)}/onlineMeetings/${encodeURIComponent(meetingId)}/transcripts/${encodeURIComponent(transcriptId)}/content?$format=text/vtt`;
@@ -371,6 +384,7 @@ module.exports = {
   parseJoinUrl,
   canonicalFileName,
   buildMeetingFilterUrl,
+  buildJoinMeetingIdFilterUrl,
   createGraphClient,
   downloadFromMeetingLink,
 };
