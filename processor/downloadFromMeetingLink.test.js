@@ -102,6 +102,7 @@ test("mode B: resolves by joinMeetingId trying candidates, then fetches transcri
   };
   const graph = {
     token: async () => "tok",
+    resolveUserId: async (_t, id) => id,
     findMeetingByJoinMeetingId: async (_t, uid) => {
       tried.push(uid);
       return uid === "attendee@ssw.com.au" ? meeting : null; // first candidate can't see it
@@ -135,6 +136,7 @@ test("mode B without a project name: name from subject, project derived from sub
   };
   const graph = {
     token: async () => "tok",
+    resolveUserId: async (_t, id) => id,
     findMeetingByJoinMeetingId: async () => meeting,
     latestTranscript: async () => ({ id: "t", createdDateTime: "2026-07-10T04:05:06Z" }),
     content: async () => "WEBVTT\n\n00:00.000 --> 00:01.000\nHi",
@@ -152,6 +154,7 @@ test("mode B without a project name: name from subject, project derived from sub
 test("mode B: clear, actionable error when no candidate can see the meeting", async () => {
   const graph = {
     token: async () => "tok",
+    resolveUserId: async (_t, id) => id,
     findMeetingByJoinMeetingId: async () => null,
     latestTranscript: async () => {
       throw new Error("should not be called");
@@ -185,6 +188,7 @@ test("mode B: a candidate that throws (403 app access policy) does not abort the
   const tried = [];
   const graph = {
     token: async () => "tok",
+    resolveUserId: async (_t, id) => id,
     findMeetingByJoinMeetingId: async (_t, uid) => {
       tried.push(uid);
       if (uid === "me@ssw.com.au") throw new Error("Graph findMeetingByJoinMeetingId failed: 403 — Forbidden");
@@ -207,6 +211,7 @@ test("mode B: a candidate that throws (403 app access policy) does not abort the
 test("mode B: when every candidate fails, the error names each reason", async () => {
   const graph = {
     token: async () => "tok",
+    resolveUserId: async (_t, id) => id,
     findMeetingByJoinMeetingId: async (_t, uid) => {
       throw new Error(`Graph findMeetingByJoinMeetingId failed: 403 — Forbidden (${uid})`);
     },
@@ -227,4 +232,44 @@ test("mode B: when every candidate fails, the error names each reason", async ()
       /me@ssw\.com\.au: .*403/.test(error.message) &&
       /attendee@ssw\.com\.au: .*403/.test(error.message),
   );
+});
+
+test("mode B: resolves an email candidate to its object id before querying onlineMeetings", async () => {
+  // Graph rejects a UPN here with 400 "The userId in request URL is not a valid GUID",
+  // so the email the portal collected must be turned into an object id first.
+  const queried = [];
+  const graph = {
+    token: async () => "tok",
+    resolveUserId: async (_t, idOrUpn) =>
+      idOrUpn === "attendee@ssw.com.au" ? "11111111-2222-3333-4444-555555555555" : idOrUpn,
+    findMeetingByJoinMeetingId: async (_t, uid) => {
+      queried.push(uid);
+      return { id: "meeting-3", participants: { organizer: { identity: { user: { id: "organizer-1" } } } } };
+    },
+    latestTranscript: async () => ({ id: "t1", createdDateTime: "2026-07-10T04:05:06Z" }),
+    content: async () => "WEBVTT\n\n00:00.000 --> 00:01.000\n<v Willow Lyu>Hi",
+  };
+  await downloadFromMeetingLink({
+    env: { ...meetingIdEnv, MEETING_RESOLVER_USER_IDS: "attendee@ssw.com.au" },
+    graph,
+  });
+  assert.deepEqual(queried, ["11111111-2222-3333-4444-555555555555"], "must query by object id, not the email");
+});
+
+test("mode B: an unresolvable email is just another failed candidate", async () => {
+  const graph = {
+    token: async () => "tok",
+    resolveUserId: async (_t, id) => {
+      if (id === "ghost@ssw.com.au") throw new Error("Graph resolveUserId(ghost@ssw.com.au) failed: 404");
+      return "11111111-2222-3333-4444-555555555555";
+    },
+    findMeetingByJoinMeetingId: async () => ({ id: "meeting-4" }),
+    latestTranscript: async () => ({ id: "t1", createdDateTime: "2026-07-10T04:05:06Z" }),
+    content: async () => "WEBVTT\n\n00:00.000 --> 00:01.000\n<v W>Hi",
+  };
+  const result = await downloadFromMeetingLink({
+    env: { ...meetingIdEnv, MEETING_RESOLVER_USER_IDS: "ghost@ssw.com.au,real@ssw.com.au" },
+    graph,
+  });
+  assert.equal(result.success, true, "the second candidate must still be tried");
 });

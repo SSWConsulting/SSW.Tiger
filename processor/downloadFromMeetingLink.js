@@ -63,6 +63,8 @@ function readConfig(env = process.env) {
   return config;
 }
 
+const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // The meeting's true organizer (used to fetch transcripts — always authorized),
 // read from a resolved onlineMeeting's participants. Null if Graph omitted it.
 function organizerIdOf(meeting) {
@@ -177,6 +179,16 @@ function createGraphClient(config, fetchImpl = fetch) {
   }
   return {
     token,
+    // /users/{id}/onlineMeetings requires the OBJECT ID under app-only auth — Graph
+    // rejects a UPN with "The userId in request URL is not a valid GUID". The portal
+    // can only collect email addresses, so resolve them here. Needs User.Read.All.
+    async resolveUserId(accessToken, idOrUpn) {
+      if (GUID_PATTERN.test(idOrUpn)) return idOrUpn;
+      const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(idOrUpn)}?$select=id`;
+      const body = await (await get(accessToken, url, undefined, `resolveUserId(${idOrUpn})`)).json();
+      if (!body?.id) throw new Error(`Graph returned no object id for ${idOrUpn}`);
+      return body.id;
+    },
     async findMeeting(accessToken, userId, joinUrl) {
       const body = await (await get(accessToken, buildMeetingFilterUrl(userId, joinUrl))).json();
       return body.value?.[0] || null;
@@ -217,8 +229,12 @@ async function resolveMeeting(client, token, config) {
     const failures = [];
     for (const uid of config.resolverUserIds) {
       try {
-        const meeting = await client.findMeetingByJoinMeetingId(token, uid, config.joinMeetingId);
-        if (meeting) return { meeting, transcriptUserId: organizerIdOf(meeting) || uid };
+        // Candidates arrive as email addresses from the portal; onlineMeetings needs
+        // the object id. Resolving inside the try means an unknown address is just
+        // another failed candidate, not the end of the search.
+        const objectId = await client.resolveUserId(token, uid);
+        const meeting = await client.findMeetingByJoinMeetingId(token, objectId, config.joinMeetingId);
+        if (meeting) return { meeting, transcriptUserId: organizerIdOf(meeting) || objectId };
         failures.push(`${uid}: no match`);
       } catch (error) {
         // A candidate can fail for reasons that say nothing about the next one:
