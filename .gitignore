@@ -53,8 +53,8 @@ tmpclaude-*
 azure-function/local.settings.json
 azure-function/node_modules/
 azure-function/.python_packages/
-portal-api/local.settings.json
-portal-api/node_modules/
+functions-portal/local.settings.json
+functions-portal/node_modules/
 portal/dist/
 portal/*.tsbuildinfo
 

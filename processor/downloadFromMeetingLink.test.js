@@ -169,6 +169,61 @@ test("mode B: clear, actionable error when no candidate can see the meeting", as
   );
 });
 
+test("mode B: a missing User.Read.All permission reports a server-config error, not 'you did not attend'", async () => {
+  // Authorization_RequestDenied on resolveUserId means the Graph APP lacks
+  // User.Read.All — every candidate fails identically, so blaming the submitter is wrong.
+  const graph = {
+    token: async () => "tok",
+    resolveUserId: async () => {
+      const error = new Error("Graph resolveUserId failed: 403 — Authorization_RequestDenied: Insufficient privileges");
+      error.status = 403;
+      error.graphCode = "Authorization_RequestDenied";
+      throw error;
+    },
+    findMeetingByJoinMeetingId: async () => {
+      throw new Error("should not be called");
+    },
+    latestTranscript: async () => {
+      throw new Error("should not be called");
+    },
+    content: async () => {
+      throw new Error("should not be called");
+    },
+  };
+  await assert.rejects(
+    downloadFromMeetingLink({
+      env: { ...meetingIdEnv, MEETING_RESOLVER_USER_IDS: "me@ssw.com.au,attendee@ssw.com.au" },
+      graph,
+    }),
+    (error) =>
+      /User\.Read\.All/.test(error.message) &&
+      /server configuration/i.test(error.message) &&
+      !/did not attend/.test(error.message),
+  );
+});
+
+test("failure AFTER the meeting resolves tags the error with the meeting subject", async () => {
+  // A "no transcript yet" failure happens once the meeting (and its subject) is known;
+  // the subject must ride along so the failed history row can show the real title.
+  const graph = {
+    token: async () => "tok",
+    resolveUserId: async (_t, id) => id,
+    findMeetingByJoinMeetingId: async () => ({
+      id: "m",
+      subject: "Sprint Review",
+      participants: { organizer: { identity: { user: { id: "org" } } } },
+    }),
+    latestTranscript: async () => null, // resolved, but no transcript yet
+    content: async () => {
+      throw new Error("should not be called");
+    },
+  };
+  await assert.rejects(
+    downloadFromMeetingLink({ env: meetingIdEnv, graph }),
+    (error) => /No transcript is available/.test(error.message) && error.meetingSubject === "Sprint Review",
+  );
+});
+
 test("readConfig rejects a Meeting ID with no resolver candidates, and a config with neither link nor Meeting ID", () => {
   const base = {
     UPLOAD_REQUEST_ID: "r",

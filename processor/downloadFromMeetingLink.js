@@ -164,16 +164,23 @@ function createGraphClient(config, fetchImpl = fetch) {
     });
     if (!response.ok) {
       let detail = "";
+      let graphCode;
       try {
         const body = await response.text();
         const parsed = JSON.parse(body);
-        const code = parsed?.error?.code;
+        graphCode = parsed?.error?.code;
         const message = parsed?.error?.message;
-        detail = [code, message].filter(Boolean).join(": ") || body.slice(0, 300);
+        detail = [graphCode, message].filter(Boolean).join(": ") || body.slice(0, 300);
       } catch {
         /* non-JSON or unreadable body — status alone is all we have */
       }
-      throw new Error(`Graph ${what} failed: ${response.status}${detail ? ` — ${detail}` : ""}`);
+      // Carry the HTTP status + Graph error code on the thrown error so callers can
+      // tell apart failures that need different fixes — notably an app-permission
+      // problem (403 Authorization_RequestDenied) from a per-user access-policy 403.
+      const error = new Error(`Graph ${what} failed: ${response.status}${detail ? ` — ${detail}` : ""}`);
+      error.status = response.status;
+      error.graphCode = graphCode;
+      throw error;
     }
     return response;
   }
@@ -227,6 +234,7 @@ async function resolveMeeting(client, token, config) {
   // candidate that found it if Graph omitted the organizer identity.
   if (config.joinMeetingId) {
     const failures = [];
+    let permissionError = null;
     for (const uid of config.resolverUserIds) {
       try {
         // Candidates arrive as email addresses from the portal; onlineMeetings needs
@@ -238,11 +246,24 @@ async function resolveMeeting(client, token, config) {
         failures.push(`${uid}: no match`);
       } catch (error) {
         // A candidate can fail for reasons that say nothing about the next one:
-        // 403 = the Teams application access policy does not cover THIS user,
-        // 404/other = this user cannot see the meeting. Neither should end the
-        // search — record it and try the next candidate.
+        // 403 from findMeetingByJoinMeetingId = the Teams application access policy
+        // does not cover THIS user, 404/other = this user cannot see the meeting.
+        // Neither should end the search — record it and try the next candidate.
+        //
+        // But Authorization_RequestDenied when resolving an email → object id means
+        // the Graph app is missing the User.Read.All APPLICATION permission — a
+        // server-config problem that fails every candidate identically. Capture it so
+        // the final error names the real cause instead of blaming the submitter.
+        if (error.graphCode === "Authorization_RequestDenied") permissionError = error;
         failures.push(`${uid}: ${error.message}`);
       }
+    }
+    if (permissionError) {
+      throw new Error(
+        "Could not resolve the Meeting ID: the transcript service is missing the Microsoft Graph " +
+          "User.Read.All application permission needed to look up attendees by email. This is a server " +
+          `configuration issue, not a problem with your submission — please contact the administrator. (${permissionError.message})`,
+      );
     }
     throw new Error(
       "No meeting was found for that Meeting ID. If you did not attend it, add the email of someone who did." +
@@ -265,6 +286,21 @@ async function downloadFromMeetingLink({ env = process.env, graph } = {}) {
   const client = graph || createGraphClient(config);
   const token = await client.token();
   const { meeting, transcriptUserId } = await resolveMeeting(client, token, config);
+  // The meeting (hence its subject) is known from here on. If a later step fails,
+  // attach the subject so the failed history row can show the real title instead of
+  // the "Meeting <id>" placeholder the Portal API wrote at submission time.
+  try {
+    return await fetchAndSaveTranscript(client, token, config, meeting, transcriptUserId, env);
+  } catch (error) {
+    if (meeting?.subject && error.meetingSubject === undefined) error.meetingSubject = meeting.subject;
+    throw error;
+  }
+}
+
+// Fetch the latest transcript for a resolved meeting, save the VTT, and build the
+// pipeline result shape. Split out so downloadFromMeetingLink can tag any failure
+// here with the (already known) meeting subject.
+async function fetchAndSaveTranscript(client, token, config, meeting, transcriptUserId, env) {
   const transcript = await client.latestTranscript(token, transcriptUserId, meeting.id);
   if (!transcript)
     throw new Error("No transcript is available for this meeting yet. Try again after Teams has processed it.");
@@ -319,7 +355,11 @@ async function main() {
     // empty (e.g. a HEAD 403, or a Graph error the SDK could not describe).
     const message = describeError(error);
     log("error", "Failed to download from meeting link", { error: message });
-    console.log(JSON.stringify({ error: true, message }));
+    // Emit the meeting subject when the failure happened AFTER the meeting resolved,
+    // so entrypoint.sh can show the real title on the failed history row.
+    const out = { error: true, message };
+    if (error.meetingSubject) out.meetingSubject = error.meetingSubject;
+    console.log(JSON.stringify(out));
     process.exitCode = 1;
   }
 }

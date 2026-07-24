@@ -199,6 +199,13 @@ run_pipeline() {
         fi
         export MEETING_SUBJECT="$FAILED_SUBJECT"
         export PARTICIPANTS_JSON="$FAILED_PARTICIPANTS"
+        # If the download resolved the meeting subject before failing, surface it as
+        # the portal history display name (update_submission_status reads PROJECT_NAME)
+        # so a failed submission shows the real title instead of the "Meeting <id>"
+        # placeholder. Empty subject (e.g. failed before resolution) → placeholder stays.
+        if [ -n "$FAILED_SUBJECT" ]; then
+            export PROJECT_NAME="$FAILED_SUBJECT"
+        fi
         send_failure_notification
 
         exit 1

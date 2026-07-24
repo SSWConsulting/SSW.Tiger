@@ -23,8 +23,9 @@ export function AppHeader({ view, onNavigate, principal, logoutUrl }: Props) {
   const showEmail = email && email !== name;
   return (
     <header className="sticky top-0 z-10 border-b border-black/10 bg-white/90 backdrop-blur">
-      <div className="mx-auto flex w-[min(1120px,calc(100%-40px))] items-center gap-6 py-3.5">
+      <div className="mx-auto flex h-16 w-[min(1120px,calc(100%-40px))] items-center gap-6">
         <div className="flex items-center">
+          {/* Header height is fixed by the row's h-16 above; size the logo with h-* here. */}
           <img src={tigerLogo} alt="SSW Tiger" className="h-14 w-auto" />
         </div>
 

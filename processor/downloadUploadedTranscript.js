@@ -78,7 +78,7 @@ function validateDownloadedVtt(buffer) {
 
 async function downloadUploadedTranscript({ env = process.env, credential, blobServiceClient } = {}) {
   const config = readConfig(env);
-  // Same local-dev seam as portal-api/src/services/submissionStorage.js — see the
+  // Same local-dev seam as functions-portal/src/services/submissionStorage.js — see the
   // rationale there. In Azure the Job uses its managed identity; a developer with
   // only control-plane Contributor supplies an account-key/SAS connection string.
   const service =

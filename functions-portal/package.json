@@ -1,5 +1,5 @@
 {
-  "name": "tiger-portal-api",
+  "name": "tiger-functions-portal",
   "version": "1.0.0",
   "description": "Portal API Function App — browser transcript submissions, protected by Static Web Apps auth. Kept separate from the Graph webhook app so its SWA-only access boundary never affects the public webhook.",
   "main": "src/functions/index.js",
