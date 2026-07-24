@@ -200,6 +200,11 @@ module portalApiApp 'modules/portalApiApp.bicep' = if (deployPortal) {
     costCategoryTag: costCategoryTag
     location: location
     storageAccountName: storage.outputs.name
+    // Ride the Graph app's existing Consumption plan — creating a new Y1 Linux plan
+    // in this RG fails ("Dynamic SKU, Linux Worker not available"); the Linux webspace
+    // this RG maps to in Australia East won't place another. Referencing the output
+    // also sequences this module after functionApp.
+    hostingPlanId: functionApp.outputs.hostingPlanId
     managedIdentityId: id.outputs.id
     managedIdentityClientId: id.outputs.clientId
     appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString

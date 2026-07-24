@@ -32,25 +32,13 @@ param cosmosEndpoint string = ''
 @description('Cosmos container holding per-user submission records.')
 param submissionsContainerName string = 'submissions'
 
+@description('Resource id of the Graph app\'s existing Consumption plan. The Portal API rides it because creating a new Y1 Linux plan in this RG fails ("Dynamic SKU, Linux Worker not available") — the Linux webspace this RG maps to in Australia East won\'t place another. Y1 scales per-app, so isolation is preserved.')
+param hostingPlanId string
+
 var functionAppName = toLower('func-${project}-portal-${environment}')
-var hostingPlanName = toLower('plan-${project}-portal-${environment}')
 
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
   name: storageAccountName
-}
-
-// Own Consumption plan so the Portal API scales independently of the Graph app.
-resource hostingPlan 'Microsoft.Web/serverfarms@2023-12-01' = {
-  name: hostingPlanName
-  location: location
-  tags: costCategoryTag
-  sku: {
-    name: 'Y1'
-    tier: 'Dynamic'
-  }
-  properties: {
-    reserved: true // Linux
-  }
 }
 
 resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
@@ -65,7 +53,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
     }
   }
   properties: {
-    serverFarmId: hostingPlan.id
+    serverFarmId: hostingPlanId
     publicNetworkAccess: 'Enabled' // Must stay public; SWA reaches it over the public path, EasyAuth is the boundary.
     httpsOnly: true
     keyVaultReferenceIdentity: managedIdentityId

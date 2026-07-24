@@ -158,3 +158,11 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
 output id string = functionApp.id
 output name string = functionApp.name
 output endpoint string = 'https://${functionApp.properties.defaultHostName}'
+
+// Shared with the Portal API app: creating a NEW Y1 Linux plan in this RG failed
+// ("Dynamic SKU, Linux Worker not available in resource group") — the Linux
+// webspace this RG maps to in Australia East won't place another one — so the
+// Portal API rides this existing plan instead. Existing Y1 apps keep running and
+// Y1 scales per-app, so the apps stay independent. (Flex Consumption is the
+// modern alternative if a genuinely separate plan is ever needed.)
+output hostingPlanId string = hostingPlan.id

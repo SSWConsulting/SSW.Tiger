@@ -63,7 +63,9 @@ export function principalEmail(principal: ClientPrincipal): string | null {
 
 export function principalInitials(principal: ClientPrincipal): string {
   const name = principalName(principal).trim();
-  const parts = name.split(/\s+/).filter(Boolean);
+  // Keep only tokens that begin with a letter, so Teams-style suffixes like
+  // "[SSW]" don't leak into the initials ("Willow Lyu [SSW]" → "WL", not "W[").
+  const parts = name.split(/\s+/).filter((p) => /^\p{L}/u.test(p));
   if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   return (parts[0]?.slice(0, 2) || "?").toUpperCase();
 }
