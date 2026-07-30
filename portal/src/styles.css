@@ -1,5 +1,21 @@
 @import "tailwindcss";
 
+/* Self-hosted Inter, replacing the render-blocking fonts.googleapis.com link that
+   used to sit in index.html. One 48 KB latin variable file covers every weight the
+   portal uses (400-800), Vite hashes it into /assets, and staticwebapp.config.json
+   caches that immutably — so it is downloaded once per deploy instead of on every
+   visit from a third-party host. Only the latin subset is declared because the
+   portal is English-only; @fontsource-variable/inter/index.css would emit ~10
+   subset files we never serve. */
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-weight: 100 900;
+  /* Text paints in the fallback immediately rather than waiting on the woff2. */
+  font-display: swap;
+  src: url("@fontsource-variable/inter/files/inter-latin-wght-normal.woff2") format("woff2-variations");
+}
+
 /* ============================================================
    Tiger portal — SSW Design System theme
    Colours, fonts, radii and shadows are ported VERBATIM from the
@@ -57,8 +73,11 @@
   --color-ssw-gray-800: #27272a;
   --color-ssw-gray-900: #18181b;
 
-  --font-sans: Inter, "Helvetica Neue", Helvetica, ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-sans: "Inter Variable", Inter, "Helvetica Neue", Helvetica, ui-sans-serif, system-ui, sans-serif;
+  /* The only mono text is the dashboard password chip, so IBM Plex Mono was a
+     whole extra webfont download for one <code> element. The system mono stack
+     renders it just as legibly for free. */
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
   --radius-ds: 8px;
   --radius-ds-sm: 4px;

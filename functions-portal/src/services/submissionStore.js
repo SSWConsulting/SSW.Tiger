@@ -1,8 +1,5 @@
 const { CosmosClient } = require("@azure/cosmos");
-const { DefaultAzureCredential } = require("@azure/identity");
-
-// Polyfill globalThis.crypto for @azure/identity where Web Crypto isn't global.
-if (!globalThis.crypto) globalThis.crypto = require("node:crypto");
+const { getDataPlaneCredential } = require("./credential");
 
 const DB_NAME = process.env.COSMOS_DATABASE || "tiger";
 const DEFAULT_COSMOS_CONTAINER = "submissions";
@@ -35,12 +32,50 @@ function createSubmissionStore({
   function getContainer() {
     if (container) return container;
     if (!endpoint) throw new Error("COSMOS_ENDPOINT is not configured");
-    const cosmos = client || new CosmosClient({ endpoint, aadCredentials: credential || new DefaultAzureCredential() });
+    const cosmos =
+      client ||
+      new CosmosClient({
+        endpoint,
+        aadCredentials: credential || getDataPlaneCredential(),
+        connectionPolicy: {
+          // Both Cosmos accounts are single-region (Australia East, no
+          // multi-write), so there is no region list to discover — leaving this
+          // on costs an account-metadata round trip before the first query, on a
+          // path where the first query is already the slow one.
+          // ⚠️ If a second region is ever added, turn this back on so the SDK can
+          // follow a failover.
+          enableEndpointDiscovery: false,
+        },
+      });
     container = cosmos.database(DB_NAME).container(containerName);
     return container;
   }
 
+  async function listByUser(userSubject) {
+    const { resources } = await getContainer()
+      .items.query({
+        query:
+          "SELECT c.requestId, c.displayName, c.projectName, c.status, c.dashboardUrl, c.submittedAt, " +
+          "c.passwordProtected, c.dashboardPassword " +
+          "FROM c WHERE c.type = 'submission' AND c.userSubject = @sub ORDER BY c.submittedAt DESC",
+        parameters: [{ name: "@sub", value: userSubject }],
+      })
+      .fetchAll();
+    return resources;
+  }
+
   return {
+    /**
+     * Fire-and-forget from module scope so the AAD token exchange and the Cosmos
+     * client's first-request setup happen DURING host startup instead of inside
+     * the first user request — the same trick as the portal's module-load
+     * prefetch. Runs the real query shape (matching no rows) rather than a
+     * metadata read, so it warms exactly the path listByUser uses and needs no
+     * permission beyond the one that path already has.
+     */
+    async warm() {
+      await listByUser("__warm__");
+    },
     async create(record) {
       await getContainer().items.create(record);
     },
@@ -51,19 +86,22 @@ function createSubmissionStore({
         if (error.code !== 404) throw error;
       }
     },
-    async listByUser(userSubject) {
-      const { resources } = await getContainer()
-        .items.query({
-          query:
-            "SELECT c.requestId, c.displayName, c.projectName, c.status, c.dashboardUrl, c.submittedAt, " +
-            "c.passwordProtected, c.dashboardPassword " +
-            "FROM c WHERE c.type = 'submission' AND c.userSubject = @sub ORDER BY c.submittedAt DESC",
-          parameters: [{ name: "@sub", value: userSubject }],
-        })
-        .fetchAll();
-      return resources;
-    },
+    listByUser,
   };
 }
 
-module.exports = { DEFAULT_COSMOS_CONTAINER, createSubmissionStore };
+/**
+ * One store per worker process, shared by every function that reads submission
+ * history (the HTTP list handler and the KeepWarm timer).
+ *
+ * Sharing is the whole point: a warm-up that primed its OWN CosmosClient would
+ * leave the next real request to pay that client's first-request setup anyway.
+ * Same instance → the timer's work is the request's head start.
+ */
+let shared = null;
+function getSharedSubmissionStore() {
+  if (!shared) shared = createSubmissionStore();
+  return shared;
+}
+
+module.exports = { DEFAULT_COSMOS_CONTAINER, createSubmissionStore, getSharedSubmissionStore };

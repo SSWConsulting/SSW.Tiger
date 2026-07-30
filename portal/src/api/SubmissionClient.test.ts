@@ -65,3 +65,44 @@ describe("SubmissionClient", () => {
     expect(onAuthRequired).not.toHaveBeenCalled();
   });
 });
+
+// The list endpoint runs on a Consumption Function whose worker the platform
+// recycles every ~8 minutes, so index.html starts the request before this bundle
+// has even been downloaded. These cover the handover.
+describe("SubmissionClient.list — adopting the request index.html started", () => {
+  const listBody = { submissions: [{ requestId: "r1", displayName: "Sprint review" }] };
+  const ok = () => new Response(JSON.stringify(listBody), { status: 200 });
+  const withPrimed = (primed: Promise<Response | null> | null) =>
+    new SubmissionClient(adapter, "/api/v1/submissions", undefined, undefined, primed);
+
+  it("uses the response the page already started instead of issuing a second one", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(withPrimed(Promise.resolve(ok())).list()).resolves.toHaveLength(1);
+    // A second request here would be a second chance at landing on a cold worker.
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("fetches normally on the next call, because a body can only be read once", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(ok());
+    vi.stubGlobal("fetch", fetchSpy);
+    const client = withPrimed(Promise.resolve(ok()));
+
+    await client.list();
+    await client.list();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls[0][0]).toBe("/api/v1/submissions");
+  });
+
+  it("falls back to a normal fetch when the early request failed outright", async () => {
+    // The inline script resolves to null rather than rejecting (an unhandled
+    // rejection otherwise), so an offline page load must not leave the list
+    // permanently unable to fetch.
+    const fetchSpy = vi.fn().mockResolvedValue(ok());
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(withPrimed(Promise.resolve(null)).list()).resolves.toHaveLength(1);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+});

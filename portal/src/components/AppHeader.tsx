@@ -8,6 +8,9 @@ type Props = {
   onNavigate: (view: View) => void;
   principal: ClientPrincipal;
   logoutUrl: string;
+  // Fires before the browser follows the logout link, so cached rows (and the
+  // dashboard passwords in them) don't outlive the session in this tab.
+  onSignOut?: () => void;
 };
 
 const TABS: { id: View; label: string }[] = [
@@ -15,7 +18,7 @@ const TABS: { id: View; label: string }[] = [
   { id: "dashboards", label: "My submissions" },
 ];
 
-export function AppHeader({ view, onNavigate, principal, logoutUrl }: Props) {
+export function AppHeader({ view, onNavigate, principal, logoutUrl, onSignOut }: Props) {
   const name = principalName(principal);
   const email = principalEmail(principal);
   // Avoid a redundant second line when the display name is just the email
@@ -58,6 +61,7 @@ export function AppHeader({ view, onNavigate, principal, logoutUrl }: Props) {
           </div>
           <a
             href={logoutUrl}
+            onClick={onSignOut}
             className="rounded-ds-sm border border-black/10 px-3 py-1.5 text-sm font-medium text-ssw-charcoal transition hover:bg-black/5"
           >
             Sign out

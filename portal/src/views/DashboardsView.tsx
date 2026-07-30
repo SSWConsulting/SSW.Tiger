@@ -1,12 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
-import type { SubmissionClient, SubmissionStatus, SubmissionSummary } from "../api/SubmissionClient";
+import { type ReactNode, useEffect, useSyncExternalStore } from "react";
+import type { SubmissionStatus, SubmissionSummary } from "../api/SubmissionClient";
+import type { SubmissionsCache } from "../api/submissionsCache";
 
 type Props = {
-  client: SubmissionClient;
+  submissions: SubmissionsCache;
   onUpload: () => void;
 };
-
-type LoadState = "loading" | "loaded" | "failed";
 
 // AU date format (DD/MM/YYYY) to match the generated dashboards.
 function formatDate(iso: string): string {
@@ -31,74 +30,99 @@ function StatusBadge({ status }: { status: SubmissionStatus }) {
   );
 }
 
-// Per-tab cache so a refresh renders the last-known list instantly and only
-// revalidates in the background (the list endpoint is on a cold-startable Function).
-// Passwords are stripped before caching so the plaintext never lingers in storage —
-// they re-appear from the live fetch a moment later.
-const CACHE_KEY = "tiger.submissions";
-function readCache(): SubmissionSummary[] | null {
-  try {
-    const raw = sessionStorage.getItem(CACHE_KEY);
-    return raw ? (JSON.parse(raw) as SubmissionSummary[]) : null;
-  } catch {
-    return null;
-  }
+function SubmissionRow({ item }: { item: SubmissionSummary }) {
+  return (
+    <li className="flex items-center justify-between gap-4 rounded-ds border border-black/10 bg-white p-4 shadow-ds-raised">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2.5">
+          <h3 className="truncate font-semibold text-ssw-charcoal">{item.displayName}</h3>
+          <StatusBadge status={item.status} />
+        </div>
+        <p className="mt-1 text-[13px] text-ssw-gray-500">Submitted {formatDate(item.submittedAt)}</p>
+        {item.status === "completed" && item.passwordProtected && item.dashboardPassword ? (
+          <p className="mt-1 text-[13px] text-ssw-charcoal">
+            <span className="font-medium">Password:</span>{" "}
+            <code className="rounded bg-ssw-gray-100 px-1.5 py-0.5 font-mono text-[12px]">
+              {item.dashboardPassword}
+            </code>
+          </p>
+        ) : null}
+      </div>
+      {item.status === "completed" && item.dashboardUrl ? (
+        <a
+          href={item.dashboardUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex-none rounded-ds-sm border border-primary bg-primary px-4 py-2 font-semibold text-white transition hover:bg-ssw-red-600"
+        >
+          Open dashboard
+        </a>
+      ) : (
+        <span className="flex-none text-[13px] text-ssw-gray-400">
+          {item.status === "failed" ? "Unavailable" : "In progress"}
+        </span>
+      )}
+    </li>
+  );
 }
 
-export function DashboardsView({ client, onUpload }: Props) {
-  const [items, setItems] = useState<SubmissionSummary[]>(() => readCache() ?? []);
-  const [state, setState] = useState<LoadState>(() => (readCache() ? "loaded" : "loading"));
-  const [error, setError] = useState("");
+export function DashboardsView({ submissions, onUpload }: Props) {
+  // State lives in the cache, not here, so it survives the unmount/remount that
+  // every tab switch causes — and so the module-load prefetch has somewhere to
+  // land before this view ever mounts.
+  const { items, refreshing, error } = useSyncExternalStore(submissions.subscribe, submissions.snapshot);
 
-  const load = useCallback(async () => {
-    setError("");
-    try {
-      const next = await client.list();
-      setItems(next);
-      setState("loaded");
-      try {
-        sessionStorage.setItem(CACHE_KEY, JSON.stringify(next.map((s) => ({ ...s, dashboardPassword: null }))));
-      } catch {
-        /* cache is best-effort */
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load your submissions.");
-      // Keep any cached rows visible; only show the error page when there's nothing.
-      setState((prev) => (prev === "loaded" ? "loaded" : "failed"));
-    }
-  }, [client]);
+  // A no-op while the prefetch is still in flight or its result is fresh; picks
+  // up status changes when returning to the tab later.
+  useEffect(() => submissions.revalidate(), [submissions]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  return (
-    <div className="mx-auto w-full max-w-[860px]">
-      <div className="mb-6">
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Your history</p>
-        <h1 className="mt-1 text-3xl font-bold tracking-[-0.02em] text-ssw-charcoal-800">My submissions</h1>
-      </div>
-
-      {state === "loading" && (
-        <div className="rounded-ds border border-black/10 bg-white p-10 text-center text-ssw-gray-500 shadow-ds-raised">
-          Loading your submissions…
-        </div>
-      )}
-
-      {state === "failed" && (
+  // Nothing known yet is the ONLY case that earns a full-panel spinner. Once we
+  // have rows — from the network or from this tab's cache — a revalidation must
+  // never blank them.
+  if (items === null) {
+    return error ? (
+      <Shell>
         <div className="rounded-ds border border-destructive/25 bg-destructive/5 p-6 text-center" role="alert">
           <p className="text-ssw-charcoal">{error}</p>
           <button
             className="mt-3 rounded-ds-sm border border-black/10 bg-white px-4 py-2 font-medium text-ssw-charcoal transition hover:bg-black/5"
             type="button"
-            onClick={() => void load()}
+            onClick={() => void submissions.refresh()}
           >
             Try again
           </button>
         </div>
+      </Shell>
+    ) : (
+      <Shell>
+        <div className="rounded-ds border border-black/10 bg-white p-10 text-center text-ssw-gray-500 shadow-ds-raised">
+          Loading your submissions…
+        </div>
+      </Shell>
+    );
+  }
+
+  return (
+    <Shell refreshing={refreshing}>
+      {/* A failed revalidate is reported beside the rows it could not replace,
+          rather than replacing them with an error panel. */}
+      {error && (
+        <div
+          className="mb-3 rounded-ds-sm border border-amber-400/40 bg-amber-50 px-3.5 py-2.5 text-[13px] text-ssw-charcoal"
+          role="status"
+        >
+          Showing your last known submissions — {error}{" "}
+          <button
+            className="font-semibold underline underline-offset-2"
+            type="button"
+            onClick={() => void submissions.refresh()}
+          >
+            Retry
+          </button>
+        </div>
       )}
 
-      {state === "loaded" && items.length === 0 && (
+      {items.length === 0 ? (
         <div className="rounded-ds border border-black/10 bg-white p-12 text-center shadow-ds-raised">
           <h2 className="text-lg font-semibold text-ssw-charcoal">No submissions yet</h2>
           <p className="mx-auto mt-2 max-w-[380px] text-sm text-ssw-gray-500">
@@ -112,48 +136,34 @@ export function DashboardsView({ client, onUpload }: Props) {
             Submit your first meeting
           </button>
         </div>
-      )}
-
-      {state === "loaded" && items.length > 0 && (
+      ) : (
         <ul className="flex flex-col gap-3">
           {items.map((item) => (
-            <li
-              key={item.requestId}
-              className="flex items-center justify-between gap-4 rounded-ds border border-black/10 bg-white p-4 shadow-ds-raised"
-            >
-              <div className="min-w-0">
-                <div className="flex items-center gap-2.5">
-                  <h3 className="truncate font-semibold text-ssw-charcoal">{item.displayName}</h3>
-                  <StatusBadge status={item.status} />
-                </div>
-                <p className="mt-1 text-[13px] text-ssw-gray-500">Submitted {formatDate(item.submittedAt)}</p>
-                {item.status === "completed" && item.passwordProtected && item.dashboardPassword ? (
-                  <p className="mt-1 text-[13px] text-ssw-charcoal">
-                    <span className="font-medium">Password:</span>{" "}
-                    <code className="rounded bg-ssw-gray-100 px-1.5 py-0.5 font-mono text-[12px]">
-                      {item.dashboardPassword}
-                    </code>
-                  </p>
-                ) : null}
-              </div>
-              {item.status === "completed" && item.dashboardUrl ? (
-                <a
-                  href={item.dashboardUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex-none rounded-ds-sm border border-primary bg-primary px-4 py-2 font-semibold text-white transition hover:bg-ssw-red-600"
-                >
-                  Open dashboard
-                </a>
-              ) : (
-                <span className="flex-none text-[13px] text-ssw-gray-400">
-                  {item.status === "failed" ? "Unavailable" : "In progress"}
-                </span>
-              )}
-            </li>
+            <SubmissionRow key={item.requestId} item={item} />
           ))}
         </ul>
       )}
+    </Shell>
+  );
+}
+
+function Shell({ children, refreshing = false }: { children: ReactNode; refreshing?: boolean }) {
+  return (
+    <div className="mx-auto w-full max-w-[860px]">
+      <div className="mb-6">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Your history</p>
+        <div className="mt-1 flex items-baseline gap-3">
+          <h1 className="text-3xl font-bold tracking-[-0.02em] text-ssw-charcoal-800">My submissions</h1>
+          {/* Deliberately inline and quiet: a background revalidate is not a
+              reason to cover content the user is already reading. */}
+          {refreshing && (
+            <span className="text-[13px] text-ssw-gray-400" role="status">
+              Refreshing…
+            </span>
+          )}
+        </div>
+      </div>
+      {children}
     </div>
   );
 }

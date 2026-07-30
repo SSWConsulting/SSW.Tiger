@@ -36,6 +36,10 @@ export class SubmissionClient {
     // re-login instead of silently showing an empty/failed state).
     private readonly onAuthRequired?: () => void,
     private readonly meetingsEndpoint = "/api/v1/meetings",
+    // A GET of `endpoint` already in flight, started by the inline <head> script
+    // in index.html before this bundle finished downloading. Resolves to null if
+    // that early fetch failed outright.
+    private primedList: Promise<Response | null> | null = null,
   ) {}
 
   // An expired SWA session returns 401, which staticwebapp.config.json rewrites
@@ -120,16 +124,19 @@ export class SubmissionClient {
     return { requestId: payload.requestId, status: "accepted" };
   }
 
-  async list(): Promise<SubmissionSummary[]> {
-    const init = await this.adapter.prepare({ method: "GET" });
+  // `silent` suppresses only the onAuthRequired side effect, not the error. It
+  // exists for the speculative prefetch that fires before /.auth/me has
+  // resolved: a 401 there must not hijack the page into a login redirect, or a
+  // signed-out visitor would be bounced instead of seeing the sign-in view.
+  async list(options: { silent?: boolean } = {}): Promise<SubmissionSummary[]> {
     let response: Response;
     try {
-      response = await fetch(this.endpoint, { ...init, redirect: "manual" });
+      response = await this.listResponse();
     } catch {
       throw new SubmissionError("Could not load your dashboards. Please try again.", "network_error");
     }
     if (this.isAuthChallenge(response)) {
-      this.onAuthRequired?.();
+      if (!options.silent) this.onAuthRequired?.();
       throw new SubmissionError("Your session has expired. Please sign in again.", "unauthenticated");
     }
     const payload = await response.json().catch(() => ({}));
@@ -140,5 +147,23 @@ export class SubmissionClient {
       );
     }
     return Array.isArray(payload?.submissions) ? payload.submissions : [];
+  }
+
+  /**
+   * The first list() adopts the response the page started before this bundle
+   * loaded; every later call fetches normally. Strictly one-shot — a Response
+   * body can only be read once, so a revalidate must not re-await it.
+   */
+  private async listResponse(): Promise<Response> {
+    const primed = this.primedList;
+    this.primedList = null;
+    if (primed) {
+      const response = await primed;
+      // null means the early fetch failed (offline at page load). Fall through so
+      // the normal path produces a real error the user can retry from.
+      if (response) return response;
+    }
+    const init = await this.adapter.prepare({ method: "GET" });
+    return fetch(this.endpoint, { ...init, redirect: "manual" });
   }
 }

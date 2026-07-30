@@ -1,5 +1,5 @@
 const { app } = require("@azure/functions");
-const { createSubmissionStore } = require("../services/submissionStore");
+const { getSharedSubmissionStore } = require("../services/submissionStore");
 const { createSubmissionActorResolver } = require("../services/submissionActor");
 const { json } = require("../http");
 
@@ -36,12 +36,28 @@ function createListSubmissionsHandler({ store, actorResolver = createSubmissionA
   };
 }
 
-// Memoize the handler + its Cosmos client/credential at module scope (see
-// SubmitTranscript for the rationale).
+// Memoize the handler at module scope (see SubmitTranscript for the rationale).
+// The store itself is the process-wide shared one, so the KeepWarm timer and this
+// handler prime and use the SAME Cosmos client and credential.
 let _handler = null;
 function getHandler() {
-  if (!_handler) _handler = createListSubmissionsHandler({ store: createSubmissionStore() });
+  if (!_handler) _handler = createListSubmissionsHandler({ store: getSharedSubmissionStore() });
   return _handler;
+}
+
+// Pay the AAD token exchange and the Cosmos client's first-request setup NOW,
+// while the host is still starting up, rather than inside whichever user request
+// happens to land on a cold instance. Measured warm: 64 ms — so on a Y1
+// Consumption plan with no always-ready instance, that setup WAS the wait.
+//
+// Guarded on COSMOS_ENDPOINT so `node --test` (which loads this module to reach
+// createListSubmissionsHandler) never opens a Cosmos client. Failures are
+// swallowed on purpose: warming is an optimisation, and a real problem will
+// surface through the request path with proper error handling.
+if (process.env.COSMOS_ENDPOINT) {
+  void getSharedSubmissionStore()
+    .warm()
+    .catch(() => {});
 }
 
 app.http("ListSubmissions", {

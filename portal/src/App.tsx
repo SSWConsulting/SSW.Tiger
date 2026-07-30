@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
+import type { AuthClient, ClientPrincipal } from "./api/authClient";
+import type { SubmissionClient } from "./api/SubmissionClient";
+import type { SubmissionsCache } from "./api/submissionsCache";
 import { AppHeader, type View } from "./components/AppHeader";
-import { UploadView } from "./views/UploadView";
 import { DashboardsView } from "./views/DashboardsView";
 import { SignInView } from "./views/SignInView";
-import type { SubmissionClient } from "./api/SubmissionClient";
-import type { AuthClient, ClientPrincipal } from "./api/authClient";
+import { UploadView } from "./views/UploadView";
 
-type Props = { client: SubmissionClient; auth: AuthClient };
+type Props = { client: SubmissionClient; auth: AuthClient; submissions: SubmissionsCache };
 type AuthState = "checking" | "in" | "out";
 
 // The active tab lives in the URL PATH (/submit, /submissions) — no "#". A refresh
@@ -16,22 +17,31 @@ function viewFromPath(): View {
   return window.location.pathname === "/submissions" ? "dashboards" : "upload";
 }
 
-export function App({ client, auth }: Props) {
-  const [authState, setAuthState] = useState<AuthState>("checking");
-  const [principal, setPrincipal] = useState<ClientPrincipal | null>(null);
+export function App({ client, auth, submissions }: Props) {
+  // Start from the last known principal so a returning visitor gets the real shell
+  // in the first frame rather than a "Loading…" screen for the length of the
+  // /.auth/me round trip. The effect below still runs and corrects this — dropping
+  // to the sign-in view if the session has actually expired.
+  const [principal, setPrincipal] = useState<ClientPrincipal | null>(() => auth.cachedMe());
+  const [authState, setAuthState] = useState<AuthState>(principal ? "in" : "checking");
   const [view, setView] = useState<View>(viewFromPath);
 
   useEffect(() => {
     let active = true;
     auth.me().then((me) => {
       if (!active) return;
+      // Confirm the cache's owner. main.tsx already bound the REMEMBERED identity
+      // to unlock this tab's rows early; re-binding with the identity SWA actually
+      // vouches for is what makes that optimism safe — a mismatch (same browser,
+      // different user, no sign-out) discards the rows it hydrated.
+      if (me) submissions.bindOwner(me.userId);
       setPrincipal(me);
       setAuthState(me ? "in" : "out");
     });
     return () => {
       active = false;
     };
-  }, [auth]);
+  }, [auth, submissions]);
 
   useEffect(() => {
     const onPop = () => setView(viewFromPath());
@@ -57,7 +67,16 @@ export function App({ client, auth }: Props) {
 
   return (
     <>
-      <AppHeader view={view} onNavigate={navigate} principal={principal} logoutUrl={auth.logoutUrl()} />
+      <AppHeader
+        view={view}
+        onNavigate={navigate}
+        principal={principal}
+        logoutUrl={auth.logoutUrl()}
+        onSignOut={() => {
+          submissions.clear();
+          auth.forget();
+        }}
+      />
       <main
         className={`mx-auto flex w-[min(1120px,calc(100%-40px))] flex-col py-8 ${
           view === "upload" ? "justify-center" : "justify-start"
@@ -67,7 +86,7 @@ export function App({ client, auth }: Props) {
         {view === "upload" ? (
           <UploadView client={client} onViewDashboards={() => navigate("dashboards")} />
         ) : (
-          <DashboardsView client={client} onUpload={() => navigate("upload")} />
+          <DashboardsView submissions={submissions} onUpload={() => navigate("upload")} />
         )}
       </main>
     </>

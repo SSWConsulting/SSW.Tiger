@@ -17,6 +17,12 @@
       "statusCode": 404
     },
     {
+      "route": "/assets/*",
+      "headers": {
+        "Cache-Control": "public, max-age=31536000, immutable"
+      }
+    },
+    {
       "route": "/api/*",
       "allowedRoles": ["authenticated"]
     },

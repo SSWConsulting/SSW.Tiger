@@ -70,11 +70,13 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
           name: 'AzureWebJobsStorage'
           value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccountName};EndpointSuffix=${az.environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
         }
-        {
-          name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccountName};EndpointSuffix=${az.environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
-        }
-        { name: 'WEBSITE_CONTENTSHARE', value: toLower(functionAppName) }
+        // NOTE: no WEBSITE_CONTENTSHARE / WEBSITE_CONTENTAZUREFILECONNECTIONSTRING.
+        // Those are Windows Consumption + Premium settings; a LINUX Consumption app
+        // runs its code from the deployment package (scm-releases/scm-latest-<app>.zip),
+        // not from an Azure Files content share. Setting them here only created an
+        // empty file share and injected a storage ACCOUNT KEY that nothing read.
+        // Likewise do NOT add WEBSITE_RUN_FROM_PACKAGE: the value `1` is Windows-only,
+        // and the Linux form is a blob SAS URL that the deployment tooling owns.
         { name: 'FUNCTIONS_EXTENSION_VERSION', value: '~4' }
         { name: 'FUNCTIONS_WORKER_RUNTIME', value: 'node' }
         { name: 'WEBSITE_NODE_DEFAULT_VERSION', value: '~20' }

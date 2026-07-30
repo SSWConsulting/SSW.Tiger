@@ -1,5 +1,5 @@
 const { BlobServiceClient } = require("@azure/storage-blob");
-const { DefaultAzureCredential } = require("@azure/identity");
+const { getDataPlaneCredential } = require("./credential");
 
 const DEFAULT_BLOB_CONTAINER = "transcript-submissions";
 
@@ -33,7 +33,7 @@ function createSubmissionStorage({
     if (!resolvedAccount) throw new Error("TRANSCRIPT_STORAGE_ACCOUNT is not configured");
     service = new BlobServiceClient(
       `https://${resolvedAccount}.blob.core.windows.net`,
-      credential || new DefaultAzureCredential(),
+      credential || getDataPlaneCredential(),
     );
   }
   const container = service.getContainerClient(containerName);
