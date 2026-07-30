@@ -89,6 +89,63 @@ describe("DashboardsView", () => {
     expect(await screen.findByRole("heading", { name: /no submissions yet/i })).toBeInTheDocument();
   });
 
+  it("polls while a submission is still running, and stops once none are", async () => {
+    // The reported symptom: a job runs for minutes, the list only refreshed on
+    // mount, so the submitter watched a frozen "Queued" the whole time.
+    vi.useFakeTimers();
+    try {
+      const list = vi.fn().mockResolvedValue([row({ status: "processing", dashboardUrl: null })]);
+      const cache = new SubmissionsCache(list, null);
+      render(<DashboardsView submissions={cache} onUpload={vi.fn()} />);
+      await vi.waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(list).toHaveBeenCalledTimes(2);
+
+      // Job finishes — the next tick observes a terminal status and the interval
+      // must be torn down rather than hammering the Function forever.
+      list.mockResolvedValue([row({ status: "completed" })]);
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(list).toHaveBeenCalledTimes(3);
+
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(list).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not poll when every row is already in a terminal state", async () => {
+    vi.useFakeTimers();
+    try {
+      const list = vi.fn().mockResolvedValue([row({ status: "failed", dashboardUrl: null })]);
+      const cache = new SubmissionsCache(list, null);
+      render(<DashboardsView submissions={cache} onUpload={vi.fn()} />);
+      await vi.waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(list).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("explains why a submission failed instead of just saying Unavailable", async () => {
+    const cache = new SubmissionsCache(
+      vi.fn().mockResolvedValue([
+        row({
+          status: "failed",
+          dashboardUrl: null,
+          failureReason: "No transcript is available for this meeting yet. Try again after Teams has processed it.",
+        }),
+      ]),
+      null,
+    );
+    render(<DashboardsView submissions={cache} onUpload={vi.fn()} />);
+
+    expect(await screen.findByText(/no transcript is available for this meeting yet/i)).toBeInTheDocument();
+  });
+
   it("hides the password line for dashboards that are not protected", () => {
     const cache = new SubmissionsCache(
       pending,

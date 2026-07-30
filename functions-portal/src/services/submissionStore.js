@@ -51,12 +51,35 @@ function createSubmissionStore({
     return container;
   }
 
+  // A record only reaches a terminal status because the Job wrote one. Two windows
+  // leave that write undone: the host dying between store.create() and a successful
+  // queue publish (orphan "accepted", no message ever sent), and a hard SIGKILL
+  // mid-run (stuck "processing" — SIGTERM is handled by entrypoint.sh).
+  //
+  // The cutoff must clear the Job's own replicaTimeout (3600s, infra/modules/
+  // containerApp.bicep) plus queue latency, or this would fail runs that are merely
+  // slow. 90 minutes leaves a wide margin over that 60-minute ceiling.
+  const STALE_AFTER_MS = 90 * 60 * 1000;
+
+  async function listStale(nowMs) {
+    const cutoff = new Date(nowMs - STALE_AFTER_MS).toISOString();
+    const { resources } = await getContainer()
+      .items.query({
+        query:
+          "SELECT c.id, c.projectName FROM c WHERE c.type = 'submission' " +
+          "AND c.status IN ('accepted', 'processing') AND c.updatedAt < @cutoff",
+        parameters: [{ name: "@cutoff", value: cutoff }],
+      })
+      .fetchAll();
+    return resources;
+  }
+
   async function listByUser(userSubject) {
     const { resources } = await getContainer()
       .items.query({
         query:
           "SELECT c.requestId, c.displayName, c.projectName, c.status, c.dashboardUrl, c.submittedAt, " +
-          "c.passwordProtected, c.dashboardPassword " +
+          "c.failureReason, c.passwordProtected, c.dashboardPassword " +
           "FROM c WHERE c.type = 'submission' AND c.userSubject = @sub ORDER BY c.submittedAt DESC",
         parameters: [{ name: "@sub", value: userSubject }],
       })
@@ -85,6 +108,39 @@ function createSubmissionStore({
       } catch (error) {
         if (error.code !== 404) throw error;
       }
+    },
+    /**
+     * Fail records that can no longer be completed by anything, so a submission
+     * cannot sit on "Queued"/"Processing" forever. Returns how many were swept.
+     *
+     * Patches each row individually rather than in a transactional batch: rows in
+     * this set have different partition keys, and a batch is single-partition only.
+     * One failed patch must not abandon the rest, so each is isolated — a row that
+     * a real Job finished between the query and the patch just 404s or gets
+     * overwritten by the Job's own terminal write, both of which are harmless.
+     */
+    async sweepStale({ now = Date.now() } = {}) {
+      const stale = await listStale(now);
+      let swept = 0;
+      for (const row of stale) {
+        try {
+          await getContainer()
+            .item(row.id, row.projectName)
+            .patch([
+              { op: "set", path: "/status", value: "failed" },
+              { op: "set", path: "/updatedAt", value: new Date(now).toISOString() },
+              {
+                op: "set",
+                path: "/failureReason",
+                value: "Processing did not finish in time and was abandoned. Please submit again.",
+              },
+            ]);
+          swept += 1;
+        } catch {
+          /* Best effort — a row we cannot patch is retried on the next sweep. */
+        }
+      }
+      return swept;
     },
     listByUser,
   };

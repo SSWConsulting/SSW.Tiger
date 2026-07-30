@@ -7,6 +7,20 @@ function parseQueueMessage(message) {
   }
 }
 
+// Who submitted a portal request, kept for AUDIT only — never for authorization.
+// The Portal API resolved this from the SWA principal; by the time it reaches the
+// queue it is just a label, so nothing downstream may make a trust decision on it.
+// Carried through because a meeting-link submission can pull a transcript for a
+// meeting the submitter merely knows the ID of, and "who asked for this" must be
+// answerable from the Job logs, not only from the Cosmos record.
+function normalizeActor(actor) {
+  if (!actor || typeof actor !== "object") return null;
+  const email = typeof actor.email === "string" && actor.email ? actor.email : null;
+  const subject = typeof actor.subject === "string" && actor.subject ? actor.subject : null;
+  if (!email && !subject) return null;
+  return { email, subject };
+}
+
 function normalizeQueueMessage(message) {
   const data = parseQueueMessage(message);
   if (!data || typeof data !== "object") throw new Error("Invalid queue message");
@@ -42,6 +56,7 @@ function normalizeQueueMessage(message) {
       sourceType: "uploadedTranscript",
       requestId: data.requestId,
       submittedAt: data.submittedAt,
+      actor: normalizeActor(data.actor),
       project: { displayName: data.project.displayName, slug: data.project.slug },
       source: {
         storageAccount: source.storageAccount,
@@ -70,6 +85,7 @@ function normalizeQueueMessage(message) {
       sourceType: "meetingLink",
       requestId: data.requestId,
       submittedAt: data.submittedAt,
+      actor: normalizeActor(data.actor),
       project: { displayName: data.project.displayName || "", slug: data.project.slug },
       ...(hasLink
         ? { joinUrl: data.joinUrl, organizerId: data.organizerId }
@@ -88,11 +104,18 @@ function buildDedupKey(data, now = Date.now()) {
   return `${data.meetingId}-${data.transcriptId}`;
 }
 
+// Audit label for the Job logs. Prefers the email (actionable) over the opaque
+// SWA subject, and never fails a submission just because neither is present.
+function submittedByLabel(data) {
+  return data.actor?.email || data.actor?.subject || "";
+}
+
 function buildDynamicJobEnvironment(data) {
   if (data.sourceType === "uploadedTranscript") {
     return [
       { name: "TRANSCRIPT_SOURCE_TYPE", value: "uploadedTranscript" },
       { name: "UPLOAD_REQUEST_ID", value: data.requestId },
+      { name: "SUBMITTED_BY", value: submittedByLabel(data) },
       { name: "TRANSCRIPT_STORAGE_ACCOUNT", value: data.source.storageAccount },
       { name: "TRANSCRIPT_STORAGE_CONTAINER", value: data.source.containerName },
       { name: "TRANSCRIPT_BLOB_NAME", value: data.source.blobName },
@@ -107,6 +130,7 @@ function buildDynamicJobEnvironment(data) {
       // UPLOAD_REQUEST_ID / UPLOAD_PROJECT_* are reused for the shared history
       // record + status write-back (same as the upload path).
       { name: "UPLOAD_REQUEST_ID", value: data.requestId },
+      { name: "SUBMITTED_BY", value: submittedByLabel(data) },
       { name: "UPLOAD_PROJECT_NAME", value: data.project.displayName },
       { name: "UPLOAD_PROJECT_SLUG", value: data.project.slug },
     ];

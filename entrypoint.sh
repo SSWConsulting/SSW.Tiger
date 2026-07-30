@@ -68,6 +68,7 @@ handle_termination() {
     # Non-cancellation termination (job timeout, eviction, scale-in): mark an
     # uploaded submission failed so it doesn't sit "Processing" forever in the
     # portal. No-op for the Graph path. Best effort; must not block exit.
+    FAILURE_REASON="Processing was interrupted before it finished. Please submit again."
     update_submission_status "failed" || true
     exit "$exit_code"
 }
@@ -136,6 +137,12 @@ EOF
     fi
 }
 
+# Why a failure happened, in the submitter's words rather than the operator's.
+# Set at each failure site BEFORE send_failure_notification so the portal history
+# row can say "no transcript is available yet" instead of a bare "Unavailable".
+# Empty is fine — updateSubmissionStatus omits the field when it has nothing.
+FAILURE_REASON=""
+
 # Update a portal submission's history status (upload path only; best effort).
 # $1 = status (processing|completed|failed), $2 = dashboard URL (completed only).
 update_submission_status() {
@@ -144,6 +151,7 @@ update_submission_status() {
         # submitter left the name blank); it's exported after download, so it's empty
         # on an early failure — updateSubmissionStatus ignores an empty display name.
         SUBMISSION_STATUS="$1" SUBMISSION_DASHBOARD_URL="$2" SUBMISSION_DISPLAY_NAME="$PROJECT_NAME" \
+            SUBMISSION_FAILURE_REASON="$FAILURE_REASON" \
             SUBMISSION_PASSWORD_PROTECTED="$PASSWORD_PROTECTED" SUBMISSION_DASHBOARD_PASSWORD="$DASHBOARD_PASSWORD" \
             node processor/updateSubmissionStatus.js || true
     fi
@@ -164,6 +172,12 @@ send_failure_notification() {
 run_pipeline() {
     # Start background cancellation checker (polls every 15s)
     start_cancel_checker
+
+    # Audit line for portal submissions: a meeting-link request can pull a transcript
+    # for a meeting the submitter only knows the ID of, so name them in the Job log.
+    if [ "$PORTAL_SUBMISSION" = "true" ]; then
+        log "info" "Portal submission [source=$TRANSCRIPT_SOURCE_TYPE, request=$UPLOAD_REQUEST_ID, submittedBy=${SUBMITTED_BY:-unknown}]"
+    fi
 
     # Step 1: Download transcript
     # stderr flows through for real-time logs, stdout captured (JSON result)
@@ -206,6 +220,10 @@ run_pipeline() {
         if [ -n "$FAILED_SUBJECT" ]; then
             export PROJECT_NAME="$FAILED_SUBJECT"
         fi
+        # The download scripts write user-facing messages ("No transcript is available
+        # for this meeting yet…", "…add the email of someone who did"), which are far
+        # more useful on the history row than a generic failure.
+        FAILURE_REASON="$ERROR_MSG"
         send_failure_notification
 
         exit 1
@@ -296,6 +314,10 @@ run_pipeline() {
         else
             log "error" "Claude processing failed [project=$PROJECT_NAME, meeting=$MEETING_SUBJECT] (no output)"
         fi
+        # Deliberately generic: unlike the download errors, processor stdout is
+        # internal diagnostic text with no user action in it, and it is already in
+        # the Job log above. The row points at support instead of leaking it.
+        FAILURE_REASON="The transcript was downloaded but analysis failed. Please try again or contact support."
         send_failure_notification
         exit 1
     fi
@@ -308,6 +330,7 @@ run_pipeline() {
         log "error" "Processor result metadata missing"
         rm -f "$PROCESSOR_RESULT_FILE"
         unset PROCESSOR_RESULT_PATH
+        FAILURE_REASON="The dashboard was generated but could not be published. Please try again or contact support."
         send_failure_notification
         exit 1
     fi
@@ -317,12 +340,14 @@ run_pipeline() {
     unset PROCESSOR_RESULT_PATH
     if [ "$PASSWORD_PROTECTED" = "__parse_error__" ] || [ "$DASHBOARD_PASSWORD" = "__parse_error__" ]; then
         log "error" "Processor result metadata is invalid"
+        FAILURE_REASON="The dashboard was generated but could not be published. Please try again or contact support."
         send_failure_notification
         exit 1
     fi
 
     if [ -z "$DEPLOYED_URL" ]; then
         log "error" "Failed to extract deployed URL"
+        FAILURE_REASON="The dashboard was generated but could not be published. Please try again or contact support."
         send_failure_notification
         exit 1
     fi

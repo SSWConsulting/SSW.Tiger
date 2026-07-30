@@ -13,6 +13,9 @@ export type SubmissionSummary = {
   status: SubmissionStatus;
   dashboardUrl: string | null;
   submittedAt: string;
+  // Present on failed rows — a user-facing sentence from the Job explaining what
+  // went wrong ("No transcript is available for this meeting yet…").
+  failureReason?: string | null;
   // Present for completed, password-protected dashboards — shown in the list so the
   // owner can find their password (portal submissions get no Teams notification).
   passwordProtected?: boolean;

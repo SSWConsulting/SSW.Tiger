@@ -58,6 +58,42 @@ test("normalizes v2 meeting link by Meeting ID and builds resolver job env", () 
   assert.equal(env.some((item) => item.name === "MEETING_JOIN_URL"), false);
 });
 
+test("carries the submitter through to the job as an audit label", () => {
+  const normalized = normalizeQueueMessage({
+    schemaVersion: 2,
+    sourceType: "meetingLink",
+    requestId: "r6",
+    project: { displayName: "", slug: "meeting-abc12345" },
+    joinMeetingId: "47769649877490",
+    resolverUserIds: ["me@ssw.com.au"],
+    actor: { type: "user", subject: "sid-1", email: "me@ssw.com.au", roles: [] },
+  });
+
+  // Only the two identity fields survive — roles and type would invite someone to
+  // make an authorization decision on a value that arrived over a queue.
+  assert.deepEqual(normalized.actor, { email: "me@ssw.com.au", subject: "sid-1" });
+  const env = buildJobEnvironment(normalized, {});
+  assert.equal(env.find((item) => item.name === "SUBMITTED_BY").value, "me@ssw.com.au");
+});
+
+test("falls back to the subject, then to blank, when no submitter email is known", () => {
+  const base = {
+    schemaVersion: 2,
+    sourceType: "uploadedTranscript",
+    requestId: "r7",
+    project: { displayName: "Tiger", slug: "tiger" },
+    source: { storageAccount: "sa", containerName: "c", blobName: "b.vtt", fileName: "2026-01-01-010203.vtt" },
+  };
+  const noEmail = normalizeQueueMessage({ ...base, actor: { subject: "sid-2", email: null } });
+  assert.equal(buildJobEnvironment(noEmail, {}).find((i) => i.name === "SUBMITTED_BY").value, "sid-2");
+
+  // A message with no actor at all must still be processable — the audit label is
+  // for humans reading logs, never a gate on the submission.
+  const noActor = normalizeQueueMessage(base);
+  assert.equal(noActor.actor, null);
+  assert.equal(buildJobEnvironment(noActor, {}).find((i) => i.name === "SUBMITTED_BY").value, "");
+});
+
 test("rejects malformed or unsupported messages", () => {
   assert.throws(() => normalizeQueueMessage("not-json"), /Invalid JSON/);
   assert.throws(() => normalizeQueueMessage({ sourceType: "uploadedTranscript" }), /Invalid uploaded/);

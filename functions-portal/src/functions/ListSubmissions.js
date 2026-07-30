@@ -21,6 +21,9 @@ function createListSubmissionsHandler({ store, actorResolver = createSubmissionA
         status: row.status,
         dashboardUrl: row.dashboardUrl ?? null,
         submittedAt: row.submittedAt,
+        // Why a failed run failed, written by the Job. Already a user-facing
+        // sentence and length-capped at the write side.
+        failureReason: row.failureReason ?? null,
         // Password-protected dashboards surface the password here (owner-scoped list)
         // because portal submissions get no Teams notification carrying it.
         passwordProtected: !!row.passwordProtected,

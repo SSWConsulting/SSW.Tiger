@@ -4,8 +4,9 @@ const { createSubmissionStore } = require("./submissionStore");
 
 // Minimal Cosmos double: records every query spec so we can assert on the shape
 // the store sends, without a live account.
-function fakeCosmos(resources = []) {
+function fakeCosmos(resources = [], { patch } = {}) {
   const queries = [];
+  const patches = [];
   let containersBuilt = 0;
   const container = {
     items: {
@@ -15,10 +16,17 @@ function fakeCosmos(resources = []) {
       },
       create: async () => {},
     },
-    item: () => ({ delete: async () => {} }),
+    item: (id, partitionKey) => ({
+      delete: async () => {},
+      patch: async (operations) => {
+        patches.push({ id, partitionKey, operations });
+        if (patch) await patch(id);
+      },
+    }),
   };
   return {
     queries,
+    patches,
     containersBuilt: () => containersBuilt,
     client: {
       database: () => ({
@@ -30,6 +38,56 @@ function fakeCosmos(resources = []) {
     },
   };
 }
+
+test("sweepStale fails only records older than the cutoff, per partition", async () => {
+  const cosmos = fakeCosmos([
+    { id: "r1", projectName: "tiger" },
+    { id: "r2", projectName: "northwind" },
+  ]);
+  const store = createSubmissionStore({ endpoint: "https://cosmos.example", client: cosmos.client });
+  const now = Date.parse("2026-07-30T12:00:00.000Z");
+
+  const swept = await store.sweepStale({ now });
+
+  assert.equal(swept, 2);
+  // The cutoff must clear the Job's own 60-minute replicaTimeout, or a slow but
+  // healthy run would be marked failed underneath itself.
+  const cutoff = cosmos.queries[0].parameters[0].value;
+  assert.ok(now - Date.parse(cutoff) >= 90 * 60 * 1000);
+  assert.match(cosmos.queries[0].query, /c\.status IN \('accepted', 'processing'\)/);
+  // Each row is patched under its OWN partition key — these rows are in different
+  // partitions, which is exactly why this cannot be a transactional batch.
+  assert.deepEqual(
+    cosmos.patches.map((p) => [p.id, p.partitionKey]),
+    [
+      ["r1", "tiger"],
+      ["r2", "northwind"],
+    ],
+  );
+  const ops = Object.fromEntries(cosmos.patches[0].operations.map((o) => [o.path, o.value]));
+  assert.equal(ops["/status"], "failed");
+  assert.match(ops["/failureReason"], /did not finish in time/);
+});
+
+test("sweepStale keeps going when one record cannot be patched", async () => {
+  // A row the Job finished between our query and our patch is the common case;
+  // abandoning the rest of the sweep because of it would leave them stuck forever.
+  const cosmos = fakeCosmos(
+    [
+      { id: "r1", projectName: "tiger" },
+      { id: "r2", projectName: "northwind" },
+    ],
+    {
+      patch: async (id) => {
+        if (id === "r1") throw Object.assign(new Error("not found"), { code: 404 });
+      },
+    },
+  );
+  const store = createSubmissionStore({ endpoint: "https://cosmos.example", client: cosmos.client });
+
+  assert.equal(await store.sweepStale({ now: Date.now() }), 1);
+  assert.equal(cosmos.patches.length, 2);
+});
 
 test("listByUser scopes the query to the caller's subject", async () => {
   const cosmos = fakeCosmos([{ requestId: "r1" }]);
@@ -43,6 +101,9 @@ test("listByUser scopes the query to the caller's subject", async () => {
   // The password must be in the projection — the portal list is the only place a
   // portal submitter ever learns it (no Teams notification carries it).
   assert.match(cosmos.queries[0].query, /c\.dashboardPassword/);
+  // Likewise the failure reason — a failed row with no explanation just reads
+  // "Unavailable" and generates a support ticket.
+  assert.match(cosmos.queries[0].query, /c\.failureReason/);
 });
 
 test("warm runs the real listByUser query shape so it primes the same path", async () => {

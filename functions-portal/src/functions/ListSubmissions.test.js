@@ -44,9 +44,10 @@ test("returns the caller's submissions mapped to the client contract", async () 
             requestId: "r2",
             displayName: "Acme",
             projectName: "acme",
-            status: "accepted",
+            status: "failed",
             dashboardUrl: null,
             submittedAt: "2026-07-16T00:00:00.000Z",
+            failureReason: "No transcript is available for this meeting yet.",
           },
         ];
       },
@@ -62,12 +63,19 @@ test("returns the caller's submissions mapped to the client contract", async () 
     status: "completed",
     dashboardUrl: "https://x/y",
     submittedAt: "2026-07-17T01:02:03.000Z",
+    // Always present so the client type stays a plain optional-null, never "missing".
+    failureReason: null,
     passwordProtected: true,
     dashboardPassword: "AB12CD",
   });
   assert.equal(response.jsonBody.submissions[1].dashboardUrl, null);
   assert.equal(response.jsonBody.submissions[1].passwordProtected, false);
   assert.equal(response.jsonBody.submissions[1].dashboardPassword, null);
+  // A failed row carries the Job's explanation through to the list.
+  assert.equal(
+    response.jsonBody.submissions[1].failureReason,
+    "No transcript is available for this meeting yet.",
+  );
 });
 
 test("503s when the store query fails", async () => {

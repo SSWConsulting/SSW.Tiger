@@ -14,6 +14,15 @@ function formatDate(iso: string): string {
   return new Intl.DateTimeFormat("en-AU", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
 }
 
+// A job runs for minutes, so a list that only refreshes on mount leaves the
+// submitter watching a stale "Queued" for the whole run. Poll only while
+// something is actually moving, and stop the moment nothing is.
+const POLL_MS = 20_000;
+
+function isPending(status: SubmissionStatus): boolean {
+  return status === "accepted" || status === "processing";
+}
+
 const STATUS_STYLES: Record<SubmissionStatus, { label: string; className: string }> = {
   accepted: { label: "Queued", className: "bg-ssw-gray-100 text-ssw-gray-700" },
   processing: { label: "Processing", className: "bg-amber-50 text-warning" },
@@ -39,6 +48,9 @@ function SubmissionRow({ item }: { item: SubmissionSummary }) {
           <StatusBadge status={item.status} />
         </div>
         <p className="mt-1 text-[13px] text-ssw-gray-500">Submitted {formatDate(item.submittedAt)}</p>
+        {item.status === "failed" && item.failureReason ? (
+          <p className="mt-1 text-[13px] text-ssw-charcoal">{item.failureReason}</p>
+        ) : null}
         {item.status === "completed" && item.passwordProtected && item.dashboardPassword ? (
           <p className="mt-1 text-[13px] text-ssw-charcoal">
             <span className="font-medium">Password:</span>{" "}
@@ -76,6 +88,17 @@ export function DashboardsView({ submissions, onUpload }: Props) {
   // up status changes when returning to the tab later.
   useEffect(() => submissions.revalidate(), [submissions]);
 
+  // Keep the list live while a job is still running. `pending` is a boolean, not
+  // the array, so the interval is not torn down and rebuilt on every poll that
+  // returns the same statuses — only when the answer to "is anything still
+  // running?" actually changes.
+  const pending = items?.some((item) => isPending(item.status)) ?? false;
+  useEffect(() => {
+    if (!pending) return;
+    const timer = window.setInterval(() => submissions.poll(), POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [pending, submissions]);
+
   // Nothing known yet is the ONLY case that earns a full-panel spinner. Once we
   // have rows — from the network or from this tab's cache — a revalidation must
   // never blank them.
@@ -103,7 +126,7 @@ export function DashboardsView({ submissions, onUpload }: Props) {
   }
 
   return (
-    <Shell refreshing={refreshing}>
+    <Shell refreshing={refreshing} onRefresh={() => void submissions.refresh()}>
       {/* A failed revalidate is reported beside the rows it could not replace,
           rather than replacing them with an error panel. */}
       {error && (
@@ -147,7 +170,15 @@ export function DashboardsView({ submissions, onUpload }: Props) {
   );
 }
 
-function Shell({ children, refreshing = false }: { children: ReactNode; refreshing?: boolean }) {
+function Shell({
+  children,
+  refreshing = false,
+  onRefresh,
+}: {
+  children: ReactNode;
+  refreshing?: boolean;
+  onRefresh?: () => void;
+}) {
   return (
     <div className="mx-auto w-full max-w-[860px]">
       <div className="mb-6">
@@ -160,6 +191,17 @@ function Shell({ children, refreshing = false }: { children: ReactNode; refreshi
             <span className="text-[13px] text-ssw-gray-400" role="status">
               Refreshing…
             </span>
+          )}
+          {/* The poll covers rows that are still running; this covers everything
+              else — most often a submission made in another tab. */}
+          {onRefresh && !refreshing && (
+            <button
+              className="text-[13px] font-medium text-ssw-gray-500 underline underline-offset-2 transition hover:text-ssw-charcoal"
+              type="button"
+              onClick={onRefresh}
+            >
+              Refresh
+            </button>
           )}
         </div>
       </div>

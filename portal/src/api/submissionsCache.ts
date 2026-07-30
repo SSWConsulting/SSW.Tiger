@@ -103,6 +103,16 @@ export class SubmissionsCache {
   }
 
   /**
+   * Status-driven tick, fired by the view while any row is still Queued or
+   * Processing. Deliberately ignores FRESH_MS: the caller's interval already sets
+   * the cadence, and coupling the two meant raising FRESH_MS would silently stop
+   * the poll. Overlapping ticks still collapse onto one request via `inFlight`.
+   */
+  poll(): void {
+    void this.load({ silent: true });
+  }
+
+  /**
    * User-driven retry. NOT silent: if the session has expired, the click should
    * take them to re-login rather than fail quietly a second time.
    */

@@ -207,6 +207,10 @@ app.storageQueue("ProcessTranscriptQueue", {
     structuredLog(context, "info", "Processing queue message", {
       sourceType: data.sourceType,
       ...(data.requestId ? { requestId: data.requestId } : { meetingId, transcriptId }),
+      // Portal submissions only. A meeting-link request can pull a transcript for a
+      // meeting the submitter merely knows the ID of, so "who asked for this" has to
+      // be answerable from the logs alone. Audit label — never an authorization input.
+      ...(data.actor ? { submittedBy: data.actor.email || data.actor.subject } : {}),
     });
 
     if (manualTrigger) {
@@ -350,6 +354,7 @@ async function triggerContainerAppJob(params, context) {
     jobName,
     sourceType: params.sourceType,
     requestId: params.requestId,
+    submittedBy: params.actor?.email || params.actor?.subject,
     meetingId,
     transcriptId,
   });
