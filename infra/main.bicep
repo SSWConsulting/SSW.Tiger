@@ -49,6 +49,9 @@ param deployPortal bool = false
 @description('Region for the Static Web App. SWA is region-limited (australiaeast is NOT supported); defaults to East Asia.')
 param staticWebAppLocation string = 'eastasia'
 
+@description('Let Bicep write the SWA\'s Entra auth app settings (AZURE_CLIENT_ID / AZURE_CLIENT_SECRET_APP_SETTING_NAME) by reading graph-client-id + graph-client-secret from Key Vault. Off by default because those settings are already set by hand on both SWAs, and because getSecret() makes the DEPLOYING principal need Key Vault Secrets User on the (RBAC-enabled) vault — a requirement a plain Contributor does not meet. Turn on only for a brand-new environment where nobody has set them yet. Mirrors manageKeyVaultRoleAssignment / manageTranscriptBlobRoleAssignment: flags off means Bicep never touches what the sysadmin configured.')
+param manageSwaAuthSettings bool = false
+
 
 var containerImage = 'ghcr.io/${githubOrg}/tiger-processor:${imageTag}'
 
@@ -217,9 +220,16 @@ module portalApiApp 'modules/portalApiApp.bicep' = if (deployPortal) {
 // 10. Static Web App - hosts the Parrot SPA, links the Portal API as /api, and
 //     provisions the "Azure Static Web Apps (Linked)" EasyAuth boundary on it.
 //     Login reuses the existing Graph app registration (clientId + secret from KV).
-//     POST-DEPLOY: (1) verify the backend now has the "Azure Static Web Apps (Linked)"
-//     identity provider under Authentication; (2) register the output redirect URI
-//     on the Graph app registration.
+//     AFTER DEPLOY: run infra/scripts/verify-portal-auth-boundary.sh <env>. It checks
+//     that the link actually provisioned the EasyAuth provider on the backend — the
+//     control that makes the Portal API's anonymous functions safe. Registering the
+//     redirect URI (this module's `redirectUri` output) on the Graph app registration
+//     is a ONE-OFF done by hand; it is not re-checked on every deploy.
+//
+//     NOTE: getSecret() below is reached ONLY when manageSwaAuthSettings is true.
+//     It makes the DEPLOYING principal need Key Vault Secrets User on the vault
+//     (it is RBAC-enabled), on top of Contributor on the RG — which is why the
+//     default leaves the already-hand-set app settings alone.
 resource keyVaultRef 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
   name: kv.outputs.name
 }
@@ -233,8 +243,13 @@ module staticWebApp 'modules/staticWebApp.bicep' = if (deployPortal) {
     location: staticWebAppLocation
     backendResourceId: portalApiApp.outputs.id
     backendRegion: location
-    entraClientId: keyVaultRef.getSecret('graph-client-id')
-    entraClientSecret: keyVaultRef.getSecret('graph-client-secret')
+    // The ternary is what keeps getSecret() (and its Key Vault Secrets User
+    // requirement on the deployer) out of the deployment entirely when the flag
+    // is off — an unconditional getSecret would be resolved by ARM regardless of
+    // whether the module then used the value.
+    manageAuthSettings: manageSwaAuthSettings
+    entraClientId: manageSwaAuthSettings ? keyVaultRef.getSecret('graph-client-id') : ''
+    entraClientSecret: manageSwaAuthSettings ? keyVaultRef.getSecret('graph-client-secret') : ''
   }
 }
 

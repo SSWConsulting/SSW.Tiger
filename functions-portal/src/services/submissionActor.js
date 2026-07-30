@@ -6,7 +6,7 @@
  * backend is linked) rejects any request not proxied by SWA, which is what makes
  * the anonymous functions safe against forged headers. Functions are therefore
  * authLevel:"anonymous" — a linked backend gets no function key. That boundary is
- * a deploy-time control; verify it with infra/scripts/portal-post-deploy.sh §2.
+ * a deploy-time control; verify it with infra/scripts/verify-portal-auth-boundary.sh.
  *
  * We capture a PORTABLE identity (subject + provider + email), not just the
  * provider-specific opaque userId, so future project-admin grants can key off a

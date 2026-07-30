@@ -17,7 +17,7 @@ param costCategoryTag object
 @description('Existing storage account — shared with the Graph app so the transcript-notifications queue connects producer (this app) to consumer (Graph app).')
 param storageAccountName string
 
-@description('Shared user-assigned managed identity (writes blob + queue via DefaultAzureCredential).')
+@description('Shared user-assigned managed identity. Used for the Cosmos + Blob data planes via ManagedIdentityCredential (functions-portal/src/services/credential.js). The queue publish does NOT use it — it goes through the AzureWebJobsStorage account key below, same as the Functions runtime.')
 param managedIdentityId string
 param managedIdentityClientId string
 

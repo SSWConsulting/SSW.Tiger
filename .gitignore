@@ -55,6 +55,10 @@ azure-function/node_modules/
 azure-function/.python_packages/
 functions-portal/local.settings.json
 functions-portal/node_modules/
+# `func azure functionapp publish` drops its deployment package in the cwd as
+# <guid>-app.zip. Both portal Function Apps are deployed by hand, so this lands
+# in the repo root routinely.
+*-app.zip
 portal/dist/
 portal/*.tsbuildinfo
 

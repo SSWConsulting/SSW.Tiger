@@ -89,7 +89,7 @@ function getHandler() {
 // function key (that is a SWA managed-functions behaviour, not a linked-backend
 // one). The trust boundary is the auto-provisioned "Azure Static Web Apps
 // (Linked)" EasyAuth provider on this app, which rejects any request not proxied
-// through SWA — verified post-deploy (infra/scripts/portal-post-deploy.sh §2).
+// through SWA — verified by infra/scripts/verify-portal-auth-boundary.sh.
 // Identity is resolved by the actor resolver, never from request fields.
 app.http("SubmitTranscript", {
   methods: ["POST"],

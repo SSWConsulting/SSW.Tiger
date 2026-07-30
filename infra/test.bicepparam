@@ -20,4 +20,9 @@ param deployLogicApp = false
 param manageKeyVaultRoleAssignment = false
 param manageTranscriptBlobRoleAssignment = false
 
+// Same principle for the SWA's Entra app settings: already set by hand, and
+// letting Bicep read them from Key Vault would require the deployer to hold
+// Key Vault Secrets User on the RBAC-enabled vault.
+param manageSwaAuthSettings = false
+
 //az deployment group create --resource-group "SSW.Transcript-Intelligence-Group-Event-Reasoning.Dev" --template-file main.bicep --parameters test.bicepparam
