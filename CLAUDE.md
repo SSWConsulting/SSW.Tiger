@@ -302,10 +302,6 @@ projects/{project-name}/
 **Copy the template first, then replace placeholders one at a time.** Do NOT
 assemble the finished HTML in memory and write it out in a single call.
 
-A filled dashboard is 80-120KB. Emitting that in one response exceeds the
-per-response output token limit, which kills the run outright and discards
-the whole analysis - roughly 50 minutes of work (GitHub issue #149).
-
 **Required process:**
 
 1. Copy the template to the destination, unmodified:

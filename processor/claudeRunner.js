@@ -277,29 +277,27 @@ Transcript: projects/${projectSlug}/${meetingId}/transcript.vtt
 Attendees (meeting invite list - use as suggestion for name resolution): projects/${projectSlug}/${meetingId}/attendees.json
 Dashboard template: templates/dashboard.html`;
 
-  const prompt = resumeDashboardOnly
-    ? `Read CLAUDE.md, then generate ONLY the dashboard for this meeting.
-
-${context}
-Consolidated analysis (ALREADY COMPLETE - use this): projects/${projectSlug}/${meetingId}/analysis/consolidated.json
-
-A previous attempt already ran the analysis agents and consolidation, then failed
-during dashboard generation. Do NOT re-run any analysis agent and do NOT re-run
-consolidation - consolidated.json is complete and authoritative.
-
-Start at step 4 (Generate Dashboard) of the CLAUDE.md workflow. Follow the
-incremental build process in CLAUDE.md > Dashboard Generation exactly: copy the
-template first, then replace one placeholder per edit. Do NOT write the whole
-HTML file in a single call - that is what made the previous attempt fail.
-
-Do NOT deploy or upload the dashboard.
-Generate the dashboard HTML to: projects/${projectSlug}/${meetingId}/dashboard/index.html`
-    : `Read CLAUDE.md and process the meeting transcript following the complete workflow.
-
-${context}
-
-Follow all steps in CLAUDE.md EXCEPT deployment. Do NOT deploy or upload the dashboard.
+  // Repeated in both prompts: deployment belongs to deployer.js (so that the
+  // password protection and Cosmos record are not bypassed), and the path is
+  // what checkOutputExists looks for.
+  const outputInstructions = `Do NOT deploy or upload the dashboard.
 Generate the dashboard HTML to: projects/${projectSlug}/${meetingId}/dashboard/index.html`;
+
+  const sections = resumeDashboardOnly
+    ? [
+        "Read CLAUDE.md, then generate ONLY the dashboard for this meeting.",
+        `${context}
+Consolidated analysis (ALREADY COMPLETE - use this): projects/${projectSlug}/${meetingId}/analysis/consolidated.json`,
+        "Start at step 4 (Generate Dashboard) of the CLAUDE.md workflow. Do NOT re-run any analysis agent and do NOT re-run consolidation.",
+        outputInstructions,
+      ]
+    : [
+        "Read CLAUDE.md and process the meeting transcript following the complete workflow.",
+        context,
+        `Follow all steps in CLAUDE.md EXCEPT deployment. ${outputInstructions}`,
+      ];
+
+  const prompt = sections.join("\n\n");
 
   return new Promise((resolve, reject) => {
     const args = [
