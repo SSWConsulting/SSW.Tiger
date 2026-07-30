@@ -348,7 +348,16 @@ Generate the dashboard HTML to: projects/${projectSlug}/${meetingId}/dashboard/i
 
     claude.stdin.write(prompt);
     claude.stdin.end();
-    log("info", "Processing transcript with Claude CLI...");
+    // The effective limits are logged on every run so a successful run also
+    // proves what they were - previously the only evidence that
+    // CLAUDE_CODE_MAX_OUTPUT_TOKENS had reached the CLI was a failure message
+    // quoting the ceiling it hit.
+    log("info", "Processing transcript with Claude CLI...", {
+      meetingId,
+      model: CONFIG.model,
+      maxOutputTokens: CONFIG.maxOutputTokens,
+      resumeDashboardOnly,
+    });
 
     let stderr = "";
     let firstOutputReceived = false;
