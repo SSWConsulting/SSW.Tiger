@@ -126,7 +126,7 @@ export function DashboardsView({ submissions, onUpload }: Props) {
   }
 
   return (
-    <Shell refreshing={refreshing} onRefresh={() => void submissions.refresh()}>
+    <Shell refreshing={refreshing}>
       {/* A failed revalidate is reported beside the rows it could not replace,
           rather than replacing them with an error panel. */}
       {error && (
@@ -170,15 +170,7 @@ export function DashboardsView({ submissions, onUpload }: Props) {
   );
 }
 
-function Shell({
-  children,
-  refreshing = false,
-  onRefresh,
-}: {
-  children: ReactNode;
-  refreshing?: boolean;
-  onRefresh?: () => void;
-}) {
+function Shell({ children, refreshing = false }: { children: ReactNode; refreshing?: boolean }) {
   return (
     <div className="mx-auto w-full max-w-[860px]">
       <div className="mb-6">
@@ -191,17 +183,6 @@ function Shell({
             <span className="text-[13px] text-ssw-gray-400" role="status">
               Refreshing…
             </span>
-          )}
-          {/* The poll covers rows that are still running; this covers everything
-              else — most often a submission made in another tab. */}
-          {onRefresh && !refreshing && (
-            <button
-              className="text-[13px] font-medium text-ssw-gray-500 underline underline-offset-2 transition hover:text-ssw-charcoal"
-              type="button"
-              onClick={onRefresh}
-            >
-              Refresh
-            </button>
           )}
         </div>
       </div>
