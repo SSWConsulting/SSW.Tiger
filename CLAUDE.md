@@ -297,6 +297,40 @@ projects/{project-name}/
 
 **DO NOT create HTML from scratch - USE THE TEMPLATE!**
 
+### CRITICAL: Build the dashboard incrementally - never in one write
+
+**Copy the template first, then replace placeholders one at a time.** Do NOT
+assemble the finished HTML in memory and write it out in a single call.
+
+A filled dashboard is 80-120KB. Emitting that in one response exceeds the
+per-response output token limit, which kills the run outright and discards
+the whole analysis - roughly 50 minutes of work (GitHub issue #149).
+
+**Required process:**
+
+1. Copy the template to the destination, unmodified:
+   ```bash
+   mkdir -p projects/{project}/{meeting-id}/dashboard
+   cp templates/dashboard.html projects/{project}/{meeting-id}/dashboard/index.html
+   ```
+2. Replace **one placeholder per edit**, editing the destination file in place.
+   Each edit's replacement text is only that section's content - never the
+   surrounding HTML.
+3. Work through the placeholders in template order. The large ones
+   (`{{PARTICIPANT_CARDS}}`, `{{SPEAKER_TIMELINE}}`, `{{TEAM_HEALTH}}`) get one
+   edit each, and if a single one is still large, split it further - e.g. insert
+   participant cards a few at a time rather than all in one edit.
+4. When every placeholder is replaced, verify no `{{` remains:
+   ```bash
+   grep -o '{{[A-Z_]*}}' projects/{project}/{meeting-id}/dashboard/index.html
+   ```
+   Empty output means done. Any remaining placeholder must be filled - an
+   unreplaced `{{...}}` renders literally on the deployed page.
+
+**Never** write `dashboard/index.html` in a single operation containing the full
+document, and never regenerate the whole file to apply a small fix - edit the
+one section that needs changing.
+
 ### Speaker Timeline Visualization
 
 The `{{SPEAKER_TIMELINE}}` placeholder must be populated with HTML showing horizontal bars for each speaker, visualizing when they spoke throughout the meeting.
