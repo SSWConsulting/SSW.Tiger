@@ -64,21 +64,13 @@ const FAILURE_PATTERNS = [
   {
     reason: "output_token_limit",
     pattern: /output token maximum|CLAUDE_CODE_MAX_OUTPUT_TOKENS/i,
-    hint:
-      "A single assistant turn exceeded the output token limit - most likely " +
-      "the whole dashboard HTML was written in one call. Raise " +
-      "CLAUDE_CODE_MAX_OUTPUT_TOKENS, or have the dashboard built by copying " +
-      "the template and replacing placeholders incrementally.",
+    hint: "One assistant turn exceeded the output token limit - most likely the whole dashboard HTML written in a single call.",
   },
 ];
 
-// A genuinely transient API retry (429, overloaded, connection blip) resolves
-// in seconds. A retry that arrives MINUTES after the previous event means the
-// attempt itself ran to completion and was then rejected - e.g. one oversized
-// write hitting the output token limit. Retrying that just burns another full
-// generation, so fail fast instead of stalling until the container is killed.
-// (~5 min per cycle is roughly how long generating 32000 output tokens takes,
-// which is what the stall in GitHub issue #149 looked like.)
+// Transient retries (429, overloaded) come back in seconds. Minutes apart means
+// each attempt generated to completion before being rejected, so retrying just
+// burns another one - give up rather than stall until the container is killed.
 const STALL_RETRY_COUNT = 2;
 const STALL_ELAPSED_MS = 8 * 60 * 1000;
 const STALL_RETRY_COUNT_HARD = 3;
@@ -277,11 +269,9 @@ Transcript: projects/${projectSlug}/${meetingId}/transcript.vtt
 Attendees (meeting invite list - use as suggestion for name resolution): projects/${projectSlug}/${meetingId}/attendees.json
 Dashboard template: templates/dashboard.html`;
 
-  // Repeated in both prompts: deployment belongs to deployer.js (so that the
-  // password protection and Cosmos record are not bypassed), and the path is
-  // what checkOutputExists looks for.
-  const outputInstructions = `Do NOT deploy or upload the dashboard.
-Generate the dashboard HTML to: projects/${projectSlug}/${meetingId}/dashboard/index.html`;
+  // CLAUDE.md states the path with {placeholders}; this resolves them, and is
+  // the path checkOutputExists looks for.
+  const outputPath = `Generate the dashboard HTML to: projects/${projectSlug}/${meetingId}/dashboard/index.html`;
 
   const sections = resumeDashboardOnly
     ? [
@@ -289,12 +279,12 @@ Generate the dashboard HTML to: projects/${projectSlug}/${meetingId}/dashboard/i
         `${context}
 Consolidated analysis (ALREADY COMPLETE - use this): projects/${projectSlug}/${meetingId}/analysis/consolidated.json`,
         "Start at step 4 (Generate Dashboard) of the CLAUDE.md workflow. Do NOT re-run any analysis agent and do NOT re-run consolidation.",
-        outputInstructions,
+        outputPath,
       ]
     : [
         "Read CLAUDE.md and process the meeting transcript following the complete workflow.",
         context,
-        `Follow all steps in CLAUDE.md EXCEPT deployment. ${outputInstructions}`,
+        `Follow all steps in CLAUDE.md EXCEPT deployment. Do NOT deploy or upload the dashboard.\n${outputPath}`,
       ];
 
   const prompt = sections.join("\n\n");
@@ -416,12 +406,7 @@ Consolidated analysis (ALREADY COMPLETE - use this): projects/${projectSlug}/${m
             stallTerminated = true;
             failure = {
               reason: "api_retry_stall",
-              hint:
-                `Gave up after ${consecutiveRetries} consecutive API retries with no ` +
-                "progress in between. Retries this slow mean each attempt ran to " +
-                "completion before being rejected (most likely an oversized single " +
-                "write hitting the output token limit), so further retries would " +
-                "only burn another full generation.",
+              hint: `${consecutiveRetries} consecutive API retries with no progress in between - each attempt is generating to completion before being rejected.`,
             };
             log("error", "Claude CLI stalled on API retries, terminating early", {
               meetingId,
