@@ -38,6 +38,31 @@ test("rejects non-Teams links and empty input", () => {
   assert.throws(() => validateMeetingLink(""), /required/i);
 });
 
+test("rejects look-alike hosts that merely CONTAIN a Teams domain", () => {
+  // A substring check would have accepted every one of these.
+  for (const host of [
+    "teams.microsoft.com.attacker.com",
+    "evil-teams.microsoft.com.example.net",
+    "teams.live.com.attacker.com",
+    "attackerteams.live.commercial.io",
+  ]) {
+    assert.throws(
+      () => validateMeetingLink(`https://${host}/meet/47769649877490`),
+      /not a Teams/i,
+      `expected ${host} to be rejected`,
+    );
+  }
+});
+
+test("accepts real Teams hosts, including subdomains and a trailing dot", () => {
+  for (const host of ["teams.microsoft.com", "TEAMS.MICROSOFT.COM", "teams.microsoft.com.", "emea.teams.live.com"]) {
+    assert.deepEqual(validateMeetingLink(`https://${host}/meet/47769649877490`), {
+      mode: "joinMeetingId",
+      joinMeetingId: "47769649877490",
+    });
+  }
+});
+
 test("validateAttendeeEmail: null when empty, lowercased when valid, throws when malformed", () => {
   assert.equal(validateAttendeeEmail(""), null);
   assert.equal(validateAttendeeEmail(undefined), null);

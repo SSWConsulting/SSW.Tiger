@@ -33,6 +33,24 @@ test("parses organizer + tenant from a Teams join URL, and reports link problems
   assert.match(parseJoinUrl("https://teams.microsoft.com/l/meetup-join/19:x/0").error, /missing meeting info/);
 });
 
+test("rejects look-alike hosts that merely CONTAIN a Teams domain", () => {
+  // A substring check would have accepted every one of these.
+  for (const host of ["teams.microsoft.com.attacker.com", "teams.live.com.attacker.com", "notteams.live.commercial.io"]) {
+    assert.match(
+      parseJoinUrl(`https://${host}/l/meetup-join/19:x/0?context=${encodeURIComponent('{"Oid":"o"}')}`).error,
+      /Teams meeting link/,
+      `expected ${host} to be rejected`,
+    );
+  }
+  // …while real hosts (subdomain / trailing dot included) still parse.
+  for (const host of ["teams.microsoft.com", "teams.microsoft.com.", "emea.teams.live.com"]) {
+    assert.deepEqual(
+      parseJoinUrl(`https://${host}/l/meetup-join/19:x/0?context=${encodeURIComponent('{"Oid":"o","Tid":"t"}')}`),
+      { userId: "o", tenantId: "t" },
+    );
+  }
+});
+
 test("resolves the latest transcript and returns a Graph-compatible shape", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "tiger-link-"));
   const graph = {

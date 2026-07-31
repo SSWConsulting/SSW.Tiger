@@ -24,8 +24,12 @@ async function main() {
   const displayName = process.env.SUBMISSION_DISPLAY_NAME || undefined;
   // Password-protected dashboards: portal submissions get no Teams notification, so
   // the password is stored on the (owner-scoped) record for the portal to display.
-  const passwordProtected = process.env.SUBMISSION_PASSWORD_PROTECTED === "true" || undefined;
-  const dashboardPassword = process.env.SUBMISSION_DASHBOARD_PASSWORD || undefined;
+  // Definite values, never undefined: these are always written on a terminal update
+  // so a re-run that drops or rotates the password cannot leave the old one on the
+  // record. entrypoint.sh leaves both env vars empty until the processor result is
+  // parsed, which is exactly the "no password" case.
+  const passwordProtected = process.env.SUBMISSION_PASSWORD_PROTECTED === "true";
+  const dashboardPassword = process.env.SUBMISSION_DASHBOARD_PASSWORD || null;
   // Why it failed, in words the submitter can act on. Trimmed to a sane length
   // here rather than in the shell: Graph errors can carry a long request-id tail
   // that adds nothing to a history row.
@@ -54,8 +58,10 @@ async function main() {
       dashboardUrl: status === "completed" ? dashboardUrl : undefined,
       failureReason: status === "failed" ? failureReason : undefined,
       displayName,
-      passwordProtected: status === "completed" ? passwordProtected : undefined,
-      dashboardPassword: status === "completed" ? dashboardPassword : undefined,
+      // Cleared on any non-completed status: a row that goes back to processing, or
+      // ends up failed, must not keep displaying a password from an earlier run.
+      passwordProtected: status === "completed" ? passwordProtected : false,
+      dashboardPassword: status === "completed" ? dashboardPassword : null,
     });
     log("info", "Submission status updated", { requestId, status, recordFound: !!updated });
   } catch (error) {

@@ -24,7 +24,9 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Match the Function App runtime (infra/modules/functionApp.bicep) — building
+          # on a Node older than the target invites native/engine mismatches at runtime.
+          node-version: 22
 
       - name: Install function dependencies
         working-directory: azure-function

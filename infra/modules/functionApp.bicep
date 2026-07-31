@@ -70,7 +70,13 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
     keyVaultReferenceIdentity: managedIdentityId
     siteConfig: {
       keyVaultReferenceIdentity: managedIdentityId
-      linuxFxVersion: 'NODE|20'
+      // Node 20 went out of support on 30/04/2026, and the Azure SDKs this app pulls
+      // in (@azure/core-rest-pipeline, @typespec/ts-http-runtime) now declare
+      // engines.node >=22. Node 22 is GA on Linux Functions and is the last version
+      // Linux Consumption will support. Requires the v4 programming model, which this
+      // app already uses. Keep in step with WEBSITE_NODE_DEFAULT_VERSION below,
+      // package.json engines, and portalApiApp.bicep.
+      linuxFxVersion: 'NODE|22'
       ftpsState: 'Disabled'
       http20Enabled: true
       minTlsVersion: '1.2'
@@ -97,7 +103,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         // Function runtime settings
         { name: 'FUNCTIONS_EXTENSION_VERSION', value: '~4' }
         { name: 'FUNCTIONS_WORKER_RUNTIME', value: 'node' }
-        { name: 'WEBSITE_NODE_DEFAULT_VERSION', value: '~20' }
+        { name: 'WEBSITE_NODE_DEFAULT_VERSION', value: '~22' }
         // Reject oversized HTTP bodies before multipart parsing allocates memory.
         { name: 'FUNCTIONS_REQUEST_BODY_SIZE_LIMIT', value: '12582912' }
         // Key Vault references for Graph API credentials

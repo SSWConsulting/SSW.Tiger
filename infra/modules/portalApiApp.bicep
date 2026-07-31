@@ -59,7 +59,9 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
     keyVaultReferenceIdentity: managedIdentityId
     siteConfig: {
       keyVaultReferenceIdentity: managedIdentityId
-      linuxFxVersion: 'NODE|20'
+      // Node 22, not 20 — see the note in functionApp.bicep. This app is the worse
+      // offender: 12 of its transitive Azure SDK packages declare engines.node >=22.
+      linuxFxVersion: 'NODE|22'
       ftpsState: 'Disabled'
       http20Enabled: true
       minTlsVersion: '1.2'
@@ -79,7 +81,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         // and the Linux form is a blob SAS URL that the deployment tooling owns.
         { name: 'FUNCTIONS_EXTENSION_VERSION', value: '~4' }
         { name: 'FUNCTIONS_WORKER_RUNTIME', value: 'node' }
-        { name: 'WEBSITE_NODE_DEFAULT_VERSION', value: '~20' }
+        { name: 'WEBSITE_NODE_DEFAULT_VERSION', value: '~22' }
         // Reject oversized HTTP bodies before multipart parsing allocates memory.
         { name: 'FUNCTIONS_REQUEST_BODY_SIZE_LIMIT', value: '12582912' }
         { name: 'TRANSCRIPT_STORAGE_ACCOUNT', value: storageAccountName }

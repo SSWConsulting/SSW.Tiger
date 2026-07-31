@@ -232,6 +232,22 @@ const queueOutput = output.storageQueue({
   connection: "AzureWebJobsStorage",
 });
 
+// Teams hosts, matched EXACTLY (or as a real subdomain). A substring test would
+// accept "teams.microsoft.com.attacker.com" and let an arbitrary URL through into
+// the pipeline, where it becomes a Graph filter value.
+//
+// ⚠️ DUPLICATED — this app, functions-portal and processor are separate deploy units,
+// so this cannot be a shared module today. Identical copies live in
+// functions-portal/src/services/meetingLinkValidation.js and
+// processor/downloadFromMeetingLink.js. Change one, change all three.
+const TEAMS_HOSTS = ["teams.microsoft.com", "teams.live.com"];
+function isTeamsHost(hostname) {
+  // The URL parser lowercases the host but keeps a fully-qualified trailing dot,
+  // and "teams.microsoft.com." resolves to the same place — strip it before matching.
+  const host = String(hostname || "").replace(/\.$/, "");
+  return TEAMS_HOSTS.some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
+}
+
 /**
  * Parse a Teams meeting join URL to extract the organizer's user ID.
  *
@@ -246,10 +262,7 @@ function parseJoinUrl(joinUrl) {
     const url = new URL(joinUrl);
 
     // Validate it's a Teams meeting URL
-    if (
-      !url.hostname.includes("teams.microsoft.com") &&
-      !url.hostname.includes("teams.live.com")
-    ) {
+    if (!isTeamsHost(url.hostname)) {
       return { error: "Not a valid Teams meeting URL" };
     }
 

@@ -3,6 +3,22 @@ const { SubmissionValidationError } = require("./submissionValidation");
 // Numeric Teams Meeting ID (as shown in the invite / short link), spaces stripped.
 const MEETING_ID_RE = /^\d{9,20}$/;
 
+// Teams hosts, matched EXACTLY (or as a real subdomain). A substring test would
+// accept "teams.microsoft.com.attacker.com" and let an arbitrary URL through into
+// the pipeline, where it becomes a Graph filter value.
+//
+// ⚠️ DUPLICATED — functions-portal, azure-function and processor are separate deploy
+// units, so this cannot be a shared module today. Identical copies live in
+// processor/downloadFromMeetingLink.js and azure-function/src/functions/TriggerProcessing.js.
+// Change one, change all three; each side has its own regression test.
+const TEAMS_HOSTS = ["teams.microsoft.com", "teams.live.com"];
+function isTeamsHost(hostname) {
+  // The URL parser lowercases the host but keeps a fully-qualified trailing dot,
+  // and "teams.microsoft.com." resolves to the same place — strip it before matching.
+  const host = String(hostname || "").replace(/\.$/, "");
+  return TEAMS_HOSTS.some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
+}
+
 // Classify a Teams meeting reference in any form a user can paste — NO Graph call.
 // The Container App Job does the actual resolution.
 //
@@ -34,7 +50,7 @@ function validateMeetingLink(value) {
   } catch {
     throw new SubmissionValidationError("That is not a valid Teams meeting link or Meeting ID.", 400, "invalid_link");
   }
-  if (!url.hostname.includes("teams.microsoft.com") && !url.hostname.includes("teams.live.com")) {
+  if (!isTeamsHost(url.hostname)) {
     throw new SubmissionValidationError("That is not a Teams meeting link.", 400, "not_teams_link");
   }
 
@@ -80,4 +96,4 @@ function validateAttendeeEmail(value) {
   return email;
 }
 
-module.exports = { validateMeetingLink, validateAttendeeEmail };
+module.exports = { validateMeetingLink, validateAttendeeEmail, isTeamsHost };

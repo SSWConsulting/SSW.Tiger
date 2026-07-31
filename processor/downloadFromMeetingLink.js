@@ -65,6 +65,21 @@ function readConfig(env = process.env) {
 
 const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Teams hosts, matched EXACTLY (or as a real subdomain). A substring test would
+// accept "teams.microsoft.com.attacker.com" and let an arbitrary URL through into
+// the pipeline, where it becomes a Graph filter value.
+//
+// ⚠️ DUPLICATED — see buildMeetingFilterUrl's note. Identical copies live in
+// functions-portal/src/services/meetingLinkValidation.js and
+// azure-function/src/functions/TriggerProcessing.js. Change one, change all three.
+const TEAMS_HOSTS = ["teams.microsoft.com", "teams.live.com"];
+function isTeamsHost(hostname) {
+  // The URL parser lowercases the host but keeps a fully-qualified trailing dot,
+  // and "teams.microsoft.com." resolves to the same place — strip it before matching.
+  const host = String(hostname || "").replace(/\.$/, "");
+  return TEAMS_HOSTS.some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
+}
+
 // The meeting's true organizer (used to fetch transcripts — always authorized),
 // read from a resolved onlineMeeting's participants. Null if Graph omitted it.
 function organizerIdOf(meeting) {
@@ -80,7 +95,7 @@ function parseJoinUrl(joinUrl) {
   } catch {
     return { error: "The meeting link is not a valid URL." };
   }
-  if (!url.hostname.includes("teams.microsoft.com") && !url.hostname.includes("teams.live.com")) {
+  if (!isTeamsHost(url.hostname)) {
     return { error: "That is not a Teams meeting link." };
   }
   const contextParam = url.searchParams.get("context");
@@ -382,6 +397,7 @@ if (require.main === module) main();
 module.exports = {
   readConfig,
   parseJoinUrl,
+  isTeamsHost,
   canonicalFileName,
   buildMeetingFilterUrl,
   buildJoinMeetingIdFilterUrl,
