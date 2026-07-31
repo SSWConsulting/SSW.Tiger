@@ -45,7 +45,11 @@ az() { MSYS_NO_PATHCONV=1 command az "$@"; }
 
 echo "== Portal API auth boundary: ${FUNC_APP} (RG: ${RESOURCE_GROUP}) =="
 
-FUNC_ID=$(az functionapp show -n "$FUNC_APP" -g "$RESOURCE_GROUP" --query id -o tsv 2>/dev/null || echo "")
+# `tr -d '\r'`: on Windows the az launcher is a .cmd, so -o tsv comes back
+# CRLF-terminated. $() strips the \n but leaves the \r, which then goes into the
+# ARM URL below (breaking the call) and into the remediation hint (where the
+# carriage return overwrites the line). Both failures are silent.
+FUNC_ID=$(az functionapp show -n "$FUNC_APP" -g "$RESOURCE_GROUP" --query id -o tsv 2>/dev/null | tr -d '\r' || echo "")
 if [ -z "$FUNC_ID" ]; then
   echo "  [FAIL] Function App '${FUNC_APP}' not found. Did the deployment run with deployPortal=true?"
   exit 1
@@ -57,11 +61,18 @@ AUTH_JSON=$(az rest --method GET \
   --url "https://management.azure.com${FUNC_ID}/config/authsettingsV2?api-version=2023-12-01" \
   -o json 2>/dev/null || echo "{}")
 
+# readFileSync(0) — NOT '/dev/stdin'. Node is a native Windows binary, so it
+# resolves '/dev/stdin' against the drive root ('D:\dev\stdin') and throws
+# ENOENT; the 2>/dev/null || echo "false" then turned that into a confident
+# "boundary is missing" on every Windows run. Reading fd 0 works everywhere.
 REQUIRES_AUTH=$(echo "$AUTH_JSON" | node -pe \
-  "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'))?.properties?.globalValidation?.requireAuthentication === true" \
+  "JSON.parse(require('fs').readFileSync(0,'utf8'))?.properties?.globalValidation?.requireAuthentication === true" \
   2>/dev/null || echo "false")
+# The provider KEY is always present — authsettingsV2 returns the full schema,
+# facebook and apple included — so its existence proves nothing. Check that it
+# is actually enabled.
 HAS_SWA_PROVIDER=$(echo "$AUTH_JSON" | node -pe \
-  "Object.keys(JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'))?.properties?.identityProviders ?? {}).some(k => /static/i.test(k))" \
+  "Object.entries(JSON.parse(require('fs').readFileSync(0,'utf8'))?.properties?.identityProviders ?? {}).some(([k, v]) => /static/i.test(k) && v?.enabled === true)" \
   2>/dev/null || echo "false")
 
 if [ "$REQUIRES_AUTH" = "true" ] && [ "$HAS_SWA_PROVIDER" = "true" ]; then
