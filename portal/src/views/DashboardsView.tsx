@@ -82,7 +82,7 @@ export function DashboardsView({ submissions, onUpload }: Props) {
   // State lives in the cache, not here, so it survives the unmount/remount that
   // every tab switch causes — and so the module-load prefetch has somewhere to
   // land before this view ever mounts.
-  const { items, refreshing, error } = useSyncExternalStore(submissions.subscribe, submissions.snapshot);
+  const { items, error } = useSyncExternalStore(submissions.subscribe, submissions.snapshot);
 
   // A no-op while the prefetch is still in flight or its result is fresh; picks
   // up status changes when returning to the tab later.
@@ -126,7 +126,7 @@ export function DashboardsView({ submissions, onUpload }: Props) {
   }
 
   return (
-    <Shell refreshing={refreshing}>
+    <Shell>
       {/* A failed revalidate is reported beside the rows it could not replace,
           rather than replacing them with an error panel. */}
       {error && (
@@ -170,21 +170,12 @@ export function DashboardsView({ submissions, onUpload }: Props) {
   );
 }
 
-function Shell({ children, refreshing = false }: { children: ReactNode; refreshing?: boolean }) {
+function Shell({ children }: { children: ReactNode }) {
   return (
     <div className="mx-auto w-full max-w-[860px]">
       <div className="mb-6">
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Your history</p>
-        <div className="mt-1 flex items-baseline gap-3">
-          <h1 className="text-3xl font-bold tracking-[-0.02em] text-ssw-charcoal-800">My submissions</h1>
-          {/* Deliberately inline and quiet: a background revalidate is not a
-              reason to cover content the user is already reading. */}
-          {refreshing && (
-            <span className="text-[13px] text-ssw-gray-400" role="status">
-              Refreshing…
-            </span>
-          )}
-        </div>
+        <h1 className="mt-1 text-3xl font-bold tracking-[-0.02em] text-ssw-charcoal-800">My submissions</h1>
       </div>
       {children}
     </div>

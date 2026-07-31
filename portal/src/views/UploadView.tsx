@@ -244,7 +244,6 @@ export function UploadView({ client, onViewDashboards }: Props) {
                 </p>
                 <label htmlFor="attendeeEmail" className="mb-2 mt-4 block text-[13px] font-semibold text-ssw-charcoal">
                   Attendee email
-                  <OptionalMark />
                 </label>
                 <input
                   id="attendeeEmail"

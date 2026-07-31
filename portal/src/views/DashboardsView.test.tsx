@@ -47,12 +47,12 @@ describe("DashboardsView", () => {
     expect(screen.queryByText(/loading your submissions/i)).not.toBeInTheDocument();
   });
 
-  it("shows a quiet refreshing hint instead of covering the cached rows", () => {
+  it("keeps a background revalidate silent rather than announcing it", () => {
     const cache = new SubmissionsCache(pending, seededStore([row()]));
     cache.bindOwner("u1");
     render(<DashboardsView submissions={cache} onUpload={vi.fn()} />);
 
-    expect(screen.getByText(/refreshing/i)).toBeInTheDocument();
+    expect(screen.queryByText(/refreshing/i)).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Sprint review" })).toBeInTheDocument();
   });
 
