@@ -297,6 +297,47 @@ projects/{project-name}/
 
 **DO NOT create HTML from scratch - USE THE TEMPLATE!**
 
+### CRITICAL: Build the dashboard incrementally - never in one write
+
+**Copy the template first, then replace placeholders one at a time.** Do NOT
+assemble the finished HTML in memory and write it out in a single call.
+
+**Required process:**
+
+1. Copy the template to the destination, unmodified:
+   ```bash
+   mkdir -p projects/{project}/{meeting-id}/dashboard
+   cp templates/dashboard.html projects/{project}/{meeting-id}/dashboard/index.html
+   ```
+2. Replace placeholders by editing the destination file in place. Each edit's
+   replacement text is only that section's content - never the surrounding HTML.
+3. **Batch the small placeholders, split only the large ones.** The template has
+   29 placeholders; one edit each would cost 29 round trips for no benefit. What
+   blows the output limit is re-emitting the whole document in one write, not the
+   number of placeholders per message.
+   - **Small placeholders** (`{{PROJECT_NAME}}`, `{{DATE}}`, `{{MEETING_TYPE}}`,
+     `{{DURATION}}`, `{{QUICK_STATS}}`, `{{SUMMARY}}`, `{{KEY_DECISIONS}}`,
+     `{{DONE_THIS_SPRINT}}`, `{{NEXT_STEPS}}`, `{{HARD_TRUTHS}}`,
+     `{{TRAJECTORY_SUMMARY}}`, `{{TRAJECTORY_INDICATOR}}`, `{{GENERATED_AT}}`, …):
+     issue **5-8 edits in a single message**. They touch different
+     regions of the file and do not depend on each other.
+   - **Large placeholders** (`{{PARTICIPANT_CARDS}}`, `{{SPEAKER_TIMELINE}}`,
+     `{{TIMELINE_SEGMENTS}}`, `{{INSIGHTS_CARDS}}`, `{{TEAM_HEALTH}}`): one edit
+     each, on its own. If a single one is still large, split it further - e.g.
+     insert participant cards a few at a time rather than all in one edit.
+
+   A full dashboard should take roughly 6-8 rounds, not 29.
+4. When every placeholder is replaced, verify no `{{` remains:
+   ```bash
+   grep -o '{{[A-Z_]*}}' projects/{project}/{meeting-id}/dashboard/index.html
+   ```
+   Empty output means done. Any remaining placeholder must be filled - an
+   unreplaced `{{...}}` renders literally on the deployed page.
+
+**Never** write `dashboard/index.html` in a single operation containing the full
+document, and never regenerate the whole file to apply a small fix - edit the
+one section that needs changing.
+
 ### Speaker Timeline Visualization
 
 The `{{SPEAKER_TIMELINE}}` placeholder must be populated with HTML showing horizontal bars for each speaker, visualizing when they spoke throughout the meeting.

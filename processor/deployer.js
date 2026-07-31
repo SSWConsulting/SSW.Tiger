@@ -70,6 +70,21 @@ async function copyToOutputDirectory({ sourcePath, outputDir, projectName, meeti
   }
 }
 
+// Windows has no shell-free path to `az`: it is az.cmd, and Node refuses to spawn
+// .bat/.cmd without a shell (CVE-2024-27980). But with shell:true the argv is joined
+// into ONE cmd.exe command line with NO quoting, so any argument containing a space
+// is split into extra arguments and az fails with "unrecognized arguments" — hit by
+// "no-cache, max-age=0, must-revalidate", "text/html; charset=utf-8", and any project
+// path with a space in it. Quote those ourselves. No-op off Windows, where argv goes
+// straight to execve and spaces are already safe.
+function quoteForShell(args, useShell) {
+  if (!useShell) return args;
+  return args.map((arg) => {
+    const value = String(arg);
+    return /[\s,;&|<>^]/.test(value) ? `"${value.replace(/"/g, '\\"')}"` : value;
+  });
+}
+
 function buildDashboardUploadArgs({ dashboardDir, blobDestination, storageAccount }) {
   return [
     "storage", "blob", "upload-batch",
@@ -130,11 +145,11 @@ async function deployDashboard({ dashboardPath, projectName, meetingId }) {
 
   // Upload dashboard files
   try {
-    execFileSync("az", buildDashboardUploadArgs({
+    execFileSync("az", quoteForShell(buildDashboardUploadArgs({
       dashboardDir,
       blobDestination,
       storageAccount,
-    }), { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], shell: isWindows });
+    }), isWindows), { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], shell: isWindows });
   } catch (err) {
     log("error", "Blob upload failed", { stderr: err.stderr });
     throw err;
@@ -364,7 +379,7 @@ async function deployProjectIndex({ projectName, displayName, currentMeeting }) 
   const { execFileSync } = require("child_process");
   const isWindows = process.platform === "win32";
   try {
-    execFileSync("az", [
+    execFileSync("az", quoteForShell([
       "storage", "blob", "upload",
       "--file", localPath,
       "--container-name", "$web",
@@ -373,7 +388,7 @@ async function deployProjectIndex({ projectName, displayName, currentMeeting }) 
       "--auth-mode", "login",
       "--content-type", "text/html; charset=utf-8",
       "--overwrite",
-    ], { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], shell: isWindows });
+    ], isWindows), { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], shell: isWindows });
   } catch (err) {
     log("error", "Project index upload failed", { stderr: err.stderr });
     throw err;
