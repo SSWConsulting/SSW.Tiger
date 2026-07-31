@@ -10,6 +10,9 @@ const CONFIG = {
   model: process.env.CLAUDE_MODEL || "claude-opus-4-5-20251101",
   claudeApiKey: process.env.ANTHROPIC_API_KEY,
   claudeOAuthToken: process.env.CLAUDE_CODE_OAUTH_TOKEN,
+  // The CLI defaults to 32000 output tokens per assistant turn, which a full
+  // dashboard write can exceed in one Write call (see GitHub issue #149).
+  maxOutputTokens: process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS || "64000",
 };
 
 function validateCredentials() {
@@ -54,6 +57,76 @@ function getClaudeAuthMethod() {
   }
 }
 
+// Recognizable, actionable failure causes. The Claude CLI reports these on
+// stdout (as stream-json events) rather than stderr and still exits 1, so
+// without this the close handler can only report "exit 1, stderr empty".
+const FAILURE_PATTERNS = [
+  {
+    reason: "output_token_limit",
+    pattern: /output token maximum|CLAUDE_CODE_MAX_OUTPUT_TOKENS/i,
+    hint: "One assistant turn exceeded the output token limit - most likely the whole dashboard HTML written in a single call.",
+  },
+];
+
+// Transient retries (429, overloaded) come back in seconds. Minutes apart means
+// each attempt generated to completion before being rejected, so retrying just
+// burns another one - give up rather than stall until the container is killed.
+const STALL_RETRY_COUNT = 2;
+const STALL_ELAPSED_MS = 8 * 60 * 1000;
+const STALL_RETRY_COUNT_HARD = 3;
+
+function isStalled({ consecutiveRetries, stalledMs }) {
+  if (consecutiveRetries >= STALL_RETRY_COUNT_HARD) return true;
+  return consecutiveRetries >= STALL_RETRY_COUNT && stalledMs >= STALL_ELAPSED_MS;
+}
+
+function detectFailureReason(line) {
+  const match = FAILURE_PATTERNS.find((entry) => entry.pattern.test(line));
+  return match ? { reason: match.reason, hint: match.hint } : null;
+}
+
+/**
+ * Work out how far the pipeline got, so a failure names the stage it died in.
+ * Derived from which analysis artefacts exist rather than from log scraping.
+ */
+async function detectStage(meetingPath) {
+  if (!meetingPath) return "unknown";
+
+  const analysisDir = path.join(meetingPath, "analysis");
+
+  let files;
+  try {
+    files = await fs.readdir(analysisDir);
+  } catch (error) {
+    return "analysis";
+  }
+
+  const jsonFiles = files.filter((name) => name.endsWith(".json"));
+  if (jsonFiles.length === 0) return "analysis";
+
+  if (!jsonFiles.includes("consolidated.json")) {
+    return `analysis (${jsonFiles.length} of 5 agents done)`;
+  }
+
+  const dashboardExists = await fs
+    .access(path.join(meetingPath, "dashboard", "index.html"))
+    .then(() => true)
+    .catch(() => false);
+
+  return dashboardExists ? "dashboard-generation (partial output written)" : "dashboard-generation";
+}
+
+/**
+ * True when the analysis phase is already complete on disk, so a retry can
+ * skip straight to dashboard generation instead of re-running all 5 agents.
+ */
+async function hasConsolidatedAnalysis(meetingPath) {
+  return fs
+    .access(path.join(meetingPath, "analysis", "consolidated.json"))
+    .then(() => true)
+    .catch(() => false);
+}
+
 function parseStreamJsonLine(line) {
   const trimmed = line.trim();
   if (!trimmed) return { ok: false };
@@ -64,6 +137,55 @@ function parseStreamJsonLine(line) {
   } catch (error) {
     return { ok: false };
   }
+}
+
+function isApiRetryEvent(event) {
+  return event?.type === "system" && event.subtype === "api_retry";
+}
+
+/**
+ * Everything the CLI told us about a retry, minus the noise. Previously only
+ * the `subtype` was logged, which discarded the underlying cause and made the
+ * stall in GitHub issue #149 impossible to diagnose from logs.
+ */
+function extractRetryDetail(event) {
+  const detail = {};
+  const interesting = [
+    "attempt",
+    "attempts",
+    "retry_count",
+    "delay_ms",
+    "delayMs",
+    "status",
+    "status_code",
+    "error",
+    "error_type",
+    "message",
+    "reason",
+  ];
+
+  for (const key of interesting) {
+    const value = event[key];
+    if (value === undefined || value === null) continue;
+    detail[key] =
+      typeof value === "object" ? truncate(JSON.stringify(value), 300) : value;
+  }
+
+  // Anything unexpected still gets surfaced rather than silently dropped
+  const known = new Set([...interesting, "type", "subtype", "session_id", "uuid"]);
+  const extraKeys = Object.keys(event).filter((key) => !known.has(key));
+  if (extraKeys.length > 0) {
+    detail.otherFields = truncate(JSON.stringify(pick(event, extraKeys)), 300);
+  }
+
+  return detail;
+}
+
+function pick(source, keys) {
+  return keys.reduce((acc, key) => {
+    acc[key] = source[key];
+    return acc;
+  }, {});
 }
 
 function shouldSkipEvent(event) {
@@ -131,24 +253,41 @@ function extractEventPreview(event) {
  * @param {string} params.meetingPath - absolute path to meeting folder
  * @param {string} params.outputDir - absolute path to output directory
  * @param {string} params.rootDir - absolute path to project root (for templates, CLAUDE.md)
+ * @param {boolean} [params.resumeDashboardOnly] - skip analysis, rebuild the
+ *   dashboard from the existing consolidated.json (used by the retry path)
  */
-async function invokeClaude({ projectName, projectSlug, meetingId, meetingDate, meetingPath, outputDir, rootDir }) {
+async function invokeClaude({ projectName, projectSlug, meetingId, meetingDate, meetingPath, outputDir, rootDir, resumeDashboardOnly = false }) {
   await fs.mkdir(outputDir, { recursive: true });
 
   const authConfig = getClaudeAuthMethod();
 
-  const prompt = `Read CLAUDE.md and process the meeting transcript following the complete workflow.
-
-Project: ${projectName}
+  const context = `Project: ${projectName}
 Meeting ID: ${meetingId}
 Meeting Date: ${meetingDate}
 Meeting folder: projects/${projectSlug}/${meetingId}/
 Transcript: projects/${projectSlug}/${meetingId}/transcript.vtt
 Attendees (meeting invite list - use as suggestion for name resolution): projects/${projectSlug}/${meetingId}/attendees.json
-Dashboard template: templates/dashboard.html
+Dashboard template: templates/dashboard.html`;
 
-Follow all steps in CLAUDE.md EXCEPT deployment. Do NOT deploy or upload the dashboard.
-Generate the dashboard HTML to: projects/${projectSlug}/${meetingId}/dashboard/index.html`;
+  // CLAUDE.md states the path with {placeholders}; this resolves them, and is
+  // the path checkOutputExists looks for.
+  const outputPath = `Generate the dashboard HTML to: projects/${projectSlug}/${meetingId}/dashboard/index.html`;
+
+  const sections = resumeDashboardOnly
+    ? [
+        "Read CLAUDE.md, then generate ONLY the dashboard for this meeting.",
+        `${context}
+Consolidated analysis (ALREADY COMPLETE - use this): projects/${projectSlug}/${meetingId}/analysis/consolidated.json`,
+        "Start at step 4 (Generate Dashboard) of the CLAUDE.md workflow. Do NOT re-run any analysis agent and do NOT re-run consolidation.",
+        outputPath,
+      ]
+    : [
+        "Read CLAUDE.md and process the meeting transcript following the complete workflow.",
+        context,
+        `Follow all steps in CLAUDE.md EXCEPT deployment. Do NOT deploy or upload the dashboard.\n${outputPath}`,
+      ];
+
+  const prompt = sections.join("\n\n");
 
   return new Promise((resolve, reject) => {
     const args = [
@@ -179,6 +318,7 @@ Generate the dashboard HTML to: projects/${projectSlug}/${meetingId}/dashboard/i
       env: {
         ...process.env,
         CLAUDE_WORKSPACE_TRUST: "true",
+        CLAUDE_CODE_MAX_OUTPUT_TOKENS: CONFIG.maxOutputTokens,
         ...authConfig.env,
       },
     };
@@ -196,12 +336,25 @@ Generate the dashboard HTML to: projects/${projectSlug}/${meetingId}/dashboard/i
 
     claude.stdin.write(prompt);
     claude.stdin.end();
-    log("info", "Processing transcript with Claude CLI...");
+    // The effective limits are logged on every run so a successful run also
+    // proves what they were - previously the only evidence that
+    // CLAUDE_CODE_MAX_OUTPUT_TOKENS had reached the CLI was a failure message
+    // quoting the ceiling it hit.
+    log("info", "Processing transcript with Claude CLI...", {
+      meetingId,
+      model: CONFIG.model,
+      maxOutputTokens: CONFIG.maxOutputTokens,
+      resumeDashboardOnly,
+    });
 
     let stderr = "";
     let firstOutputReceived = false;
     let lastOutputTime = Date.now();
     let lastLoggedMessage = "";
+    let failure = null;
+    let consecutiveRetries = 0;
+    let stallStartedAt = null;
+    let stallTerminated = false;
     const startTime = Date.now();
 
     const INACTIVITY_TIMEOUT = 1200000;
@@ -225,9 +378,49 @@ Generate the dashboard HTML to: projects/${projectSlug}/${meetingId}/dashboard/i
 
       if (!line || !line.trim()) return;
 
+      // Check the raw line before parsing - API errors are reported through
+      // stdout and must be caught regardless of which event shape carries them.
+      if (!failure) {
+        failure = detectFailureReason(line);
+      }
+
       try {
         const parsed = parseStreamJsonLine(line);
         if (!parsed.ok) return;
+
+        // Stall tracking runs before the skip filter, because tool events are
+        // filtered out of the logs but still count as real progress.
+        if (isApiRetryEvent(parsed.event)) {
+          consecutiveRetries += 1;
+          if (stallStartedAt === null) stallStartedAt = Date.now();
+          const stalledMs = Date.now() - stallStartedAt;
+
+          log("warn", "Claude CLI is retrying an API request", {
+            meetingId,
+            consecutiveRetries,
+            stalledSeconds: Math.round(stalledMs / 1000),
+            ...extractRetryDetail(parsed.event),
+          });
+
+          if (!stallTerminated && isStalled({ consecutiveRetries, stalledMs })) {
+            stallTerminated = true;
+            failure = {
+              reason: "api_retry_stall",
+              hint: `${consecutiveRetries} consecutive API retries with no progress in between - each attempt is generating to completion before being rejected.`,
+            };
+            log("error", "Claude CLI stalled on API retries, terminating early", {
+              meetingId,
+              consecutiveRetries,
+              stalledSeconds: Math.round(stalledMs / 1000),
+            });
+            clearInterval(inactivityTimer);
+            claude.kill();
+          }
+          return;
+        }
+
+        consecutiveRetries = 0;
+        stallStartedAt = null;
 
         if (shouldSkipEvent(parsed.event)) return;
 
@@ -256,6 +449,12 @@ Generate the dashboard HTML to: projects/${projectSlug}/${meetingId}/dashboard/i
         const runtimeSeconds = Math.round((Date.now() - startTime) / 1000);
         const memUsage = process.memoryUsage();
         const diagnostics = {
+          projectName,
+          meetingId,
+          stage: await detectStage(meetingPath),
+          failureReason: failure?.reason || "unknown",
+          ...(failure?.hint && { hint: failure.hint }),
+          resumeDashboardOnly,
           runtimeSeconds,
           firstOutputReceived,
           lastLoggedMessage: lastLoggedMessage || "(none)",
@@ -263,7 +462,11 @@ Generate the dashboard HTML to: projects/${projectSlug}/${meetingId}/dashboard/i
           stderrPreview: stderr.substring(0, 300) || "(empty)",
         };
 
+        let message;
         if (code === null && signal) {
+          // A signal is normally external (container timeout, cancellation) -
+          // unless we killed the process ourselves, in which case `failure`
+          // already holds the real reason and the signal is incidental.
           const signalHints = {
             SIGKILL:
               "Process was forcefully killed (likely out of memory - consider increasing container memory limit)",
@@ -272,20 +475,24 @@ Generate the dashboard HTML to: projects/${projectSlug}/${meetingId}/dashboard/i
             SIGINT: "Process was interrupted",
           };
           const hint =
-            signalHints[signal] || `Process received signal ${signal}`;
-          log("error", `Claude CLI killed by ${signal}`, {
-            hint,
-            ...diagnostics,
-          });
-          reject(new Error(`Claude CLI killed by ${signal}: ${hint}`));
+            failure?.hint ||
+            signalHints[signal] ||
+            `Process received signal ${signal}`;
+          message = `Claude CLI killed by ${signal}: ${hint}`;
+          log("error", `Claude CLI killed by ${signal}`, { ...diagnostics, hint });
         } else {
+          const detail = failure
+            ? `${failure.reason} at stage ${diagnostics.stage}`
+            : stderr.substring(0, 200) || lastLoggedMessage || "(no detail)";
+          message = `Claude CLI failed (exit ${code}): ${detail}`;
           log("error", `Claude CLI failed (exit ${code})`, diagnostics);
-          reject(
-            new Error(
-              `Claude CLI failed (exit ${code}): ${stderr.substring(0, 200)}`,
-            ),
-          );
         }
+
+        const error = new Error(message);
+        // Consumed by the retry decision in processor/index.js
+        error.failureReason = failure?.reason || "unknown";
+        error.stage = diagnostics.stage;
+        reject(error);
       }
     });
 
@@ -296,4 +503,14 @@ Generate the dashboard HTML to: projects/${projectSlug}/${meetingId}/dashboard/i
   });
 }
 
-module.exports = { validateCredentials, invokeClaude };
+module.exports = {
+  validateCredentials,
+  invokeClaude,
+  hasConsolidatedAnalysis,
+  // Exported for testing
+  detectFailureReason,
+  detectStage,
+  isApiRetryEvent,
+  extractRetryDetail,
+  isStalled,
+};

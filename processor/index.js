@@ -18,12 +18,45 @@ const fs = require("fs").promises;
 const path = require("path");
 const { log } = require("../lib/logger");
 const { validateTranscriptFilename, setupProjectStructure } = require("./projectSetup");
-const { validateCredentials, invokeClaude } = require("./claudeRunner");
+const { validateCredentials, invokeClaude, hasConsolidatedAnalysis } = require("./claudeRunner");
 const { checkOutputExists, copyToOutputDirectory, deployDashboard, persistToCosmos, deployProjectIndex } = require("./deployer");
 const { validateAndRepairDashboard } = require("./dashboardValidator");
 
 const ROOT_DIR = path.join(__dirname, "..");
 const OUTPUT_DIR = process.env.OUTPUT_DIR || path.join(ROOT_DIR, "output");
+
+// Failure causes worth one automatic in-process retry. These are recoverable
+// because the analysis artefacts survive on disk in the same replica, so the
+// retry only has to redo dashboard generation (see GitHub issue #149).
+// A Container App Job-level retry cannot do this - it starts a fresh replica
+// with an empty filesystem and would re-run all 5 analysis agents from scratch.
+const RETRYABLE_FAILURES = new Set(["output_token_limit", "api_retry_stall"]);
+
+/**
+ * Run Claude, and on a recoverable failure retry once. The retry skips the
+ * analysis phase when consolidated.json already exists on disk.
+ */
+async function invokeClaudeWithRetry(params) {
+  try {
+    return await invokeClaude(params);
+  } catch (error) {
+    if (!RETRYABLE_FAILURES.has(error.failureReason)) throw error;
+
+    const canResume = await hasConsolidatedAnalysis(params.meetingPath);
+
+    log("warn", "Claude CLI failed with a recoverable error, retrying once", {
+      meetingId: params.meetingId,
+      failureReason: error.failureReason,
+      stage: error.stage,
+      // Without consolidated.json the retry has to redo the analysis agents too
+      resumeDashboardOnly: canResume,
+    });
+
+    // No backoff: the cause is structural, not transient, so waiting changes
+    // nothing. The retry differs by prompt, not by timing.
+    return await invokeClaude({ ...params, resumeDashboardOnly: canResume });
+  }
+}
 
 async function processTranscript(transcriptPath, projectSlug) {
   // Validate credentials first (fail fast)
@@ -50,7 +83,7 @@ async function processTranscript(transcriptPath, projectSlug) {
   await setupProjectStructure({ meetingPath, transcriptPath: resolvedPath });
 
   // Invoke Claude Code CLI (uses display name for human-readable prompt)
-  await invokeClaude({
+  await invokeClaudeWithRetry({
     projectName: displayName,
     projectSlug,
     meetingId,
