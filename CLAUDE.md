@@ -319,7 +319,7 @@ assemble the finished HTML in memory and write it out in a single call.
      `{{DURATION}}`, `{{QUICK_STATS}}`, `{{SUMMARY}}`, `{{KEY_DECISIONS}}`,
      `{{DONE_THIS_SPRINT}}`, `{{NEXT_STEPS}}`, `{{HARD_TRUTHS}}`,
      `{{TRAJECTORY_SUMMARY}}`, `{{TRAJECTORY_INDICATOR}}`, `{{GENERATED_AT}}`, …):
-     issue **5-8 edits in a single message, in parallel**. They touch different
+     issue **5-8 edits in a single message**. They touch different
      regions of the file and do not depend on each other.
    - **Large placeholders** (`{{PARTICIPANT_CARDS}}`, `{{SPEAKER_TIMELINE}}`,
      `{{TIMELINE_SEGMENTS}}`, `{{INSIGHTS_CARDS}}`, `{{TEAM_HEALTH}}`): one edit
