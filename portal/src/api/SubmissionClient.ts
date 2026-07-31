@@ -13,6 +13,10 @@ export type SubmissionSummary = {
   status: SubmissionStatus;
   dashboardUrl: string | null;
   submittedAt: string;
+  // Timestamp of the last status write. On a terminal row it is when the run
+  // finished; while the run is still going it just moves, so the list only
+  // derives a duration from it once the status is completed or failed.
+  updatedAt?: string | null;
   // Present on failed rows — a user-facing sentence from the Job explaining what
   // went wrong ("No transcript is available for this meeting yet…").
   failureReason?: string | null;

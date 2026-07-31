@@ -14,6 +14,24 @@ function formatDate(iso: string): string {
   return new Intl.DateTimeFormat("en-AU", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
 }
 
+// How long the run took, from submission to the last status write. Only
+// meaningful once the row is terminal — until then updatedAt is still moving.
+// Returns "" for anything it cannot compute so the caller can just render it.
+function formatDuration(item: SubmissionSummary): string {
+  if (item.status !== "completed" && item.status !== "failed") return "";
+  if (!item.updatedAt) return "";
+  const ms = new Date(item.updatedAt).getTime() - new Date(item.submittedAt).getTime();
+  // Guard both parses at once: NaN fails every comparison, so a bad date falls
+  // through here rather than rendering "NaN min".
+  if (!(ms > 0)) return "";
+  const totalMinutes = Math.round(ms / 60_000);
+  if (totalMinutes < 1) return "under 1 min";
+  if (totalMinutes < 60) return `${totalMinutes} min`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
+}
+
 // A job runs for minutes, so a list that only refreshes on mount leaves the
 // submitter watching a stale "Queued" for the whole run. Poll only while
 // something is actually moving, and stop the moment nothing is.
@@ -40,6 +58,7 @@ function StatusBadge({ status }: { status: SubmissionStatus }) {
 }
 
 function SubmissionRow({ item }: { item: SubmissionSummary }) {
+  const duration = formatDuration(item);
   return (
     <li className="flex items-center justify-between gap-4 rounded-ds border border-black/10 bg-white p-4 shadow-ds-raised">
       <div className="min-w-0">
@@ -47,7 +66,10 @@ function SubmissionRow({ item }: { item: SubmissionSummary }) {
           <h3 className="truncate font-semibold text-ssw-charcoal">{item.displayName}</h3>
           <StatusBadge status={item.status} />
         </div>
-        <p className="mt-1 text-[13px] text-ssw-gray-500">Submitted {formatDate(item.submittedAt)}</p>
+        <p className="mt-1 text-[13px] text-ssw-gray-500">
+          Submitted {formatDate(item.submittedAt)}
+          {duration ? ` · took ${duration}` : ""}
+        </p>
         {item.status === "failed" && item.failureReason ? (
           <p className="mt-1 text-[13px] text-ssw-charcoal">{item.failureReason}</p>
         ) : null}

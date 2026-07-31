@@ -37,6 +37,7 @@ test("returns the caller's submissions mapped to the client contract", async () 
             status: "completed",
             dashboardUrl: "https://x/y",
             submittedAt: "2026-07-17T01:02:03.000Z",
+            updatedAt: "2026-07-17T01:14:03.000Z",
             passwordProtected: true,
             dashboardPassword: "AB12CD",
           },
@@ -63,11 +64,16 @@ test("returns the caller's submissions mapped to the client contract", async () 
     status: "completed",
     dashboardUrl: "https://x/y",
     submittedAt: "2026-07-17T01:02:03.000Z",
+    // The pair the list turns into "took 12 min".
+    updatedAt: "2026-07-17T01:14:03.000Z",
     // Always present so the client type stays a plain optional-null, never "missing".
     failureReason: null,
     passwordProtected: true,
     dashboardPassword: "AB12CD",
   });
+  // A row Cosmos has no updatedAt for must arrive as null, not undefined, so the
+  // client renders no duration rather than "took NaN".
+  assert.equal(response.jsonBody.submissions[1].updatedAt, null);
   assert.equal(response.jsonBody.submissions[1].dashboardUrl, null);
   assert.equal(response.jsonBody.submissions[1].passwordProtected, false);
   assert.equal(response.jsonBody.submissions[1].dashboardPassword, null);

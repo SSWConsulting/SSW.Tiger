@@ -78,8 +78,11 @@ function createSubmissionStore({
     const { resources } = await getContainer()
       .items.query({
         query:
+          // updatedAt is the last status write, so on a terminal row it is when
+          // the run ended — that plus submittedAt is the processing duration,
+          // with no extra field to write.
           "SELECT c.requestId, c.displayName, c.projectName, c.status, c.dashboardUrl, c.submittedAt, " +
-          "c.failureReason, c.passwordProtected, c.dashboardPassword " +
+          "c.updatedAt, c.failureReason, c.passwordProtected, c.dashboardPassword " +
           "FROM c WHERE c.type = 'submission' AND c.userSubject = @sub ORDER BY c.submittedAt DESC",
         parameters: [{ name: "@sub", value: userSubject }],
       })

@@ -47,6 +47,26 @@ describe("DashboardsView", () => {
     expect(screen.queryByText(/loading your submissions/i)).not.toBeInTheDocument();
   });
 
+  it("shows how long a finished run took, and nothing when it cannot know", () => {
+    const cache = new SubmissionsCache(
+      pending,
+      seededStore([
+        // 12 minutes, completed.
+        row({ updatedAt: "2026-07-24T02:12:00.000Z" }),
+        // Still running: updatedAt is just the last status write, not an end time.
+        row({ requestId: "r2", displayName: "Still going", status: "processing", updatedAt: "2026-07-24T02:05:00.000Z" }),
+        // Terminal but no updatedAt at all - must not render "took NaN".
+        row({ requestId: "r3", displayName: "No timestamp", updatedAt: null }),
+      ]),
+    );
+    cache.bindOwner("u1");
+    render(<DashboardsView submissions={cache} onUpload={vi.fn()} />);
+
+    expect(screen.getByText(/took 12 min/i)).toBeInTheDocument();
+    expect(screen.queryByText(/NaN/)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/took/i)).toHaveLength(1);
+  });
+
   it("keeps a background revalidate silent rather than announcing it", () => {
     const cache = new SubmissionsCache(pending, seededStore([row()]));
     cache.bindOwner("u1");

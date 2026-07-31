@@ -21,6 +21,9 @@ function createListSubmissionsHandler({ store, actorResolver = createSubmissionA
         status: row.status,
         dashboardUrl: row.dashboardUrl ?? null,
         submittedAt: row.submittedAt,
+        // Last status write. On a completed/failed row that is the finish time,
+        // which is what the list turns into a duration.
+        updatedAt: row.updatedAt ?? null,
         // Why a failed run failed, written by the Job. Already a user-facing
         // sentence and length-capped at the write side.
         failureReason: row.failureReason ?? null,
