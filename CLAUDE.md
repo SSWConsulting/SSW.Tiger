@@ -309,13 +309,24 @@ assemble the finished HTML in memory and write it out in a single call.
    mkdir -p projects/{project}/{meeting-id}/dashboard
    cp templates/dashboard.html projects/{project}/{meeting-id}/dashboard/index.html
    ```
-2. Replace **one placeholder per edit**, editing the destination file in place.
-   Each edit's replacement text is only that section's content - never the
-   surrounding HTML.
-3. Work through the placeholders in template order. The large ones
-   (`{{PARTICIPANT_CARDS}}`, `{{SPEAKER_TIMELINE}}`, `{{TEAM_HEALTH}}`) get one
-   edit each, and if a single one is still large, split it further - e.g. insert
-   participant cards a few at a time rather than all in one edit.
+2. Replace placeholders by editing the destination file in place. Each edit's
+   replacement text is only that section's content - never the surrounding HTML.
+3. **Batch the small placeholders, split only the large ones.** The template has
+   29 placeholders; one edit each would cost 29 round trips for no benefit. What
+   blows the output limit is re-emitting the whole document in one write, not the
+   number of placeholders per message.
+   - **Small placeholders** (`{{PROJECT_NAME}}`, `{{DATE}}`, `{{MEETING_TYPE}}`,
+     `{{DURATION}}`, `{{QUICK_STATS}}`, `{{SUMMARY}}`, `{{KEY_DECISIONS}}`,
+     `{{DONE_THIS_SPRINT}}`, `{{NEXT_STEPS}}`, `{{HARD_TRUTHS}}`,
+     `{{TRAJECTORY_SUMMARY}}`, `{{TRAJECTORY_INDICATOR}}`, `{{GENERATED_AT}}`, …):
+     issue **5-8 edits in a single message, in parallel**. They touch different
+     regions of the file and do not depend on each other.
+   - **Large placeholders** (`{{PARTICIPANT_CARDS}}`, `{{SPEAKER_TIMELINE}}`,
+     `{{TIMELINE_SEGMENTS}}`, `{{INSIGHTS_CARDS}}`, `{{TEAM_HEALTH}}`): one edit
+     each, on its own. If a single one is still large, split it further - e.g.
+     insert participant cards a few at a time rather than all in one edit.
+
+   A full dashboard should take roughly 6-8 rounds, not 29.
 4. When every placeholder is replaced, verify no `{{` remains:
    ```bash
    grep -o '{{[A-Z_]*}}' projects/{project}/{meeting-id}/dashboard/index.html
