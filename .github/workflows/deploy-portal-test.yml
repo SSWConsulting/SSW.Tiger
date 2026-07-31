@@ -73,6 +73,7 @@ jobs:
           # Already built above, so this points at the output, not the source.
           app_location: portal/dist
           skip_app_build: true
-          # The API is a separate Function App linked to the SWA as its backend;
-          # there is no managed API folder for the action to build.
-          skip_api_build: true
+          # No api_location is set, so the action has no managed API to build.
+          # (There is no skip_api_build input — passing one is a warning, not an
+          # error, so it looked like it worked. Leaving api_location unset is the
+          # actual way to say "the backend is a separate linked Function App".)
