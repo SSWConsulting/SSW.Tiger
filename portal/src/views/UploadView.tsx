@@ -164,7 +164,7 @@ export function UploadView({ client, onViewDashboards }: Props) {
         ) : (
           <form onSubmit={submit} noValidate className="p-[clamp(1.375rem,3.5vw,2.125rem)]">
             <div className="mb-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Submit</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">New request</p>
               <h2 id="upload-title" className="mt-1 text-3xl font-bold tracking-[-0.02em] text-ssw-charcoal-800">
                 Submit a meeting
               </h2>
@@ -275,7 +275,7 @@ export function UploadView({ client, onViewDashboards }: Props) {
               type="submit"
               disabled={busy}
             >
-              {busy ? "Submitting…" : "Generate dashboard"}
+              {busy ? "Sending…" : "Generate AI insights"}
             </button>
           </form>
         )}
