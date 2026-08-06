@@ -812,77 +812,24 @@ function isExternalPerson(person) {
 }
 
 /**
- * Check if meeting has external participants based on meeting invite list (organizer + attendees)
- * @param {Object} meeting - Meeting object from Graph API
- * @returns {{hasExternal: boolean, reason: string}} result with reason if external found
- */
-function checkMeetingInviteesForExternal(meeting) {
-  const invitees = [];
-
-  // Add organizer
-  if (meeting.participants?.organizer) {
-    const org = meeting.participants.organizer;
-    invitees.push({
-      role: "organizer",
-      upn: org.upn || "",
-      displayName: org.identity?.user?.displayName || "",
-      tenantId: org.identity?.user?.tenantId || "",
-    });
-  }
-
-  // Add attendees
-  if (meeting.participants?.attendees) {
-    for (const att of meeting.participants.attendees) {
-      invitees.push({
-        role: "attendee",
-        upn: att.upn || "",
-        displayName: att.identity?.user?.displayName || "",
-        tenantId: att.identity?.user?.tenantId || "",
-      });
-    }
-  }
-
-  log("debug", "Checking meeting invitees for external users", {
-    inviteeCount: invitees.length,
-    invitees: invitees.map((i) => ({
-      role: i.role,
-      upn: i.upn,
-      displayName: i.displayName,
-    })),
-  });
-
-  for (const invitee of invitees) {
-    const check = isExternalPerson(invitee);
-    if (check.isExternal) {
-      log("info", `Found external invitee: ${check.reason}`, {
-        role: invitee.role,
-      });
-      return { hasExternal: true, reason: check.reason };
-    }
-  }
-
-  return { hasExternal: false, reason: "" };
-}
-
-/**
- * Check if meeting has external participants from chat messages
+ * Filter a list of chat participants down to SSW-internal ones only, so
+ * Teams notifications never reach an external participant. Used on every
+ * outputResult() call site that feeds entrypoint.sh's PARTICIPANTS_JSON
+ * (success, error, and subject-filter-skip paths).
  * @param {Array} participants - Array of {userId, displayName, tenantId, userIdentityType}
- * @returns {boolean} true if any external participant found
+ * @returns {Array} Only the SSW-internal participants
  */
-function hasExternalParticipants(participants) {
-  if (!participants || participants.length === 0) {
-    return false; // No participants = can't determine, allow through
-  }
-
-  for (const p of participants) {
+function filterNotifiableParticipants(participants) {
+  return (participants || []).filter((p) => {
     const check = isExternalPerson(p);
     if (check.isExternal) {
-      log("info", `Found external participant: ${check.reason}`);
-      return true;
+      log(
+        "info",
+        `Excluding external participant from notification: ${check.reason}`,
+      );
     }
-  }
-
-  return false;
+    return !check.isExternal;
+  });
 }
 
 async function main() {
@@ -958,31 +905,13 @@ async function main() {
       formatted: meetingDuration,
     });
 
-    // Filter: check meeting invitees (organizer + attendees) for external users
-    // External = UPN contains "client" OR displayName doesn't include "SSW" OR different tenantId
-    // IMPORTANT: Must run BEFORE subject filter so external meetings are silently dropped
-    // (subject filter sends "skipped" notifications — external meetings must not trigger those)
-    const inviteeCheck = checkMeetingInviteesForExternal(meeting);
-    if (inviteeCheck.hasExternal) {
-      outputResult({
-        skipped: true,
-        reason: `Meeting has external invitees: ${inviteeCheck.reason}`,
-        meetingDuration,
-      });
-      process.exit(0);
-    }
-
-    // Filter: skip meetings with external participants (non-SSW tenantId)
-    // Uses chatParticipants already fetched above
-    if (hasExternalParticipants(chatParticipants)) {
-      outputResult({
-        skipped: true,
-        reason: `Meeting has external participants (non-SSW): "${subject}"`,
-        meetingDuration,
-      });
-      process.exit(0);
-    }
-
+    // Note: meetings with external invitees/participants are NOT skipped here.
+    // Tiger processes them fully (dashboard + transcript) - external recipients
+    // are excluded later, at notification time, by filtering chatParticipants
+    // through filterNotifiableParticipants() before it is included in any
+    // outputResult() call below (this applies to the subject-filter skip
+    // path too, since removing the old gates makes external meetings with a
+    // non-matching subject newly reachable here).
     if (CONFIG.skipSubjectFilter) {
       log("info", "Subject filter skipped (manual trigger)", { subject });
     } else if (!matchesMeetingFilter(subject)) {
@@ -992,7 +921,7 @@ async function main() {
         reason: `Subject does not match filter pattern '${CONFIG.meetingFilterPattern}': "${subject}"`,
         meetingSubject: subject,
         joinWebUrl: meeting.joinWebUrl || "",
-        participants: meeting.participants || [],
+        participants: filterNotifiableParticipants(chatParticipants),
         meetingDuration,
       });
       process.exit(0);
@@ -1018,6 +947,11 @@ async function main() {
     // Save transcript to file (only reached if meeting passes all filters)
     const transcriptPath = await saveTranscript(content, filename);
 
+    // Notifications must only reach SSW internal participants (external
+    // participants can still appear on the dashboard itself - they're just
+    // excluded from the Teams notification recipient list).
+    const notifiableParticipants = filterNotifiableParticipants(chatParticipants);
+
     // Output result as JSON to stdout (includes notification info)
     outputResult({
       success: true,
@@ -1027,7 +961,7 @@ async function main() {
       meetingDate,
       filename,
       meetingSubject: subject,
-      participants: chatParticipants,
+      participants: notifiableParticipants,
       meetingDuration,
       invitees,
       vttInfo,
@@ -1049,13 +983,15 @@ async function main() {
 
     // Include meeting subject and any participants we managed to fetch before
     // failing, so entrypoint.sh can route a "failed" notification to them.
+    // Same external filter as the success path - failure notifications must
+    // not reach external participants either.
     const errorOutput = {
       error: true,
       message: meetingSubject
         ? `[${meetingSubject}] ${error.message}`
         : error.message,
       meetingSubject: meetingSubject || "",
-      participants: chatParticipants,
+      participants: filterNotifiableParticipants(chatParticipants),
     };
     outputResult(errorOutput);
     process.exit(1);
@@ -1069,6 +1005,7 @@ if (require.main === module) {
 
 // Export for testing
 module.exports = {
+  main,
   getGraphToken,
   fetchMeeting,
   fetchTranscriptMetadata,
@@ -1080,8 +1017,6 @@ module.exports = {
   generateFilename,
   matchesMeetingFilter,
   isExternalPerson,
-  checkMeetingInviteesForExternal,
-  hasExternalParticipants,
   detectVttSpeakerLabels,
   extractInviteeNames,
   validateConfig,
