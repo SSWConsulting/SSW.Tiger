@@ -449,10 +449,28 @@ MEETING_FILTER_PATTERN=sprint      # Regex pattern (default: "sprint")
 LOGIC_APP_URL=...                  # Logic App HTTP trigger
 CHECK_CANCELLATION_URL=...         # Cancel endpoint
 
+# Transcript hub publish (central raw-transcript archive)
+TRANSCRIPT_HUB_REPO=SSWConsulting/SSW.Tiger-Transcripts  # unset = disabled
+TRANSCRIPT_HUB_APP_ID=...                # GitHub App scoped to the hub repo
+TRANSCRIPT_HUB_APP_PRIVATE_KEY=...       # PEM (literal \n escapes OK)
+TRANSCRIPT_HUB_APP_INSTALLATION_ID=...
+TRANSCRIPT_HUB_TOKEN=...                 # PAT alternative for local testing
+
 # Mock Testing
 USE_MOCK_TRANSCRIPT=true
 MOCK_TRANSCRIPT_PATH=./test.vtt
 ```
+
+> **Transcript hub publish** - Tiger persists only the dashboard (Blob) and
+> analysis (Cosmos); the raw `.vtt` is discarded when the container exits. Set
+> `TRANSCRIPT_HUB_REPO` to also publish the raw transcript to the central hub
+> repo at `transcripts/{projectSlug}/{meetingId}.vtt`, for projects opted in
+> via the hub's `apps.json` allowlist
+> ([SSW.Tiger#134](https://github.com/SSWConsulting/SSW.Tiger/issues/134)).
+> Auth is a GitHub App scoped to the hub repo only (or a fine-grained PAT for
+> local testing). Runs before analysis and is best-effort - a failure logs a
+> warning and never blocks processing. Replays are idempotent: identical bytes
+> are skipped, changed bytes update in place.
 
 ### Bicep Parameters
 
