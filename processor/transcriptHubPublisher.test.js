@@ -98,6 +98,24 @@ describe("publishTranscript", () => {
     );
   });
 
+  it("rejects a slug that is not sanitizeId output, before any network call", async () => {
+    process.env.TRANSCRIPT_HUB_REPO = "SSWConsulting/SSW.Tiger-Transcripts";
+    process.env.TRANSCRIPT_HUB_TOKEN = "test-token";
+    mockFetch(() => {
+      throw new Error("no request expected");
+    });
+
+    await assert.rejects(
+      publishTranscript({
+        transcriptPath,
+        projectSlug: "../evil",
+        meetingId: "2026-08-11-102829",
+      }),
+      /invalid project slug/,
+    );
+    assert.equal(fetchCalls.length, 0);
+  });
+
   it("skips projects that are not in the hub allowlist", async () => {
     process.env.TRANSCRIPT_HUB_REPO = "SSWConsulting/SSW.Tiger-Transcripts";
     process.env.TRANSCRIPT_HUB_TOKEN = "test-token";
@@ -139,6 +157,53 @@ describe("publishTranscript", () => {
     assert.equal(Buffer.from(body.content, "base64").toString(), VTT_CONTENT);
     assert.equal(body.sha, undefined);
     assert.equal(put.options.headers.Authorization, "Bearer test-token");
+    assert.ok(put.options.signal instanceof AbortSignal);
+  });
+
+  it("retries the PUT once when the branch ref update conflicts (409)", async () => {
+    process.env.TRANSCRIPT_HUB_REPO = "SSWConsulting/SSW.Tiger-Transcripts";
+    process.env.TRANSCRIPT_HUB_TOKEN = "test-token";
+    let putCount = 0;
+    mockFetch((url, options) => {
+      if (url.endsWith("/contents/apps.json")) {
+        return allowlistResponse(["tinacloud"]);
+      }
+      if (options.method === "GET") return { status: 404, json: {} };
+      putCount += 1;
+      return putCount === 1
+        ? { status: 409, json: { message: "is at ... but expected ..." } }
+        : { status: 201, json: { content: {} } };
+    });
+
+    const result = await publishTranscript({
+      transcriptPath,
+      projectSlug: "tinacloud",
+      meetingId: "2026-08-11-102829",
+    });
+
+    assert.equal(result.published, true);
+    assert.equal(putCount, 2);
+  });
+
+  it("gives up after the second 409 rather than looping", async () => {
+    process.env.TRANSCRIPT_HUB_REPO = "SSWConsulting/SSW.Tiger-Transcripts";
+    process.env.TRANSCRIPT_HUB_TOKEN = "test-token";
+    mockFetch((url, options) => {
+      if (url.endsWith("/contents/apps.json")) {
+        return allowlistResponse(["tinacloud"]);
+      }
+      if (options.method === "GET") return { status: 404, json: {} };
+      return { status: 409, json: {} };
+    });
+
+    await assert.rejects(
+      publishTranscript({
+        transcriptPath,
+        projectSlug: "tinacloud",
+        meetingId: "2026-08-11-102829",
+      }),
+      /Failed to publish transcript to hub: 409/,
+    );
   });
 
   it("updates in place (passing sha) when the hub file differs", async () => {

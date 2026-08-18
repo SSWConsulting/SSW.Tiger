@@ -60,6 +60,8 @@ function mintAppJwt(appId, privateKey) {
 async function githubRequest({ method, path, token, body, tokenType = "Bearer" }) {
   const response = await fetch(`${GITHUB_API}${path}`, {
     method,
+    // Publish runs in-line before analysis; cap how long a hung call can stall it
+    signal: AbortSignal.timeout(30_000),
     headers: {
       Authorization: `${tokenType} ${token}`,
       Accept: "application/vnd.github+json",
@@ -144,6 +146,11 @@ async function publishTranscript({ transcriptPath, projectSlug, meetingId }) {
     return { published: false, reason: "disabled" }; // opt-in: no-op unless configured
   }
 
+  // Local guard for the URL path; callers pass sanitizeId() output, which always matches
+  if (!/^[a-z0-9-]+$/.test(projectSlug)) {
+    throw new Error(`Refusing to publish: invalid project slug "${projectSlug}"`);
+  }
+
   const token = await resolveToken(config);
 
   const allowlist = await fetchAllowlistSlugs(config.repo, token);
@@ -158,39 +165,46 @@ async function publishTranscript({ transcriptPath, projectSlug, meetingId }) {
   const content = await fs.readFile(transcriptPath);
   const hubPath = `transcripts/${projectSlug}/${meetingId}.vtt`;
 
-  // Idempotency: replays (e.g. manual re-triggers) skip when bytes match,
-  // and update in place (needs the existing sha) when they differ.
-  const existing = await githubRequest({
-    method: "GET",
-    path: `/repos/${config.repo}/contents/${hubPath}`,
-    token,
-  });
+  // Concurrent jobs PUTting to the same branch can 409 on the ref update even
+  // for different paths, so on conflict re-read the sha and retry once.
+  for (let attempt = 0; ; attempt++) {
+    // Idempotency: replays (e.g. manual re-triggers) skip when bytes match,
+    // and update in place (needs the existing sha) when they differ.
+    const existing = await githubRequest({
+      method: "GET",
+      path: `/repos/${config.repo}/contents/${hubPath}`,
+      token,
+    });
 
-  if (existing.status === 200 && existing.json?.sha === gitBlobSha(content)) {
-    return { published: false, reason: "unchanged", path: hubPath };
-  }
-  if (existing.status !== 200 && existing.status !== 404) {
-    throw new Error(`Failed to check existing hub transcript: ${existing.status}`);
-  }
+    if (existing.status === 200 && existing.json?.sha === gitBlobSha(content)) {
+      return { published: false, reason: "unchanged", path: hubPath };
+    }
+    if (existing.status !== 200 && existing.status !== 404) {
+      throw new Error(`Failed to check existing hub transcript: ${existing.status}`);
+    }
 
-  const { status, json } = await githubRequest({
-    method: "PUT",
-    path: `/repos/${config.repo}/contents/${hubPath}`,
-    token,
-    body: {
-      message: `Add ${projectSlug} transcript ${meetingId}`,
-      content: content.toString("base64"),
-      ...(existing.status === 200 ? { sha: existing.json.sha } : {}),
-    },
-  });
+    const { status, json } = await githubRequest({
+      method: "PUT",
+      path: `/repos/${config.repo}/contents/${hubPath}`,
+      token,
+      body: {
+        message: `Add ${projectSlug} transcript ${meetingId}`,
+        content: content.toString("base64"),
+        ...(existing.status === 200 ? { sha: existing.json.sha } : {}),
+      },
+    });
 
-  if (status !== 200 && status !== 201) {
+    if (status === 200 || status === 201) {
+      return { published: true, path: hubPath };
+    }
+    if (status === 409 && attempt === 0) {
+      log("warn", "Hub publish hit a ref-update conflict, retrying once", { hubPath });
+      continue;
+    }
     throw new Error(
       `Failed to publish transcript to hub: ${status} - ${JSON.stringify(json)}`,
     );
   }
-
-  return { published: true, path: hubPath };
 }
 
 module.exports = {
