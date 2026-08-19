@@ -449,10 +449,35 @@ MEETING_FILTER_PATTERN=sprint      # Regex pattern (default: "sprint")
 LOGIC_APP_URL=...                  # Logic App HTTP trigger
 CHECK_CANCELLATION_URL=...         # Cancel endpoint
 
+# Transcript hub publish (central raw-transcript archive)
+TRANSCRIPT_HUB_REPO=SSWConsulting/SSW.Tiger-Transcripts  # unset = disabled
+TRANSCRIPT_HUB_APP_ID=...                # GitHub App scoped to the hub repo
+TRANSCRIPT_HUB_APP_PRIVATE_KEY=...       # PEM (literal \n escapes OK)
+TRANSCRIPT_HUB_APP_INSTALLATION_ID=...
+TRANSCRIPT_HUB_TOKEN=...                 # PAT alternative for local testing
+
 # Mock Testing
 USE_MOCK_TRANSCRIPT=true
 MOCK_TRANSCRIPT_PATH=./test.vtt
 ```
+
+> **Transcript hub publish** - Tiger persists only the dashboard (Blob) and
+> analysis (Cosmos); the raw `.vtt` is discarded when the container exits. Set
+> `TRANSCRIPT_HUB_REPO` to also publish the raw transcript to the central hub
+> repo at `transcripts/{projectSlug}/{meetingId}.vtt`, for projects opted in
+> via the hub's `apps.json` allowlist
+> ([SSW.Tiger#134](https://github.com/SSWConsulting/SSW.Tiger/issues/134)).
+> Auth is a GitHub App scoped to the hub repo only (or a fine-grained PAT for
+> local testing). Runs before analysis and is best-effort - a failure never
+> blocks processing, but failure-shaped outcomes (`no-credentials`,
+> `hub-unreachable`, `hub-not-private`, `allowlist-invalid`) log at ERROR with
+> a reason code, distinct from benign INFO skips (`not-allowlisted`,
+> `unchanged`), so a broken archive is visible in the logs. Replays are
+> idempotent: identical bytes are skipped, changed bytes update in place.
+> **The hub repo must stay private permanently** - transcripts are verbatim
+> speech including client names. The publisher checks visibility on every run
+> and refuses to publish (`hub-not-private`) if the repo is ever flipped
+> public; pair this with the org setting restricting visibility changes.
 
 ### Bicep Parameters
 

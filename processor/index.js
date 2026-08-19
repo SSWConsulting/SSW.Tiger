@@ -21,6 +21,7 @@ const { validateTranscriptFilename, setupProjectStructure } = require("./project
 const { validateCredentials, invokeClaude, hasConsolidatedAnalysis } = require("./claudeRunner");
 const { checkOutputExists, copyToOutputDirectory, deployDashboard, persistToCosmos, deployProjectIndex } = require("./deployer");
 const { validateAndRepairDashboard } = require("./dashboardValidator");
+const { publishTranscript } = require("./transcriptHubPublisher");
 
 const ROOT_DIR = path.join(__dirname, "..");
 const OUTPUT_DIR = process.env.OUTPUT_DIR || path.join(ROOT_DIR, "output");
@@ -81,6 +82,31 @@ async function processTranscript(transcriptPath, projectSlug) {
 
   // Setup project structure
   await setupProjectStructure({ meetingPath, transcriptPath: resolvedPath });
+
+  // Archive the raw transcript to the hub repo (non-fatal, opt-in).
+  // Runs before analysis so the .vtt survives even if the pipeline dies.
+  try {
+    const hubResult = await publishTranscript({
+      transcriptPath: resolvedPath,
+      projectSlug,
+      meetingId,
+    });
+    if (hubResult.published) {
+      log("info", "Raw transcript published to hub", { path: hubResult.path });
+    } else if (hubResult.failed) {
+      // Distinguishable from benign skips: these mean archiving is broken
+      log("error", "Transcript hub publish failed (non-fatal)", {
+        reason: hubResult.reason,
+        detail: hubResult.detail,
+      });
+    } else if (hubResult.reason !== "disabled") {
+      log("info", "Transcript hub publish skipped", { reason: hubResult.reason });
+    }
+  } catch (err) {
+    log("error", "Failed to publish transcript to hub (non-fatal)", {
+      error: err.message,
+    });
+  }
 
   // Invoke Claude Code CLI (uses display name for human-readable prompt)
   await invokeClaudeWithRetry({
