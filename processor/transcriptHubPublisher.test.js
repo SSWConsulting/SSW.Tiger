@@ -6,7 +6,7 @@ const path = require("path");
 const crypto = require("crypto");
 const {
   publishTranscript,
-  fetchAllowlistSlugs,
+  fetchHubProjects,
   getInstallationToken,
   mintAppJwt,
   gitBlobSha,
@@ -42,13 +42,22 @@ function mockFetch(handler) {
 }
 
 function allowlistResponse(slugs) {
-  const apps = { apps: slugs.map((slug) => ({ slug })) };
+  const projects = Object.fromEntries(
+    slugs.map((slug) => [slug, { displayName: slug, publish: true }]),
+  );
   return {
     status: 200,
     json: {
-      content: Buffer.from(JSON.stringify(apps)).toString("base64"),
+      content: Buffer.from(JSON.stringify({ projects })).toString("base64"),
     },
   };
+}
+
+// The repo-metadata GET that the private-visibility guard issues first
+function privateRepoMeta(url) {
+  return url.endsWith("/repos/SSWConsulting/SSW.Tiger-Transcripts")
+    ? { status: 200, json: { private: true } }
+    : null;
 }
 
 beforeEach(async () => {
@@ -86,16 +95,105 @@ describe("publishTranscript", () => {
     assert.equal(fetchCalls.length, 0);
   });
 
-  it("throws when the repo is set but no credentials are", async () => {
+  it("returns a failure-shaped no-credentials outcome, before any network call", async () => {
     process.env.TRANSCRIPT_HUB_REPO = "SSWConsulting/SSW.Tiger-Transcripts";
-    await assert.rejects(
-      publishTranscript({
-        transcriptPath,
-        projectSlug: "tinacloud",
-        meetingId: "2026-08-11-102829",
-      }),
-      /no credentials/,
-    );
+    mockFetch(() => {
+      throw new Error("no request expected");
+    });
+
+    const result = await publishTranscript({
+      transcriptPath,
+      projectSlug: "tinacloud",
+      meetingId: "2026-08-11-102829",
+    });
+
+    assert.equal(result.failed, true);
+    assert.equal(result.reason, "no-credentials");
+    assert.equal(fetchCalls.length, 0);
+  });
+
+  it("refuses to publish when the hub repo is not private", async () => {
+    process.env.TRANSCRIPT_HUB_REPO = "SSWConsulting/SSW.Tiger-Transcripts";
+    process.env.TRANSCRIPT_HUB_TOKEN = "test-token";
+    mockFetch((url) => {
+      if (url.endsWith("/repos/SSWConsulting/SSW.Tiger-Transcripts")) {
+        return { status: 200, json: { private: false } };
+      }
+      throw new Error("nothing past the visibility check should run");
+    });
+
+    const result = await publishTranscript({
+      transcriptPath,
+      projectSlug: "tinacloud",
+      meetingId: "2026-08-11-102829",
+    });
+
+    assert.equal(result.failed, true);
+    assert.equal(result.reason, "hub-not-private");
+  });
+
+  it("reports hub-unreachable when the repo metadata GET fails", async () => {
+    process.env.TRANSCRIPT_HUB_REPO = "SSWConsulting/SSW.Tiger-Transcripts";
+    process.env.TRANSCRIPT_HUB_TOKEN = "test-token";
+    mockFetch(() => ({ status: 404, json: { message: "Not Found" } }));
+
+    const result = await publishTranscript({
+      transcriptPath,
+      projectSlug: "tinacloud",
+      meetingId: "2026-08-11-102829",
+    });
+
+    assert.equal(result.failed, true);
+    assert.equal(result.reason, "hub-unreachable");
+  });
+
+  it("treats a malformed apps.json as a failure naming the keys it found", async () => {
+    process.env.TRANSCRIPT_HUB_REPO = "SSWConsulting/SSW.Tiger-Transcripts";
+    process.env.TRANSCRIPT_HUB_TOKEN = "test-token";
+    mockFetch((url) => {
+      const meta = privateRepoMeta(url);
+      if (meta) return meta;
+      return {
+        status: 200,
+        json: {
+          content: Buffer.from('{"apps": []}').toString("base64"),
+        },
+      };
+    });
+
+    const result = await publishTranscript({
+      transcriptPath,
+      projectSlug: "tinacloud",
+      meetingId: "2026-08-11-102829",
+    });
+
+    assert.equal(result.failed, true);
+    assert.equal(result.reason, "allowlist-invalid");
+    assert.match(result.detail, /found top-level keys \[apps\]/);
+  });
+
+  it("skips a project whose entry has publish: false", async () => {
+    process.env.TRANSCRIPT_HUB_REPO = "SSWConsulting/SSW.Tiger-Transcripts";
+    process.env.TRANSCRIPT_HUB_TOKEN = "test-token";
+    mockFetch((url) => {
+      const meta = privateRepoMeta(url);
+      if (meta) return meta;
+      const body = {
+        projects: { tinacloud: { displayName: "TinaCloud", publish: false } },
+      };
+      return {
+        status: 200,
+        json: { content: Buffer.from(JSON.stringify(body)).toString("base64") },
+      };
+    });
+
+    const result = await publishTranscript({
+      transcriptPath,
+      projectSlug: "tinacloud",
+      meetingId: "2026-08-11-102829",
+    });
+
+    assert.deepEqual(result, { published: false, reason: "not-allowlisted" });
   });
 
   it("rejects a slug that is not sanitizeId output, before any network call", async () => {
@@ -119,7 +217,7 @@ describe("publishTranscript", () => {
   it("skips projects that are not in the hub allowlist", async () => {
     process.env.TRANSCRIPT_HUB_REPO = "SSWConsulting/SSW.Tiger-Transcripts";
     process.env.TRANSCRIPT_HUB_TOKEN = "test-token";
-    mockFetch(() => allowlistResponse(["yakshaver"]));
+    mockFetch((url) => privateRepoMeta(url) || allowlistResponse(["yakshaver"]));
 
     const result = await publishTranscript({
       transcriptPath,
@@ -128,13 +226,15 @@ describe("publishTranscript", () => {
     });
 
     assert.deepEqual(result, { published: false, reason: "not-allowlisted" });
-    assert.equal(fetchCalls.length, 1);
+    assert.equal(fetchCalls.length, 2); // repo-visibility GET + apps.json GET
   });
 
   it("creates the hub file when it does not exist yet", async () => {
     process.env.TRANSCRIPT_HUB_REPO = "SSWConsulting/SSW.Tiger-Transcripts";
     process.env.TRANSCRIPT_HUB_TOKEN = "test-token";
     mockFetch((url, options) => {
+      const meta = privateRepoMeta(url);
+      if (meta) return meta;
       if (url.endsWith("/contents/apps.json")) {
         return allowlistResponse(["tinacloud"]);
       }
@@ -165,6 +265,8 @@ describe("publishTranscript", () => {
     process.env.TRANSCRIPT_HUB_TOKEN = "test-token";
     let putCount = 0;
     mockFetch((url, options) => {
+      const meta = privateRepoMeta(url);
+      if (meta) return meta;
       if (url.endsWith("/contents/apps.json")) {
         return allowlistResponse(["tinacloud"]);
       }
@@ -189,6 +291,8 @@ describe("publishTranscript", () => {
     process.env.TRANSCRIPT_HUB_REPO = "SSWConsulting/SSW.Tiger-Transcripts";
     process.env.TRANSCRIPT_HUB_TOKEN = "test-token";
     mockFetch((url, options) => {
+      const meta = privateRepoMeta(url);
+      if (meta) return meta;
       if (url.endsWith("/contents/apps.json")) {
         return allowlistResponse(["tinacloud"]);
       }
@@ -210,6 +314,8 @@ describe("publishTranscript", () => {
     process.env.TRANSCRIPT_HUB_REPO = "SSWConsulting/SSW.Tiger-Transcripts";
     process.env.TRANSCRIPT_HUB_TOKEN = "test-token";
     mockFetch((url, options) => {
+      const meta = privateRepoMeta(url);
+      if (meta) return meta;
       if (url.endsWith("/contents/apps.json")) {
         return allowlistResponse(["tinacloud"]);
       }
@@ -235,6 +341,8 @@ describe("publishTranscript", () => {
     process.env.TRANSCRIPT_HUB_TOKEN = "test-token";
     const identicalSha = gitBlobSha(Buffer.from(VTT_CONTENT));
     mockFetch((url, options) => {
+      const meta = privateRepoMeta(url);
+      if (meta) return meta;
       if (url.endsWith("/contents/apps.json")) {
         return allowlistResponse(["tinacloud"]);
       }
@@ -255,24 +363,31 @@ describe("publishTranscript", () => {
   });
 });
 
-describe("fetchAllowlistSlugs", () => {
-  it("accepts both object and bare-string entries", async () => {
-    const apps = { apps: [{ slug: "tinacloud" }, "yakshaver"] };
+describe("fetchHubProjects", () => {
+  it("returns the projects map from the #134 shape", async () => {
+    const body = {
+      projects: { tinacloud: { displayName: "TinaCloud", publish: true } },
+    };
     mockFetch(() => ({
       status: 200,
-      json: { content: Buffer.from(JSON.stringify(apps)).toString("base64") },
+      json: { content: Buffer.from(JSON.stringify(body)).toString("base64") },
     }));
 
-    const slugs = await fetchAllowlistSlugs("owner/repo", "t");
-    assert.deepEqual(slugs, ["tinacloud", "yakshaver"]);
+    const projects = await fetchHubProjects("owner/repo", "t");
+    assert.deepEqual(projects, body.projects);
   });
 
-  it("throws on a malformed apps.json", async () => {
+  it("throws on a malformed apps.json, naming the top-level keys it found", async () => {
     mockFetch(() => ({
       status: 200,
-      json: { content: Buffer.from('{"nope": true}').toString("base64") },
+      json: {
+        content: Buffer.from('{"nope": true, "apps": []}').toString("base64"),
+      },
     }));
-    await assert.rejects(fetchAllowlistSlugs("owner/repo", "t"), /malformed/);
+    await assert.rejects(
+      fetchHubProjects("owner/repo", "t"),
+      /expected a 'projects' object, found top-level keys \[nope, apps\]/,
+    );
   });
 });
 

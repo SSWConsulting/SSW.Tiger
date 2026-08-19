@@ -113,8 +113,8 @@ async function resolveToken(config) {
   );
 }
 
-/** Slugs opted in via the hub repo's apps.json. */
-async function fetchAllowlistSlugs(repo, token) {
+/** The hub's apps.json opt-in map, per #134: { "<slug>": { displayName, publish } }. */
+async function fetchHubProjects(repo, token) {
   const { status, json } = await githubRequest({
     method: "GET",
     path: `/repos/${repo}/contents/apps.json`,
@@ -125,20 +125,30 @@ async function fetchAllowlistSlugs(repo, token) {
     throw new Error(`Failed to fetch hub allowlist (apps.json): ${status}`);
   }
 
-  const apps = JSON.parse(
+  const parsed = JSON.parse(
     Buffer.from(json.content, "base64").toString("utf-8"),
-  ).apps;
+  );
+  const projects = parsed.projects;
 
-  if (!Array.isArray(apps)) {
-    throw new Error("Hub apps.json is malformed: expected an 'apps' array");
+  if (!projects || typeof projects !== "object" || Array.isArray(projects)) {
+    throw new Error(
+      "Hub apps.json is malformed: expected a 'projects' object, " +
+        `found top-level keys [${Object.keys(parsed).join(", ")}]`,
+    );
   }
 
-  return apps.map((app) => (typeof app === "string" ? app : app.slug));
+  return projects;
+}
+
+// Failure-shaped outcome: index.js logs these at error level, unlike benign skips
+function failure(reason, detail) {
+  return { published: false, failed: true, reason, detail };
 }
 
 /**
- * Publish one transcript to the hub.
- * @returns {{published: boolean, reason?: string, path?: string}}
+ * Publish one transcript to the hub. `failed: true` marks failure-shaped
+ * outcomes (config/credential problems) vs benign skips like "not-allowlisted".
+ * @returns {{published: boolean, failed?: boolean, reason?: string, detail?: string, path?: string}}
  */
 async function publishTranscript({ transcriptPath, projectSlug, meetingId }) {
   const config = getHubConfig();
@@ -151,11 +161,47 @@ async function publishTranscript({ transcriptPath, projectSlug, meetingId }) {
     throw new Error(`Refusing to publish: invalid project slug "${projectSlug}"`);
   }
 
+  const hasCredentials =
+    config.token ||
+    (config.appId && config.appPrivateKey && config.appInstallationId);
+  if (!hasCredentials) {
+    return failure(
+      "no-credentials",
+      "TRANSCRIPT_HUB_REPO is set but neither TRANSCRIPT_HUB_TOKEN nor the TRANSCRIPT_HUB_APP_* trio is",
+    );
+  }
+
   const token = await resolveToken(config);
 
-  const allowlist = await fetchAllowlistSlugs(config.repo, token);
-  if (!allowlist.includes(projectSlug)) {
-    log("info", "Project not in transcript hub allowlist, skipping publish", {
+  // The .vtt is verbatim speech: refuse to publish anywhere public (a #134
+  // approval condition). Fails closed if the hub is ever flipped public.
+  const repoMeta = await githubRequest({
+    method: "GET",
+    path: `/repos/${config.repo}`,
+    token,
+  });
+  if (repoMeta.status !== 200) {
+    return failure(
+      "hub-unreachable",
+      `GET /repos/${config.repo} returned ${repoMeta.status} - check the repo name and the App installation`,
+    );
+  }
+  if (repoMeta.json?.private !== true) {
+    return failure(
+      "hub-not-private",
+      `${config.repo} is not private; transcripts must never land in a public repo`,
+    );
+  }
+
+  let projects;
+  try {
+    projects = await fetchHubProjects(config.repo, token);
+  } catch (err) {
+    return failure("allowlist-invalid", err.message);
+  }
+
+  if (projects[projectSlug]?.publish !== true) {
+    log("info", "Project not opted in to the transcript hub, skipping publish", {
       projectSlug,
       repo: config.repo,
     });
@@ -209,7 +255,7 @@ async function publishTranscript({ transcriptPath, projectSlug, meetingId }) {
 
 module.exports = {
   publishTranscript,
-  fetchAllowlistSlugs,
+  fetchHubProjects,
   getInstallationToken,
   mintAppJwt,
   gitBlobSha,

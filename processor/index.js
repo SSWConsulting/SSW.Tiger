@@ -93,6 +93,12 @@ async function processTranscript(transcriptPath, projectSlug) {
     });
     if (hubResult.published) {
       log("info", "Raw transcript published to hub", { path: hubResult.path });
+    } else if (hubResult.failed) {
+      // Distinguishable from benign skips: these mean archiving is broken
+      log("error", "Transcript hub publish failed (non-fatal)", {
+        reason: hubResult.reason,
+        detail: hubResult.detail,
+      });
     } else if (hubResult.reason !== "disabled") {
       log("info", "Transcript hub publish skipped", { reason: hubResult.reason });
     }
