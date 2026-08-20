@@ -289,21 +289,136 @@ async function fetchTranscriptMetadata(token) {
   // GET /users/{userId}/onlineMeetings/{meetingId}/transcripts/{transcriptId}
   const graphUrl = `https://graph.microsoft.com/v1.0/users/${CONFIG.userId}/onlineMeetings/${CONFIG.meetingId}/transcripts/${CONFIG.transcriptId}`;
 
-  const response = await fetch(graphUrl, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  let lastError;
+  let sawNotFound = false;
+  for (let attempt = 0; attempt < TRANSCRIPT_FETCH_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      const delayMs = Math.pow(2, attempt) * 1000;
+      log("warn", "Transcript metadata not ready, retrying after backoff", {
+        attempt: attempt + 1,
+        delayMs,
+      });
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
 
-  if (!response.ok) {
+    const response = await fetch(graphUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (response.ok) {
+      return await response.json();
+    }
+
     const errorText = await response.text();
-    throw new Error(
+    lastError = new Error(
       `Failed to fetch transcript metadata: ${response.status} - ${errorText}`,
     );
+
+    // 404 is retryable here: Graph fires the webhook before the transcript is
+    // queryable, so a freshly created transcript can 404 for a while (#153).
+    // Track whether ANY attempt 404'd — a trailing 5xx/429 after a run of
+    // 404s must not disqualify the recovery path below.
+    sawNotFound = sawNotFound || response.status === 404;
+    const isTransient =
+      response.status >= 500 ||
+      response.status === 429 ||
+      response.status === 404;
+    if (!isTransient) {
+      break;
+    }
   }
 
-  return await response.json();
+  // Persistent 404: the notification's transcript ID can be stale or never
+  // resolve (seen with channel meetings, and when recording is stopped and
+  // restarted). Fall back to listing the meeting's transcripts and using the
+  // newest one instead of declaring the run failed.
+  if (sawNotFound) {
+    const recovered = await recoverTranscriptFromList(token);
+    if (recovered) {
+      return recovered;
+    }
+  }
+
+  throw lastError;
+}
+
+async function recoverTranscriptFromList(token) {
+  // GET /users/{userId}/onlineMeetings/{meetingId}/transcripts
+  // Follows @odata.nextLink so multi-page lists are fully considered.
+  let listUrl = `https://graph.microsoft.com/v1.0/users/${CONFIG.userId}/onlineMeetings/${CONFIG.meetingId}/transcripts`;
+  const transcripts = [];
+
+  while (listUrl) {
+    const response = await fetch(listUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      log("warn", `Failed to list meeting transcripts: ${response.status}`, {
+        error: errorText,
+      });
+      return null;
+    }
+
+    const data = await response.json();
+    transcripts.push(...(data.value || []));
+    listUrl = data["@odata.nextLink"] || null;
+  }
+
+  // If the notified ID appears in the list, the ID is valid and Graph's
+  // GET-by-id path is just lagging — substituting a DIFFERENT transcript
+  // would process the wrong recording. Fail with the original error instead
+  // (the failed card carries a Restart button for when Graph catches up).
+  if (transcripts.some((tr) => tr.id === CONFIG.transcriptId)) {
+    log("warn", "Notified transcript ID exists in list; not substituting", {
+      transcriptId: CONFIG.transcriptId,
+    });
+    return null;
+  }
+
+  // Only consider transcripts recent enough to plausibly be the recording
+  // this notification was about. Without this, a recurring meeting would
+  // happily "recover" last week's transcript and report success (exit 0)
+  // for stale data — worse than failing.
+  const maxAgeMs = RECOVERY_MAX_AGE_HOURS * 60 * 60 * 1000;
+  const cutoff = Date.now() - maxAgeMs;
+  const candidates = transcripts.filter(
+    (tr) =>
+      tr.id !== CONFIG.transcriptId &&
+      tr.createdDateTime &&
+      new Date(tr.createdDateTime).getTime() >= cutoff,
+  );
+  if (candidates.length === 0) {
+    log("warn", "No recent alternative transcripts to recover from", {
+      transcriptCount: transcripts.length,
+      maxAgeHours: RECOVERY_MAX_AGE_HOURS,
+    });
+    return null;
+  }
+
+  const newest = candidates.reduce((a, b) =>
+    new Date(a.createdDateTime || 0) >= new Date(b.createdDateTime || 0)
+      ? a
+      : b,
+  );
+
+  log("warn", "Notified transcript ID not found, using newest from list", {
+    notifiedTranscriptId: CONFIG.transcriptId,
+    recoveredTranscriptId: newest.id,
+    createdDateTime: newest.createdDateTime,
+    transcriptCount: transcripts.length,
+  });
+
+  // Point the rest of the pipeline (content download) at the recovered ID.
+  CONFIG.transcriptId = newest.id;
+  return newest;
 }
 
 async function fetchActualParticipantsFromChat(token, chatId, callId) {
@@ -614,12 +729,20 @@ function formatDuration(seconds) {
   return `${hrs} hr ${remainMins} min`;
 }
 
-// Number of times to attempt the transcript-content fetch. Each retry waits
-// 2^attempt seconds (2s, 4s, 8s ... 128s), totalling ~4 minutes worst-case.
-// Transcript-only meetings (no video recording) sometimes notify the webhook
-// before Graph's content endpoint can serve the VTT bytes, returning 5xx until
-// the storage read path catches up.
+// Number of times to attempt the transcript metadata and content fetches.
+// Each retry waits 2^attempt seconds (2s, 4s, 8s ... 128s), totalling ~4
+// minutes worst-case per fetch. Graph notifies the webhook before the
+// transcript is fully readable, so both endpoints can return 404 or 5xx for a
+// while after the notification fires (#153).
 const TRANSCRIPT_FETCH_ATTEMPTS = 8;
+
+// When recovering from the transcript list (notified ID never resolves), only
+// substitute a transcript created within this window. Recurring meetings keep
+// old transcripts on the same onlineMeeting — without a recency cut-off the
+// recovery would happily process last week's recording. 72h covers webhook
+// runs and restarts clicked a day or two later.
+const RECOVERY_MAX_AGE_HOURS =
+  Number(process.env.RECOVERY_MAX_AGE_HOURS) || 72;
 
 async function downloadTranscriptContent(token) {
   // Graph API endpoint for transcript content
@@ -653,9 +776,13 @@ async function downloadTranscriptContent(token) {
       `Failed to download transcript: ${response.status} - ${errorText}`,
     );
 
-    // Only retry on transient server errors (5xx) and rate limits (429).
-    // 4xx auth/permission/not-found errors will not heal on retry.
-    const isTransient = response.status >= 500 || response.status === 429;
+    // Retry transient server errors (5xx), rate limits (429), and 404s —
+    // freshly created transcripts 404 until Graph's read path catches up
+    // (#153). Other 4xx auth/permission errors will not heal on retry.
+    const isTransient =
+      response.status >= 500 ||
+      response.status === 429 ||
+      response.status === 404;
     if (!isTransient) {
       break;
     }
@@ -1019,9 +1146,12 @@ async function main() {
     const transcriptPath = await saveTranscript(content, filename);
 
     // Output result as JSON to stdout (includes notification info)
+    // transcriptId reflects the transcript actually processed — it differs
+    // from GRAPH_TRANSCRIPT_ID when list recovery substituted a newer one.
     outputResult({
       success: true,
       transcriptPath,
+      transcriptId: CONFIG.transcriptId,
       projectName,
       displayName,
       meetingDate,
@@ -1072,6 +1202,7 @@ module.exports = {
   getGraphToken,
   fetchMeeting,
   fetchTranscriptMetadata,
+  recoverTranscriptFromList,
   fetchActualParticipantsFromChat,
   downloadTranscriptContent,
   saveTranscript,
