@@ -37,7 +37,7 @@
 const fs = require("fs").promises;
 const path = require("path");
 const { log } = require("../lib/logger");
-const { sanitizeId } = require("../lib/sanitize");
+const { parseSubject, extractProjectName } = require("./parseSubject");
 
 // Configuration from environment
 const CONFIG = {
@@ -791,55 +791,8 @@ async function downloadTranscriptContent(token) {
   throw lastError;
 }
 
-function parseSubject(subject) {
-  if (!subject) return { displayName: "general", projectSlug: "general", title: "meeting" };
-
-  let displayName = null;
-  let title = subject;
-
-  // Format 1: [ProjectName] Meeting Title
-  const bracketMatch = subject.match(/^\[([^\]]+)\]\s*(.*)$/);
-  if (bracketMatch) {
-    displayName = bracketMatch[1].trim();
-    title = bracketMatch[2].trim() || "meeting";
-  }
-
-  // Format 2: ProjectName - Meeting Title (dash separator)
-  // Support both hyphen (-), en dash (–), and em dash (—)
-  if (!displayName) {
-    const dashMatch = subject.match(/^([^-–—]+)\s*[-–—]\s*(.+)$/);
-    if (dashMatch) {
-      const projectPart = dashMatch[1].trim();
-      if (projectPart.length <= 30 && !projectPart.includes(" and ")) {
-        displayName = projectPart;
-        title = dashMatch[2].trim();
-      }
-    }
-  }
-
-  // Format 3: ProjectName: Meeting Title (colon separator)
-  if (!displayName) {
-    const colonMatch = subject.match(/^([^:]+)\s*:\s*(.+)$/);
-    if (colonMatch) {
-      const projectPart = colonMatch[1].trim();
-      if (projectPart.length <= 30 && !projectPart.includes(" and ")) {
-        displayName = projectPart;
-        title = colonMatch[2].trim();
-      }
-    }
-  }
-
-  const resolvedName = displayName || "general";
-  return {
-    displayName: resolvedName,
-    projectSlug: sanitizeId(resolvedName) || "general",
-    title,
-  };
-}
-
-function extractProjectName(subject) {
-  return parseSubject(subject).projectSlug;
-}
+// parseSubject / extractProjectName moved to ./parseSubject (shared with the portal
+// meeting-link path); they are imported at the top of this file and re-exported below.
 
 function generateFilename(meeting, transcriptDate) {
   // Use transcript createdDateTime (actual recording time)

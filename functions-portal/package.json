@@ -1,0 +1,20 @@
+{
+  "name": "tiger-functions-portal",
+  "version": "1.0.0",
+  "description": "Portal API Function App — browser transcript submissions, protected by Static Web Apps auth. Kept separate from the Graph webhook app so its SWA-only access boundary never affects the public webhook.",
+  "main": "src/functions/index.js",
+  "scripts": {
+    "start": "func start",
+    "test": "node --test src/**/*.test.js"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "dependencies": {
+    "@azure/cosmos": "^4.9.3",
+    "@azure/functions": "^4.0.0",
+    "@azure/identity": "^4.13.0",
+    "@azure/storage-blob": "12.27.0",
+    "@azure/storage-queue": "12.26.0"
+  }
+}

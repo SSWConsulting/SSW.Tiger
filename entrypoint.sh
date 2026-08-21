@@ -12,6 +12,13 @@ log() {
     echo "{\"level\":\"$level\",\"message\":\"$message\"}" >&2
 }
 
+# Portal submissions (browser upload OR pasted meeting link) share the history
+# record + status write-back, and suppress the Graph-path Logic App notifications.
+PORTAL_SUBMISSION="false"
+if [ "$TRANSCRIPT_SOURCE_TYPE" = "uploadedTranscript" ] || [ "$TRANSCRIPT_SOURCE_TYPE" = "meetingLink" ]; then
+    PORTAL_SUBMISSION="true"
+fi
+
 # Background cancellation checker
 # Polls CHECK_CANCELLATION_URL every 15 seconds and exits if cancelled
 CANCEL_CHECKER_PID=""
@@ -58,6 +65,11 @@ handle_termination() {
     fi
 
     log "warn" "$signal_name signal received"
+    # Non-cancellation termination (job timeout, eviction, scale-in): mark an
+    # uploaded submission failed so it doesn't sit "Processing" forever in the
+    # portal. No-op for the Graph path. Best effort; must not block exit.
+    FAILURE_REASON="Processing was interrupted before it finished. Please submit again."
+    update_submission_status "failed" || true
     exit "$exit_code"
 }
 
@@ -125,9 +137,32 @@ EOF
     fi
 }
 
-# Send failure notification
+# Why a failure happened, in the submitter's words rather than the operator's.
+# Set at each failure site BEFORE send_failure_notification so the portal history
+# row can say "no transcript is available yet" instead of a bare "Unavailable".
+# Empty is fine — updateSubmissionStatus omits the field when it has nothing.
+FAILURE_REASON=""
+
+# Update a portal submission's history status (upload path only; best effort).
+# $1 = status (processing|completed|failed), $2 = dashboard URL (completed only).
+update_submission_status() {
+    if [ "$PORTAL_SUBMISSION" = "true" ]; then
+        # PROJECT_NAME holds the resolved display title (the meeting subject when the
+        # submitter left the name blank); it's exported after download, so it's empty
+        # on an early failure — updateSubmissionStatus ignores an empty display name.
+        SUBMISSION_STATUS="$1" SUBMISSION_DASHBOARD_URL="$2" SUBMISSION_DISPLAY_NAME="$PROJECT_NAME" \
+            SUBMISSION_FAILURE_REASON="$FAILURE_REASON" \
+            SUBMISSION_PASSWORD_PROTECTED="$PASSWORD_PROTECTED" SUBMISSION_DASHBOARD_PASSWORD="$DASHBOARD_PASSWORD" \
+            node processor/updateSubmissionStatus.js || true
+    fi
+}
+
+# Send failure notification. Portal submissions have no Logic App notification;
+# instead their history record is marked "failed" so the portal list reflects it.
 send_failure_notification() {
-    if [ -n "$LOGIC_APP_URL" ] && [ -n "$PARTICIPANTS_JSON" ]; then
+    if [ "$PORTAL_SUBMISSION" = "true" ]; then
+        update_submission_status "failed"
+    elif [ -n "$LOGIC_APP_URL" ] && [ -n "$PARTICIPANTS_JSON" ]; then
         export NOTIFICATION_TYPE="failed"
         node processor/sendNotification.js >/dev/null || true
     fi
@@ -138,10 +173,22 @@ run_pipeline() {
     # Start background cancellation checker (polls every 15s)
     start_cancel_checker
 
+    # Audit line for portal submissions: a meeting-link request can pull a transcript
+    # for a meeting the submitter only knows the ID of, so name them in the Job log.
+    if [ "$PORTAL_SUBMISSION" = "true" ]; then
+        log "info" "Portal submission [source=$TRANSCRIPT_SOURCE_TYPE, request=$UPLOAD_REQUEST_ID, submittedBy=${SUBMITTED_BY:-unknown}]"
+    fi
+
     # Step 1: Download transcript
     # stderr flows through for real-time logs, stdout captured (JSON result)
     set +e
-    DOWNLOAD_RESULT=$(node processor/downloadTranscript.js)
+    if [ "$TRANSCRIPT_SOURCE_TYPE" = "uploadedTranscript" ]; then
+        DOWNLOAD_RESULT=$(node processor/downloadUploadedTranscript.js)
+    elif [ "$TRANSCRIPT_SOURCE_TYPE" = "meetingLink" ]; then
+        DOWNLOAD_RESULT=$(node processor/downloadFromMeetingLink.js)
+    else
+        DOWNLOAD_RESULT=$(node processor/downloadTranscript.js)
+    fi
     DOWNLOAD_EXIT_CODE=$?
     set -e
 
@@ -149,7 +196,11 @@ run_pipeline() {
         # Try to extract error message from JSON output
         ERROR_MSG=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).message" 2>/dev/null || echo "Unknown error")
         # Log with meeting identifiers for debugging
-        log "error" "Failed to download transcript [user=$GRAPH_USER_ID, meeting=$GRAPH_MEETING_ID]: $ERROR_MSG"
+        if [ "$PORTAL_SUBMISSION" = "true" ]; then
+            log "error" "Failed to download portal transcript [source=$TRANSCRIPT_SOURCE_TYPE, request=$UPLOAD_REQUEST_ID]: $ERROR_MSG"
+        else
+            log "error" "Failed to download transcript [user=$GRAPH_USER_ID, meeting=$GRAPH_MEETING_ID]: $ERROR_MSG"
+        fi
 
         # Best-effort "failed" notification. The download script emits the
         # meeting subject and any participants it managed to fetch before
@@ -162,6 +213,17 @@ run_pipeline() {
         fi
         export MEETING_SUBJECT="$FAILED_SUBJECT"
         export PARTICIPANTS_JSON="$FAILED_PARTICIPANTS"
+        # If the download resolved the meeting subject before failing, surface it as
+        # the portal history display name (update_submission_status reads PROJECT_NAME)
+        # so a failed submission shows the real title instead of the "Meeting <id>"
+        # placeholder. Empty subject (e.g. failed before resolution) → placeholder stays.
+        if [ -n "$FAILED_SUBJECT" ]; then
+            export PROJECT_NAME="$FAILED_SUBJECT"
+        fi
+        # The download scripts write user-facing messages ("No transcript is available
+        # for this meeting yet…", "…add the email of someone who did"), which are far
+        # more useful on the history row than a generic failure.
+        FAILURE_REASON="$ERROR_MSG"
         send_failure_notification
 
         exit 1
@@ -219,9 +281,12 @@ run_pipeline() {
     export INVITEES_JSON="$INVITEES_JSON"
     export VTT_INFO_JSON="$VTT_INFO_JSON"
 
+    # Portal upload: mark the submission in-progress so its history shows "Processing".
+    update_submission_status "processing"
+
     # Step 2: Send "started" notification (if configured)
     # Includes cancel URL if available, allowing users to cancel processing
-    if [ -n "$LOGIC_APP_URL" ]; then
+    if [ "$PORTAL_SUBMISSION" != "true" ] && [ -n "$LOGIC_APP_URL" ]; then
         export NOTIFICATION_TYPE="started"
         # CANCEL_URL and JOB_EXECUTION_ID are passed from Azure Function
         # They will be included in the notification payload for the Cancel button
@@ -249,6 +314,10 @@ run_pipeline() {
         else
             log "error" "Claude processing failed [project=$PROJECT_NAME, meeting=$MEETING_SUBJECT] (no output)"
         fi
+        # Deliberately generic: unlike the download errors, processor stdout is
+        # internal diagnostic text with no user action in it, and it is already in
+        # the Job log above. The row points at support instead of leaking it.
+        FAILURE_REASON="The transcript was downloaded but analysis failed. Please try again or contact support."
         send_failure_notification
         exit 1
     fi
@@ -261,6 +330,7 @@ run_pipeline() {
         log "error" "Processor result metadata missing"
         rm -f "$PROCESSOR_RESULT_FILE"
         unset PROCESSOR_RESULT_PATH
+        FAILURE_REASON="The dashboard was generated but could not be published. Please try again or contact support."
         send_failure_notification
         exit 1
     fi
@@ -270,20 +340,25 @@ run_pipeline() {
     unset PROCESSOR_RESULT_PATH
     if [ "$PASSWORD_PROTECTED" = "__parse_error__" ] || [ "$DASHBOARD_PASSWORD" = "__parse_error__" ]; then
         log "error" "Processor result metadata is invalid"
+        FAILURE_REASON="The dashboard was generated but could not be published. Please try again or contact support."
         send_failure_notification
         exit 1
     fi
 
     if [ -z "$DEPLOYED_URL" ]; then
         log "error" "Failed to extract deployed URL"
+        FAILURE_REASON="The dashboard was generated but could not be published. Please try again or contact support."
         send_failure_notification
         exit 1
     fi
 
     log "info" "Deployed: $DEPLOYED_URL"
 
+    # Portal upload: record completion + dashboard URL so the history shows "Ready".
+    update_submission_status "completed" "$DEPLOYED_URL"
+
     # Step 4: Send "completed" notification (if configured)
-    if [ -n "$LOGIC_APP_URL" ]; then
+    if [ "$PORTAL_SUBMISSION" != "true" ] && [ -n "$LOGIC_APP_URL" ]; then
         log "info" "Sending completed notification..."
         export NOTIFICATION_TYPE="completed"
         export DASHBOARD_URL="$DEPLOYED_URL"
@@ -306,7 +381,7 @@ run_pipeline() {
 }
 
 # Check mode
-if [ -n "$GRAPH_MEETING_ID" ] && [ -n "$GRAPH_TRANSCRIPT_ID" ] && [ -n "$GRAPH_USER_ID" ]; then
+if [ "$PORTAL_SUBMISSION" = "true" ] || { [ -n "$GRAPH_MEETING_ID" ] && [ -n "$GRAPH_TRANSCRIPT_ID" ] && [ -n "$GRAPH_USER_ID" ]; }; then
     # Azure mode: full pipeline
     setup_claude_auth
     run_pipeline

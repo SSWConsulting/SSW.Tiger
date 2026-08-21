@@ -14,6 +14,7 @@ var databaseName = 'tiger'
 var containerName = 'meetings'
 var projectPoliciesContainerName = 'projectPolicies'
 var meetingSecurityContainerName = 'meetingSecurity'
+var submissionsContainerName = 'submissions'
 
 // Cosmos DB Account (Serverless)
 resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-11-15' = {
@@ -102,6 +103,27 @@ resource meetingSecurityContainer 'Microsoft.DocumentDB/databaseAccounts/sqlData
   }
 }
 
+// Portal upload submissions: one record per browser-uploaded transcript, holding
+// the owner identity + status + resulting dashboard URL so the Portal can show a
+// per-user history. Partitioned by projectName (like every other container) so the
+// future project-admin views ("all reports in project X") stay single-partition;
+// per-user reads add a userSubject filter, cheap at this scale.
+resource submissionsContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-11-15' = {
+  parent: database
+  name: submissionsContainerName
+  properties: {
+    resource: {
+      id: submissionsContainerName
+      partitionKey: {
+        paths: [
+          '/projectName'
+        ]
+        kind: 'Hash'
+      }
+    }
+  }
+}
+
 // Grant managed identity "Cosmos DB Built-in Data Contributor" role
 // This allows read/write without using account keys
 resource cosmosRoleAssignment 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-11-15' = {
@@ -120,3 +142,4 @@ output databaseName string = databaseName
 output containerName string = meetingsContainer.name
 output projectPoliciesContainerName string = projectPoliciesContainer.name
 output meetingSecurityContainerName string = meetingSecurityContainer.name
+output submissionsContainerName string = submissionsContainer.name

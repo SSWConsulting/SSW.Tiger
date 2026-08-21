@@ -40,6 +40,18 @@ param deployLogicApp bool = false
 @description('Manage the Key Vault Secrets User assignment. Requires Owner or User Access Administrator.')
 param manageKeyVaultRoleAssignment bool = false
 
+@description('Manage the Storage Blob Data Contributor assignment on the transcript-submissions container. Requires Owner or User Access Administrator (Contributor cannot write Microsoft.Authorization/roleAssignments). Off by default so a Contributor can still deploy; the assignment must exist before the Container App Job can download uploaded transcripts, so run once with this true (or create it out of band).')
+param manageTranscriptBlobRoleAssignment bool = false
+
+@description('Deploy the Parrot portal stack (Portal API Function App + Static Web App). Off by default until the portal is ready to go live.')
+param deployPortal bool = false
+
+@description('Region for the Static Web App. SWA is region-limited (australiaeast is NOT supported); defaults to East Asia.')
+param staticWebAppLocation string = 'eastasia'
+
+@description('Let Bicep write the SWA\'s Entra auth app settings (AZURE_CLIENT_ID / AZURE_CLIENT_SECRET_APP_SETTING_NAME) by reading graph-client-id + graph-client-secret from Key Vault. Off by default because those settings are already set by hand on both SWAs, and because getSecret() makes the DEPLOYING principal need Key Vault Secrets User on the (RBAC-enabled) vault — a requirement a plain Contributor does not meet. Turn on only for a brand-new environment where nobody has set them yet. Mirrors manageKeyVaultRoleAssignment / manageTranscriptBlobRoleAssignment: flags off means Bicep never touches what the sysadmin configured.')
+param manageSwaAuthSettings bool = false
+
 
 var containerImage = 'ghcr.io/${githubOrg}/tiger-processor:${imageTag}'
 
@@ -83,6 +95,8 @@ module storage 'modules/storage.bicep' = {
     environment: environment
     costCategoryTag: costCategoryTag
     location: location
+    managedIdentityPrincipalId: id.outputs.principalId
+    manageTranscriptBlobRoleAssignment: manageTranscriptBlobRoleAssignment
   }
 }
 
@@ -138,6 +152,8 @@ module containerApp 'modules/containerApp.bicep' = {
     claudeModel: claudeModel
     dashboardStorageAccountName: dashboardStorage.outputs.name
     cosmosEndpoint: cosmosDb.outputs.endpoint
+    transcriptStorageAccountName: storage.outputs.name
+    transcriptStorageContainerName: storage.outputs.transcriptSubmissionsContainerName
   }
 }
 
@@ -173,6 +189,67 @@ module functionApp 'modules/functionApp.bicep' = {
     dashboardStorageAccountName: dashboardStorage.outputs.name
     cosmosEndpoint: cosmosDb.outputs.endpoint
     claudeModel: claudeModel
+    transcriptStorageContainerName: storage.outputs.transcriptSubmissionsContainerName
+  }
+}
+
+// 9. Portal API Function App - browser transcript uploads, fronted by SWA.
+//    Separate app so its SWA-only auth boundary never affects the Graph webhook.
+module portalApiApp 'modules/portalApiApp.bicep' = if (deployPortal) {
+  name: 'provision-portal-api-${suffix}'
+  params: {
+    project: project
+    environment: environment
+    costCategoryTag: costCategoryTag
+    location: location
+    storageAccountName: storage.outputs.name
+    // Ride the Graph app's existing Consumption plan — creating a new Y1 Linux plan
+    // in this RG fails ("Dynamic SKU, Linux Worker not available"); the Linux webspace
+    // this RG maps to in Australia East won't place another. Referencing the output
+    // also sequences this module after functionApp.
+    hostingPlanId: functionApp.outputs.hostingPlanId
+    managedIdentityId: id.outputs.id
+    managedIdentityClientId: id.outputs.clientId
+    appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
+    transcriptStorageContainerName: storage.outputs.transcriptSubmissionsContainerName
+    cosmosEndpoint: cosmosDb.outputs.endpoint
+    submissionsContainerName: cosmosDb.outputs.submissionsContainerName
+  }
+}
+
+// 10. Static Web App - hosts the Parrot SPA, links the Portal API as /api, and
+//     provisions the "Azure Static Web Apps (Linked)" EasyAuth boundary on it.
+//     Login reuses the existing Graph app registration (clientId + secret from KV).
+//     AFTER DEPLOY: run infra/scripts/verify-portal-auth-boundary.sh <env>. It checks
+//     that the link actually provisioned the EasyAuth provider on the backend — the
+//     control that makes the Portal API's anonymous functions safe. Registering the
+//     redirect URI (this module's `redirectUri` output) on the Graph app registration
+//     is a ONE-OFF done by hand; it is not re-checked on every deploy.
+//
+//     NOTE: getSecret() below is reached ONLY when manageSwaAuthSettings is true.
+//     It makes the DEPLOYING principal need Key Vault Secrets User on the vault
+//     (it is RBAC-enabled), on top of Contributor on the RG — which is why the
+//     default leaves the already-hand-set app settings alone.
+resource keyVaultRef 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
+  name: kv.outputs.name
+}
+
+module staticWebApp 'modules/staticWebApp.bicep' = if (deployPortal) {
+  name: 'provision-swa-${suffix}'
+  params: {
+    project: project
+    environment: environment
+    costCategoryTag: costCategoryTag
+    location: staticWebAppLocation
+    backendResourceId: portalApiApp.outputs.id
+    backendRegion: location
+    // The ternary is what keeps getSecret() (and its Key Vault Secrets User
+    // requirement on the deployer) out of the deployment entirely when the flag
+    // is off — an unconditional getSecret would be resolved by ARM regardless of
+    // whether the module then used the value.
+    manageAuthSettings: manageSwaAuthSettings
+    entraClientId: manageSwaAuthSettings ? keyVaultRef.getSecret('graph-client-id') : ''
+    entraClientSecret: manageSwaAuthSettings ? keyVaultRef.getSecret('graph-client-secret') : ''
   }
 }
 
@@ -180,6 +257,11 @@ output keyVault object = {
   name: kv.outputs.name
   uri: kv.outputs.keyVaultUrl
 }
+
+output portalApiName string = deployPortal ? portalApiApp.outputs.name : ''
+output portalSwaUrl string = deployPortal ? staticWebApp.outputs.url : ''
+// Register this on the existing Graph app registration once the SWA exists.
+output portalEntraRedirectUri string = deployPortal ? staticWebApp.outputs.redirectUri : ''
 
 output storage object = {
   name: storage.outputs.name

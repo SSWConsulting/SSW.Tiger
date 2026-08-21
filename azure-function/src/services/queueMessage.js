@@ -1,0 +1,194 @@
+function parseQueueMessage(message) {
+  if (typeof message !== "string") return message;
+  try {
+    return JSON.parse(message);
+  } catch {
+    throw new Error("Invalid JSON in queue message");
+  }
+}
+
+// Who submitted a portal request, kept for AUDIT only — never for authorization.
+// The Portal API resolved this from the SWA principal; by the time it reaches the
+// queue it is just a label, so nothing downstream may make a trust decision on it.
+// Carried through because a meeting-link submission can pull a transcript for a
+// meeting the submitter merely knows the ID of, and "who asked for this" must be
+// answerable from the Job logs, not only from the Cosmos record.
+function normalizeActor(actor) {
+  if (!actor || typeof actor !== "object") return null;
+  const email = typeof actor.email === "string" && actor.email ? actor.email : null;
+  const subject = typeof actor.subject === "string" && actor.subject ? actor.subject : null;
+  if (!email && !subject) return null;
+  return { email, subject };
+}
+
+function normalizeQueueMessage(message) {
+  const data = parseQueueMessage(message);
+  if (!data || typeof data !== "object") throw new Error("Invalid queue message");
+
+  if (!data.sourceType || data.sourceType === "graphTranscript") {
+    const { userId, meetingId, transcriptId } = data;
+    if (!userId || !meetingId || !transcriptId) {
+      throw new Error("Missing required Graph IDs in queue message");
+    }
+    return {
+      sourceType: "graphTranscript",
+      userId,
+      meetingId,
+      transcriptId,
+      skipSubjectFilter: !!data.skipSubjectFilter,
+      manualTrigger: !!data.manualTrigger,
+      restartTrigger: !!data.restartTrigger,
+      restartId: data.restartId,
+      restartedFromExecutionId: data.restartedFromExecutionId,
+    };
+  }
+
+  if (data.sourceType === "uploadedTranscript") {
+    if (data.schemaVersion !== 2 || !data.requestId || !data.project?.slug || !data.project?.displayName) {
+      throw new Error("Invalid uploaded transcript queue message");
+    }
+    const source = data.source;
+    if (!source?.storageAccount || !source?.containerName || !source?.blobName || !source?.fileName) {
+      throw new Error("Missing uploaded transcript blob locator");
+    }
+    return {
+      schemaVersion: 2,
+      sourceType: "uploadedTranscript",
+      requestId: data.requestId,
+      submittedAt: data.submittedAt,
+      actor: normalizeActor(data.actor),
+      project: { displayName: data.project.displayName, slug: data.project.slug },
+      source: {
+        storageAccount: source.storageAccount,
+        containerName: source.containerName,
+        blobName: source.blobName,
+        fileName: source.fileName,
+      },
+    };
+  }
+
+  if (data.sourceType === "meetingLink") {
+    // displayName may be "" — the Portal API leaves it blank when the submitter did
+    // not name the project, and the Job fills it from the meeting subject.
+    if (data.schemaVersion !== 2 || !data.requestId || !data.project?.slug) {
+      throw new Error("Invalid meeting link queue message");
+    }
+    // Two locator shapes: a long link (organizer embedded) OR a Meeting ID plus the
+    // candidate user ids to resolve it under (submitter + optional attendee).
+    const hasLink = !!(data.joinUrl && data.organizerId);
+    const hasMeetingId = !!(data.joinMeetingId && Array.isArray(data.resolverUserIds) && data.resolverUserIds.length);
+    if (!hasLink && !hasMeetingId) {
+      throw new Error("Missing meeting link locator");
+    }
+    return {
+      schemaVersion: 2,
+      sourceType: "meetingLink",
+      requestId: data.requestId,
+      submittedAt: data.submittedAt,
+      actor: normalizeActor(data.actor),
+      project: { displayName: data.project.displayName || "", slug: data.project.slug },
+      ...(hasLink
+        ? { joinUrl: data.joinUrl, organizerId: data.organizerId }
+        : { joinMeetingId: String(data.joinMeetingId), resolverUserIds: data.resolverUserIds.map(String) }),
+    };
+  }
+
+  throw new Error(`Unsupported transcript source type: ${data.sourceType}`);
+}
+
+function buildDedupKey(data, now = Date.now()) {
+  if (data.sourceType === "uploadedTranscript") return `upload-${data.requestId}`;
+  if (data.sourceType === "meetingLink") return `meeting-${data.requestId}`;
+  if (data.restartTrigger) return `restart-${data.restartId || `${data.meetingId}-${data.transcriptId}-${now}`}`;
+  if (data.manualTrigger) return `manual-${data.meetingId}-${data.transcriptId}`;
+  return `${data.meetingId}-${data.transcriptId}`;
+}
+
+// Audit label for the Job logs. Prefers the email (actionable) over the opaque
+// SWA subject, and never fails a submission just because neither is present.
+function submittedByLabel(data) {
+  return data.actor?.email || data.actor?.subject || "";
+}
+
+function buildDynamicJobEnvironment(data) {
+  if (data.sourceType === "uploadedTranscript") {
+    return [
+      { name: "TRANSCRIPT_SOURCE_TYPE", value: "uploadedTranscript" },
+      { name: "UPLOAD_REQUEST_ID", value: data.requestId },
+      { name: "SUBMITTED_BY", value: submittedByLabel(data) },
+      { name: "TRANSCRIPT_STORAGE_ACCOUNT", value: data.source.storageAccount },
+      { name: "TRANSCRIPT_STORAGE_CONTAINER", value: data.source.containerName },
+      { name: "TRANSCRIPT_BLOB_NAME", value: data.source.blobName },
+      { name: "UPLOAD_FILENAME", value: data.source.fileName },
+      { name: "UPLOAD_PROJECT_NAME", value: data.project.displayName },
+      { name: "UPLOAD_PROJECT_SLUG", value: data.project.slug },
+    ];
+  }
+  if (data.sourceType === "meetingLink") {
+    const env = [
+      { name: "TRANSCRIPT_SOURCE_TYPE", value: "meetingLink" },
+      // UPLOAD_REQUEST_ID / UPLOAD_PROJECT_* are reused for the shared history
+      // record + status write-back (same as the upload path).
+      { name: "UPLOAD_REQUEST_ID", value: data.requestId },
+      { name: "SUBMITTED_BY", value: submittedByLabel(data) },
+      { name: "UPLOAD_PROJECT_NAME", value: data.project.displayName },
+      { name: "UPLOAD_PROJECT_SLUG", value: data.project.slug },
+    ];
+    if (data.joinMeetingId) {
+      env.push(
+        { name: "MEETING_JOIN_MEETING_ID", value: data.joinMeetingId },
+        { name: "MEETING_RESOLVER_USER_IDS", value: data.resolverUserIds.join(",") },
+      );
+    } else {
+      env.push(
+        { name: "MEETING_JOIN_URL", value: data.joinUrl },
+        { name: "MEETING_ORGANIZER_ID", value: data.organizerId },
+      );
+    }
+    return env;
+  }
+  return [
+    { name: "TRANSCRIPT_SOURCE_TYPE", value: "graphTranscript" },
+    { name: "GRAPH_USER_ID", value: data.userId },
+    { name: "GRAPH_MEETING_ID", value: data.meetingId },
+    { name: "GRAPH_TRANSCRIPT_ID", value: data.transcriptId },
+    ...(data.skipSubjectFilter ? [{ name: "SKIP_SUBJECT_FILTER", value: "true" }] : []),
+  ];
+}
+
+function buildJobEnvironment(data, runtimeEnv, tracking = {}) {
+  const dynamic = buildDynamicJobEnvironment(data);
+
+  return [
+    ...dynamic,
+    { name: "JOB_EXECUTION_ID", value: tracking.executionId || "" },
+    { name: "CANCEL_URL", value: tracking.cancelUrl || "" },
+    { name: "CHECK_CANCELLATION_URL", value: tracking.checkCancellationUrl || "" },
+    { name: "RESTART_URL", value: tracking.restartUrl || "" },
+    { name: "NODE_ENV", value: "production" },
+    { name: "AZURE_CLIENT_ID", value: runtimeEnv.AZURE_CLIENT_ID || "" },
+    { name: "DASHBOARD_STORAGE_ACCOUNT", value: runtimeEnv.DASHBOARD_STORAGE_ACCOUNT || "" },
+    { name: "DASHBOARD_BASE_URL", value: runtimeEnv.DASHBOARD_BASE_URL || "" },
+    { name: "KEY_VAULT_URL", value: runtimeEnv.KEY_VAULT_URL || "" },
+    { name: "CLAUDE_CODE_OAUTH_TOKEN", secretRef: "anthropic-oauth-token" },
+    { name: "GRAPH_CLIENT_ID", secretRef: "graph-client-id" },
+    { name: "GRAPH_CLIENT_SECRET", secretRef: "graph-client-secret" },
+    { name: "GRAPH_TENANT_ID", secretRef: "graph-tenant-id" },
+    { name: "LOGIC_APP_URL", secretRef: "logic-app-url" },
+    { name: "COSMOS_ENDPOINT", value: runtimeEnv.COSMOS_ENDPOINT || "" },
+    {
+      name: "COSMOS_PROJECT_POLICIES_CONTAINER",
+      value: runtimeEnv.COSMOS_PROJECT_POLICIES_CONTAINER || "projectPolicies",
+    },
+    {
+      name: "COSMOS_MEETING_SECURITY_CONTAINER",
+      value: runtimeEnv.COSMOS_MEETING_SECURITY_CONTAINER || "meetingSecurity",
+    },
+    // Must match the Portal API's submissions container so upload status write-back
+    // patches the same records the Portal API created.
+    { name: "COSMOS_SUBMISSIONS_CONTAINER", value: runtimeEnv.COSMOS_SUBMISSIONS_CONTAINER || "submissions" },
+    { name: "CLAUDE_MODEL", value: runtimeEnv.CLAUDE_MODEL || "" },
+  ];
+}
+
+module.exports = { normalizeQueueMessage, buildDedupKey, buildJobEnvironment };

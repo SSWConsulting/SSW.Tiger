@@ -15,6 +15,8 @@ param containerAppJobImage string
 param managedIdentityId string
 param managedIdentityClientId string
 param dashboardStorageAccountName string
+@description('Private container used for uploaded transcript sources')
+param transcriptStorageContainerName string
 
 // Application Insights for logging
 param appInsightsConnectionString string
@@ -68,7 +70,13 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
     keyVaultReferenceIdentity: managedIdentityId
     siteConfig: {
       keyVaultReferenceIdentity: managedIdentityId
-      linuxFxVersion: 'NODE|20'
+      // Node 20 went out of support on 30/04/2026, and the Azure SDKs this app pulls
+      // in (@azure/core-rest-pipeline, @typespec/ts-http-runtime) now declare
+      // engines.node >=22. Node 22 is GA on Linux Functions and is the last version
+      // Linux Consumption will support. Requires the v4 programming model, which this
+      // app already uses. Keep in step with WEBSITE_NODE_DEFAULT_VERSION below,
+      // package.json engines, and portalApiApp.bicep.
+      linuxFxVersion: 'NODE|22'
       ftpsState: 'Disabled'
       http20Enabled: true
       minTlsVersion: '1.2'
@@ -95,7 +103,9 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         // Function runtime settings
         { name: 'FUNCTIONS_EXTENSION_VERSION', value: '~4' }
         { name: 'FUNCTIONS_WORKER_RUNTIME', value: 'node' }
-        { name: 'WEBSITE_NODE_DEFAULT_VERSION', value: '~20' }
+        { name: 'WEBSITE_NODE_DEFAULT_VERSION', value: '~22' }
+        // Reject oversized HTTP bodies before multipart parsing allocates memory.
+        { name: 'FUNCTIONS_REQUEST_BODY_SIZE_LIMIT', value: '12582912' }
         // Key Vault references for Graph API credentials
         {
           name: 'GRAPH_CLIENT_ID'
@@ -115,6 +125,8 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'CONTAINER_APP_JOB_IMAGE', value: containerAppJobImage }
         { name: 'DASHBOARD_STORAGE_ACCOUNT', value: dashboardStorageAccountName }
         { name: 'DASHBOARD_BASE_URL', value: dashboardBaseUrl }
+        { name: 'TRANSCRIPT_STORAGE_ACCOUNT', value: storageAccountName }
+        { name: 'TRANSCRIPT_STORAGE_CONTAINER', value: transcriptStorageContainerName }
         // Passed through to Container App Job at start time
         { name: 'COSMOS_ENDPOINT', value: cosmosEndpoint }
         { name: 'COSMOS_PROJECT_POLICIES_CONTAINER', value: 'projectPolicies' }
@@ -152,3 +164,11 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
 output id string = functionApp.id
 output name string = functionApp.name
 output endpoint string = 'https://${functionApp.properties.defaultHostName}'
+
+// Shared with the Portal API app: creating a NEW Y1 Linux plan in this RG failed
+// ("Dynamic SKU, Linux Worker not available in resource group") — the Linux
+// webspace this RG maps to in Australia East won't place another one — so the
+// Portal API rides this existing plan instead. Existing Y1 apps keep running and
+// Y1 scales per-app, so the apps stay independent. (Flex Consumption is the
+// modern alternative if a genuinely separate plan is ever needed.)
+output hostingPlanId string = hostingPlan.id

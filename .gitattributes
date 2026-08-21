@@ -1,0 +1,18 @@
+# Normalize all text files to LF in the repo AND on checkout, on every OS.
+# Kills the "LF will be replaced by CRLF" churn from core.autocrlf on Windows.
+* text=auto eol=lf
+
+# Shell scripts and the container entrypoint MUST stay LF (CRLF breaks them).
+*.sh text eol=lf
+entrypoint.sh text eol=lf
+
+# Binary assets git must never touch.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.pdf binary

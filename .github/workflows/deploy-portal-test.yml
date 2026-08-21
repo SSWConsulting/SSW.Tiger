@@ -1,0 +1,79 @@
+name: Deploy Portal SPA Test
+
+# Builds portal/ and publishes it to swa-tiger-portal-test.
+#
+# Why this exists: `swa deploy` from a workstation first downloads a
+# StaticSitesClient binary from a Microsoft CDN, which fails behind some
+# networks ("Could not load StaticSitesClient metadata from remote"). This
+# action does the publish server-side, so no local binary is involved.
+#
+# Trigger: any push to a non-master branch that touches portal/. A workflow
+# file takes effect on the branch it lives on, so this runs without being
+# merged first — but the manual "Run workflow" button only appears once the
+# file reaches the default branch (a GitHub restriction on workflow_dispatch).
+#
+# master is excluded on purpose: master is what ships to swa-tiger-portal-staging
+# (which is production), and that deploy is deliberately still manual.
+
+on:
+  push:
+    branches-ignore: [master]
+    paths:
+      - "portal/**"
+      - ".github/workflows/deploy-portal-test.yml"
+  workflow_dispatch:
+
+# One deploy at a time. Two pushes in quick succession would otherwise race to
+# upload different builds to the same environment, and the loser wins.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Match the Function Apps (infra/modules/*.bicep) so the whole repo
+          # builds on one Node version.
+          node-version: 22
+
+      - name: Build the SPA
+        working-directory: portal
+        run: |
+          npm ci
+          npm run build
+
+      # `npm run build` is `tsc -b && vite build`, so dist/ is already complete
+      # — including staticwebapp.config.json, which Vite copies from public/ and
+      # which carries the Entra auth + routing rules. Without it the deployed
+      # site is unauthenticated.
+      - name: Verify the SWA config survived the build
+        run: test -f portal/dist/staticwebapp.config.json
+
+      # `production_branch` and `deployment_environment` are deliberately unset.
+      # With both absent the action publishes a push to the SWA's production
+      # (default) environment. Setting either would route non-matching branches
+      # into named PREVIEW environments, which this SWA has disabled
+      # (stagingEnvironmentPolicy: Disabled — linked backends do not work there,
+      # so a preview would serve the SPA against an /api with no backend).
+      - name: Deploy to swa-tiger-portal-test
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.SWA_TIGER_PORTAL_TEST_TOKEN }}
+          action: upload
+          # Already built above, so this points at the output, not the source.
+          app_location: portal/dist
+          skip_app_build: true
+          # No api_location is set, so the action has no managed API to build.
+          # (There is no skip_api_build input — passing one is a warning, not an
+          # error, so it looked like it worked. Leaving api_location unset is the
+          # actual way to say "the backend is a separate linked Function App".)

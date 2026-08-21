@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="referrer" content="no-referrer" />
+    <meta http-equiv="Cache-Control" content="no-store" />
+    <title>SSW Tiger — Meeting dashboards</title>
+    <!--
+      Inter is self-hosted (see src/styles.css). It used to come from
+      fonts.googleapis.com via a render-blocking <link rel="stylesheet">, which
+      put two cross-origin round trips (CSS on googleapis, then the woff2 on
+      gstatic) in front of the first paint. Same-origin means those disappear and
+      the file rides the immutable /assets/* cache rule in staticwebapp.config.json.
+    -->
+    <script>
+      // Start GET /api/v1/submissions HERE, before the browser has even asked for
+      // the JS bundle. src/main.tsx used to own this prefetch, so it could not
+      // begin until the bundle had downloaded and parsed — and the endpoint is a
+      // cold-startable Consumption Function where the platform recycles the worker
+      // every ~8 minutes, so starting earlier is the cheapest win available.
+      //
+      // SubmissionClient adopts this in-flight response instead of issuing a
+      // second request. The .catch is not optional: without it a failure before
+      // the app attaches its own handlers surfaces as an unhandled rejection.
+      // Resolving to null tells SubmissionClient to fall back to a normal fetch.
+      window.__tigerSubmissions = fetch("/api/v1/submissions", {
+        headers: { accept: "application/json" },
+        credentials: "same-origin",
+        redirect: "manual",
+      }).catch(function () {
+        return null;
+      });
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

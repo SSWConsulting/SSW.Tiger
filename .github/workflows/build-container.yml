@@ -28,8 +28,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Custom image tag (optional, defaults to branch name)'
-        required: false
+        description: 'Image tag to publish (e.g. test)'
+        required: true
+        default: 'test'
         type: string
 
 concurrency:
@@ -67,12 +68,20 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # Exactly two ways an image gets a tag, and nothing else.
+          #
+          # `latest` is what the Container App Job pulls, so it is reserved for
+          # master. The `preview` branch used to publish `latest` too, which meant
+          # a branch could silently replace what production runs.
+          #
+          # Every other tag is a deliberate manual act. There used to be a
+          # branch-name tag and a short-sha tag on every build; nothing consumed
+          # either, and the branch-name one is what published a `test` image on
+          # its own. Test now moves only when someone dispatches this workflow
+          # and names the tag.
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=latest,enable=${{ github.ref_name == 'preview' }}
-            type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
-            type=sha,prefix=,format=short
-            type=ref,event=branch
+            type=raw,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -84,13 +93,23 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # A pull_request build produces no tags at all now, and does not push. Say
+      # so, rather than printing "Container Published" over an empty tag list.
       - name: Summary
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
         run: |
+          if [ -z "$TAGS" ]; then
+            echo "### Container Built (not published)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Validation build - no tag was assigned and nothing was pushed." >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
           echo "### Container Published" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Image: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Tags:" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo "$TAGS" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

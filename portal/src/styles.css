@@ -1,0 +1,114 @@
+@import "tailwindcss";
+
+/* Self-hosted Inter, replacing the render-blocking fonts.googleapis.com link that
+   used to sit in index.html. One 48 KB latin variable file covers every weight the
+   portal uses (400-800), Vite hashes it into /assets, and staticwebapp.config.json
+   caches that immutably — so it is downloaded once per deploy instead of on every
+   visit from a third-party host. Only the latin subset is declared because the
+   portal is English-only; @fontsource-variable/inter/index.css would emit ~10
+   subset files we never serve. */
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-weight: 100 900;
+  /* Text paints in the fallback immediately rather than waiting on the woff2. */
+  font-display: swap;
+  src: url("@fontsource-variable/inter/files/inter-latin-wght-normal.woff2") format("woff2-variations");
+}
+
+/* ============================================================
+   Tiger portal — SSW Design System theme
+   Colours, fonts, radii and shadows are ported VERBATIM from the
+   dashboard's tailwind.config (templates/dashboard.html) so the upload
+   portal and the generated dashboards share one utility vocabulary
+   (text-ssw-charcoal, bg-ssw-red, rounded-ds, shadow-ds-raised, ...).
+   ============================================================ */
+@theme {
+  /* DS semantic tokens */
+  --color-primary: #cd4242;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #333333;
+  --color-secondary-foreground: #ffffff;
+  --color-success: #067957;
+  --color-warning: #8f6c19;
+  --color-destructive: #dc2828;
+  --color-info: #4e19a9;
+  --color-billable: #01b8aa;
+
+  /* SSW Primary Red (DS primary #CD4242) */
+  --color-ssw-red: #cd4242;
+  --color-ssw-red-50: #fce9e9;
+  --color-ssw-red-100: #f8d4d4;
+  --color-ssw-red-200: #f1a9a9;
+  --color-ssw-red-300: #e97d7d;
+  --color-ssw-red-400: #e25252;
+  --color-ssw-red-500: #cd4242;
+  --color-ssw-red-600: #a33636;
+  --color-ssw-red-700: #7a2828;
+  --color-ssw-red-800: #521b1b;
+  --color-ssw-red-900: #290d0d;
+
+  /* SSW Charcoal (DS secondary #333333) */
+  --color-ssw-charcoal: #333333;
+  --color-ssw-charcoal-50: #f5f5f5;
+  --color-ssw-charcoal-100: #e8e8e8;
+  --color-ssw-charcoal-200: #d1d1d1;
+  --color-ssw-charcoal-300: #b0b0b0;
+  --color-ssw-charcoal-400: #888888;
+  --color-ssw-charcoal-500: #666666;
+  --color-ssw-charcoal-600: #4d4d4d;
+  --color-ssw-charcoal-700: #333333;
+  --color-ssw-charcoal-800: #1a1a1a;
+  --color-ssw-charcoal-900: #0d0d0d;
+
+  /* SSW Gray */
+  --color-ssw-gray-50: #fafafa;
+  --color-ssw-gray-100: #f4f4f5;
+  --color-ssw-gray-200: #e4e4e7;
+  --color-ssw-gray-300: #d4d4d8;
+  --color-ssw-gray-400: #a1a1aa;
+  --color-ssw-gray-500: #71717a;
+  --color-ssw-gray-600: #52525b;
+  --color-ssw-gray-700: #3f3f46;
+  --color-ssw-gray-800: #27272a;
+  --color-ssw-gray-900: #18181b;
+
+  --font-sans: "Inter Variable", Inter, "Helvetica Neue", Helvetica, ui-sans-serif, system-ui, sans-serif;
+  /* The only mono text is the dashboard password chip, so IBM Plex Mono was a
+     whole extra webfont download for one <code> element. The system mono stack
+     renders it just as legibly for free. */
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  --radius-ds: 8px;
+  --radius-ds-sm: 4px;
+
+  --shadow-ds-raised: 0px 2px 4px 0px #00000014, 0px 4px 8px 0px #0000000a;
+  --shadow-ds-overlay: 0px 8px 8px 0px #0000000a, 0px 20px 24px 0px #00000014;
+}
+
+@layer base {
+  body {
+    margin: 0;
+    min-width: 320px;
+    font-family: var(--font-sans);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    color: #000000e6;
+    -webkit-font-smoothing: antialiased;
+    background:
+      radial-gradient(circle at 88% -6%, rgba(205, 66, 66, 0.07), transparent 30rem),
+      #fafafa;
+  }
+}
+
+/* Visually-hidden helper (used by the file input inside the dropzone) */
+@utility sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
