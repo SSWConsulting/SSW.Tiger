@@ -2,6 +2,7 @@ const { app } = require("@azure/functions");
 const { DefaultAzureCredential } = require("@azure/identity");
 const { ContainerAppsAPIClient } = require("@azure/arm-appcontainers");
 const crypto = require("crypto");
+const { buildJobEnv } = require("./jobEnv");
 
 /**
  * Processes transcript notifications from the queue.
@@ -366,47 +367,24 @@ async function triggerContainerAppJob(params, context) {
   try {
     // beginStart() returns a poller for the LRO (Long Running Operation)
     // We only wait for the job to be accepted/started, not for it to complete
-    // IMPORTANT: Template override REPLACES the env array, so we must include ALL env vars
+    // Template override REPLACES the env array, so buildJobEnv re-declares every
+    // var the processor reads. Add new ones there, not on the job alone.
     const poller = await client.jobs.beginStart(resourceGroup, jobName, {
       template: {
         containers: [
           {
             name: "tiger-processor",
             image: containerImage,
-            env: [
-              // Dynamic values passed from queue message
-              { name: "GRAPH_USER_ID", value: userId },
-              { name: "GRAPH_MEETING_ID", value: meetingId },
-              { name: "GRAPH_TRANSCRIPT_ID", value: transcriptId },
-              // Execution tracking for cancel functionality
-              { name: "JOB_EXECUTION_ID", value: executionId },
-              { name: "CANCEL_URL", value: cancelUrl },
-              { name: "CHECK_CANCELLATION_URL", value: checkCancellationUrl },
-              // Restart URL — sent in failed/cancelled Teams cards so users can re-run
-              { name: "RESTART_URL", value: restartUrl },
-              // Manual trigger: skip subject filter when explicitly requested
-              ...(skipSubjectFilter
-                ? [{ name: "SKIP_SUBJECT_FILTER", value: "true" }]
-                : []),
-              // Static values - must be included as template override replaces the env array
-              { name: "NODE_ENV", value: "production" },
-              { name: "AZURE_CLIENT_ID", value: process.env.AZURE_CLIENT_ID },
-              { name: "DASHBOARD_STORAGE_ACCOUNT", value: process.env.DASHBOARD_STORAGE_ACCOUNT },
-              { name: "DASHBOARD_BASE_URL", value: process.env.DASHBOARD_BASE_URL },
-              { name: "KEY_VAULT_URL", value: process.env.KEY_VAULT_URL || "" },
-              // Secrets from job configuration (defined in containerApp.bicep)
-              { name: "CLAUDE_CODE_OAUTH_TOKEN", secretRef: "anthropic-oauth-token" },
-              { name: "GRAPH_CLIENT_ID", secretRef: "graph-client-id" },
-              { name: "GRAPH_CLIENT_SECRET", secretRef: "graph-client-secret" },
-              { name: "GRAPH_TENANT_ID", secretRef: "graph-tenant-id" },
-              { name: "LOGIC_APP_URL", secretRef: "logic-app-url" },
-              // Cosmos DB for meeting metadata persistence
-              { name: "COSMOS_ENDPOINT", value: process.env.COSMOS_ENDPOINT || "" },
-              { name: "COSMOS_PROJECT_POLICIES_CONTAINER", value: process.env.COSMOS_PROJECT_POLICIES_CONTAINER || "projectPolicies" },
-              { name: "COSMOS_MEETING_SECURITY_CONTAINER", value: process.env.COSMOS_MEETING_SECURITY_CONTAINER || "meetingSecurity" },
-              // Claude model override
-              { name: "CLAUDE_MODEL", value: process.env.CLAUDE_MODEL || "" },
-            ],
+            env: buildJobEnv({
+              userId,
+              meetingId,
+              transcriptId,
+              executionId,
+              cancelUrl,
+              checkCancellationUrl,
+              restartUrl,
+              skipSubjectFilter,
+            }),
           },
         ],
       },

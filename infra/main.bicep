@@ -31,6 +31,15 @@ param imageTag string = 'latest'
 @description('Claude model ID for the processor')
 param claudeModel string = 'claude-opus-4-5-20251101'
 
+@description('Transcript hub repo (owner/repo) for raw .vtt archiving. Empty disables publishing.')
+param transcriptHubRepo string = ''
+
+@description('GitHub App ID for the transcript hub publisher')
+param transcriptHubAppId string = ''
+
+@description('Installation ID of that App on the transcript hub repo')
+param transcriptHubAppInstallationId string = ''
+
 @description('Unique suffix for deployment names')
 param suffix string = take(uniqueString(utcNow()), 6)
 
@@ -138,6 +147,9 @@ module containerApp 'modules/containerApp.bicep' = {
     claudeModel: claudeModel
     dashboardStorageAccountName: dashboardStorage.outputs.name
     cosmosEndpoint: cosmosDb.outputs.endpoint
+    transcriptHubRepo: transcriptHubRepo
+    transcriptHubAppId: transcriptHubAppId
+    transcriptHubAppInstallationId: transcriptHubAppInstallationId
   }
 }
 
@@ -173,6 +185,9 @@ module functionApp 'modules/functionApp.bicep' = {
     dashboardStorageAccountName: dashboardStorage.outputs.name
     cosmosEndpoint: cosmosDb.outputs.endpoint
     claudeModel: claudeModel
+    transcriptHubRepo: transcriptHubRepo
+    transcriptHubAppId: transcriptHubAppId
+    transcriptHubAppInstallationId: transcriptHubAppInstallationId
   }
 }
 

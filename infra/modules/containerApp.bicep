@@ -30,9 +30,34 @@ param dashboardStorageAccountName string
 @description('Cosmos DB endpoint for meeting metadata persistence')
 param cosmosEndpoint string = ''
 
+@description('Transcript hub repo (owner/repo) for raw .vtt archiving. Empty disables publishing.')
+param transcriptHubRepo string = ''
+
+@description('GitHub App ID for the transcript hub publisher')
+param transcriptHubAppId string = ''
+
+@description('Installation ID of that App on the transcript hub repo')
+param transcriptHubAppInstallationId string = ''
+
 var envName = toLower('ce-${project}-${environment}')
 var jobName = toLower('job-${project}-${environment}')
 var dashboardBaseUrl = environment == 'staging' ? 'dashboards.sswtiger.com' : 'dashboards-${environment}.sswtiger.com'
+
+// Opt-in: without a repo the publisher no-ops, and the App secret need not exist
+var transcriptHubEnabled = !empty(transcriptHubRepo)
+var transcriptHubSecrets = transcriptHubEnabled ? [
+  {
+    name: 'transcript-hub-app-private-key'
+    keyVaultUrl: 'https://${keyVaultName}${az.environment().suffixes.keyvaultDns}/secrets/TRANSCRIPT-HUB-APP-PRIVATE-KEY'
+    identity: managedIdentityId
+  }
+] : []
+var transcriptHubEnv = transcriptHubEnabled ? [
+  { name: 'TRANSCRIPT_HUB_REPO', value: transcriptHubRepo }
+  { name: 'TRANSCRIPT_HUB_APP_ID', value: transcriptHubAppId }
+  { name: 'TRANSCRIPT_HUB_APP_INSTALLATION_ID', value: transcriptHubAppInstallationId }
+  { name: 'TRANSCRIPT_HUB_APP_PRIVATE_KEY', secretRef: 'transcript-hub-app-private-key' }
+] : []
 
 // Container Apps Environment (the "cluster")
 resource containerEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
@@ -82,7 +107,7 @@ resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
       replicaRetryLimit: 0
 
       // Secrets from Key Vault (using managed identity)
-      secrets: [
+      secrets: concat([
         {
           name: 'anthropic-oauth-token'
           keyVaultUrl: 'https://${keyVaultName}${az.environment().suffixes.keyvaultDns}/secrets/anthropic-oauth-token'
@@ -119,7 +144,7 @@ resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
           keyVaultUrl: 'https://${keyVaultName}${az.environment().suffixes.keyvaultDns}/secrets/storage-connection-string'
           identity: managedIdentityId
         }
-      ]
+      ], transcriptHubSecrets)
 
       // Pull image from GitHub Container Registry
       registries: [
@@ -140,7 +165,7 @@ resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
             cpu: json(cpu)
             memory: memory
           }
-          env: [
+          env: concat([
             { name: 'AZURE_CLIENT_ID', value: managedIdentityClientId }
             { name: 'CLAUDE_CODE_OAUTH_TOKEN', secretRef: 'anthropic-oauth-token' }
             { name: 'DASHBOARD_STORAGE_ACCOUNT', value: dashboardStorageAccountName }
@@ -156,7 +181,7 @@ resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
             { name: 'COSMOS_PROJECT_POLICIES_CONTAINER', value: 'projectPolicies' }
             { name: 'COSMOS_MEETING_SECURITY_CONTAINER', value: 'meetingSecurity' }
             { name: 'KEY_VAULT_URL', value: 'https://${keyVaultName}${az.environment().suffixes.keyvaultDns}' }
-          ]
+          ], transcriptHubEnv)
         }
       ]
     }
