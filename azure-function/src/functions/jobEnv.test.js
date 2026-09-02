@@ -48,6 +48,13 @@ describe("buildJobEnv", () => {
     assert.equal(byName.TRANSCRIPT_HUB_APP_PRIVATE_KEY.secretRef, "transcript-hub-app-private-key");
   });
 
+  it("omits the hub block entirely when no repo is configured", () => {
+    const names = buildJobEnv({ ...args, env: {} }).map((e) => e.name);
+
+    // A lone secretRef would point at a secret the job never declares
+    assert.deepEqual(names.filter((n) => n.startsWith("TRANSCRIPT_HUB")), []);
+  });
+
   it("re-declares every env var the job template sets", () => {
     const built = new Set(buildJobEnv({ ...args, env: {} }).map((e) => e.name));
     const missing = jobEnvNamesFromBicep().filter(

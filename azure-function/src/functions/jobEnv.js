@@ -52,11 +52,16 @@ function buildJobEnv({
     { name: "COSMOS_MEETING_SECURITY_CONTAINER", value: env.COSMOS_MEETING_SECURITY_CONTAINER || "meetingSecurity" },
     // Claude model override
     { name: "CLAUDE_MODEL", value: env.CLAUDE_MODEL || "" },
-    // Transcript hub: archives the raw .vtt before analysis, no-ops when REPO is unset
-    { name: "TRANSCRIPT_HUB_REPO", value: env.TRANSCRIPT_HUB_REPO || "" },
-    { name: "TRANSCRIPT_HUB_APP_ID", value: env.TRANSCRIPT_HUB_APP_ID || "" },
-    { name: "TRANSCRIPT_HUB_APP_INSTALLATION_ID", value: env.TRANSCRIPT_HUB_APP_INSTALLATION_ID || "" },
-    { name: "TRANSCRIPT_HUB_APP_PRIVATE_KEY", secretRef: "transcript-hub-app-private-key" },
+    // Transcript hub: all four or none. The private key secret is only declared on
+    // jobs deployed with transcriptHubRepo set, so a lone secretRef would dangle.
+    ...(env.TRANSCRIPT_HUB_REPO
+      ? [
+          { name: "TRANSCRIPT_HUB_REPO", value: env.TRANSCRIPT_HUB_REPO },
+          { name: "TRANSCRIPT_HUB_APP_ID", value: env.TRANSCRIPT_HUB_APP_ID || "" },
+          { name: "TRANSCRIPT_HUB_APP_INSTALLATION_ID", value: env.TRANSCRIPT_HUB_APP_INSTALLATION_ID || "" },
+          { name: "TRANSCRIPT_HUB_APP_PRIVATE_KEY", secretRef: "transcript-hub-app-private-key" },
+        ]
+      : []),
   ];
 }
 
