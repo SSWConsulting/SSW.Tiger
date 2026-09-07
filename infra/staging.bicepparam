@@ -11,6 +11,11 @@ param imageTag = 'latest'
 // Claude model for the processor
 param claudeModel = 'claude-opus-4-5-20251101'
 
+// Transcript hub - raw .vtt archive for opted-in projects
+param transcriptHubRepo = 'SSWConsulting/SSW.Tiger-Transcripts'
+param transcriptHubAppId = '4645246'
+param transcriptHubAppInstallationId = '154848166'
+
 // Skip Logic App deployment to preserve Portal configuration
 param deployLogicApp = false
 

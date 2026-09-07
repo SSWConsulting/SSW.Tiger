@@ -25,6 +25,15 @@ param cosmosEndpoint string = ''
 @description('Claude model ID (passed through to Container App Job)')
 param claudeModel string = 'claude-opus-4-5-20251101'
 
+@description('Transcript hub repo (owner/repo), passed through to Container App Job')
+param transcriptHubRepo string = ''
+
+@description('GitHub App ID for the transcript hub publisher, passed through')
+param transcriptHubAppId string = ''
+
+@description('Installation ID of that App on the transcript hub repo, passed through')
+param transcriptHubAppInstallationId string = ''
+
 
 var functionAppName = toLower('func-${project}-${environment}')
 var hostingPlanName = toLower('plan-${project}-${environment}')
@@ -120,6 +129,9 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'COSMOS_PROJECT_POLICIES_CONTAINER', value: 'projectPolicies' }
         { name: 'COSMOS_MEETING_SECURITY_CONTAINER', value: 'meetingSecurity' }
         { name: 'CLAUDE_MODEL', value: claudeModel }
+        { name: 'TRANSCRIPT_HUB_REPO', value: transcriptHubRepo }
+        { name: 'TRANSCRIPT_HUB_APP_ID', value: transcriptHubAppId }
+        { name: 'TRANSCRIPT_HUB_APP_INSTALLATION_ID', value: transcriptHubAppInstallationId }
         // Subscription ID (for Container App API calls)
         { name: 'SUBSCRIPTION_ID', value: subscription().subscriptionId }
         // Graph Subscription ID (stored in Key Vault after creation via script)
