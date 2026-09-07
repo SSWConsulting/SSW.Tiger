@@ -12,8 +12,9 @@ const NOT_FORWARDED = new Set(["STORAGE_CONNECTION_STRING"]);
 
 function jobEnvNamesFromBicep() {
   const bicep = fs.readFileSync(BICEP, "utf8");
-  const template = bicep.slice(bicep.indexOf("template: {"));
-  const names = [...template.matchAll(/\{\s*name:\s*'([A-Z0-9_]+)'/g)].map((m) => m[1]);
+  // Whole file, not just the template block: vars like transcriptHubEnv are
+  // declared above it and concat'd into env, and those are the ones that go missing
+  const names = [...bicep.matchAll(/\{\s*name:\s*'([A-Z0-9_]+)'/g)].map((m) => m[1]);
   // A parse that silently finds nothing would make every assertion below vacuous
   assert.ok(names.length > 10, `Parsed only ${names.length} env names from ${BICEP}`);
   return names;
@@ -56,7 +57,9 @@ describe("buildJobEnv", () => {
   });
 
   it("re-declares every env var the job template sets", () => {
-    const built = new Set(buildJobEnv({ ...args, env: {} }).map((e) => e.name));
+    const built = new Set(
+      buildJobEnv({ ...args, env: { TRANSCRIPT_HUB_REPO: "o/r" } }).map((e) => e.name),
+    );
     const missing = jobEnvNamesFromBicep().filter(
       (name) => !built.has(name) && !NOT_FORWARDED.has(name),
     );
