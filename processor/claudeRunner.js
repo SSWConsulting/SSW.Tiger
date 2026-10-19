@@ -527,6 +527,7 @@ module.exports = {
   invokeClaude,
   hasConsolidatedAnalysis,
   // Exported for testing
+  describeHistory,
   detectFailureReason,
   detectStage,
   isApiRetryEvent,

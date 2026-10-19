@@ -1,11 +1,8 @@
 /**
  * Meeting History for Longitudinal Analysis
  *
- * Each run starts in a fresh container holding only the current meeting, so
- * the longitudinal-analyzer had nothing to compare against and always reported
- * "First analyzed meeting". This pulls the project's most recent prior
- * meetings from Cosmos DB and writes their consolidated analysis to
- * `{meetingPath}/history/`, where the agent is told to look.
+ * Writes the project's most recent prior meetings' consolidated analysis from
+ * Cosmos DB to `{meetingPath}/history/` for the longitudinal-analyzer.
  */
 
 const fs = require("fs").promises;
@@ -34,18 +31,18 @@ async function writeMeetingHistory({ projectName, meetingId, meetingPath }) {
     const meetings = await cosmos.queryMeetings({
       projectName,
       beforeMeetingId: meetingId,
+      requireConsolidated: true,
       limit: HISTORY_LIMIT,
     });
-    const prior = meetings.filter((m) => m.consolidated);
 
     // Clear any stale files so the folder matches what the prompt lists
     const historyDir = path.join(meetingPath, "history");
     await fs.rm(historyDir, { recursive: true, force: true });
 
-    if (prior.length === 0) return { status: "none" };
+    if (meetings.length === 0) return { status: "none" };
 
     await fs.mkdir(historyDir, { recursive: true });
-    for (const m of prior) {
+    for (const m of meetings) {
       const record = { meetingId: m.meetingId, meetingDate: m.meetingDate, consolidated: m.consolidated };
       await fs.writeFile(
         path.join(historyDir, `${path.basename(m.meetingId)}.json`),
@@ -54,11 +51,11 @@ async function writeMeetingHistory({ projectName, meetingId, meetingPath }) {
       );
     }
 
-    const meetingIds = prior.map((m) => m.meetingId);
+    const meetingIds = meetings.map((m) => m.meetingId);
     log("info", "Wrote meeting history for trend analysis", { count: meetingIds.length });
     return { status: "loaded", meetingIds };
   } catch (err) {
-    log("warn", "Failed to fetch meeting history (non-fatal)", { error: err.message });
+    log("error", "Failed to fetch meeting history (non-fatal)", { error: err.message });
     return { status: "unavailable" };
   }
 }

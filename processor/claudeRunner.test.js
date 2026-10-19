@@ -5,6 +5,7 @@ const path = require("path");
 const os = require("os");
 
 const {
+  describeHistory,
   detectFailureReason,
   detectStage,
   hasConsolidatedAnalysis,
@@ -217,5 +218,19 @@ describe("hasConsolidatedAnalysis", () => {
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(path.join(dir, "consolidated.json"), "{}", "utf-8");
     assert.equal(await hasConsolidatedAnalysis(meetingPath), true);
+  });
+});
+
+describe("describeHistory", () => {
+  const dir = "projects/tina/2026-10-13-130104/history";
+
+  it("lists each loaded history file in order", () => {
+    const line = describeHistory({ status: "loaded", meetingIds: ["2026-10-13-101845", "2026-09-29-100000"] }, dir);
+    assert.match(line, /history\/2026-10-13-101845\.json, projects\/tina\/2026-10-13-130104\/history\/2026-09-29-100000\.json/);
+  });
+
+  it("only calls it the first meeting when there is genuinely no history", () => {
+    assert.match(describeHistory({ status: "none" }, dir), /first analyzed meeting/);
+    assert.match(describeHistory({ status: "unavailable" }, dir), /do NOT describe this as the first meeting/);
   });
 });

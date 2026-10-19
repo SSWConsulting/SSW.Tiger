@@ -24,13 +24,12 @@ describe("writeMeetingHistory", () => {
     await fs.rm(meetingPath, { recursive: true, force: true });
   });
 
-  it("asks only for earlier meetings and writes one file per meeting with analysis", async () => {
+  it("asks only for earlier analysed meetings and writes one file per meeting", async () => {
     let queryArgs;
     cosmos.queryMeetings = async (args) => {
       queryArgs = args;
       return [
         { meetingId: "2026-10-13-101845", meetingDate: "2026-10-13", consolidated: { nextSteps: ["a"] } },
-        { meetingId: "2026-10-06-100000", meetingDate: "2026-10-06", consolidated: null },
         { meetingId: "2026-09-29-100000", meetingDate: "2026-09-29", consolidated: { nextSteps: ["b"] } },
       ];
     };
@@ -38,6 +37,7 @@ describe("writeMeetingHistory", () => {
     const result = await writeMeetingHistory({ projectName: "tina", meetingId: "2026-10-13-130104", meetingPath });
 
     assert.equal(queryArgs.beforeMeetingId, "2026-10-13-130104");
+    assert.equal(queryArgs.requireConsolidated, true);
     assert.deepEqual(result, { status: "loaded", meetingIds: ["2026-10-13-101845", "2026-09-29-100000"] });
     const files = (await fs.readdir(path.join(meetingPath, "history"))).sort();
     assert.deepEqual(files, ["2026-09-29-100000.json", "2026-10-13-101845.json"]);
@@ -54,6 +54,20 @@ describe("writeMeetingHistory", () => {
 
     assert.deepEqual(result, { status: "none" });
     await assert.rejects(fs.access(path.join(meetingPath, "history")));
+  });
+
+  it("reports unavailable without querying when Cosmos isn't configured", async () => {
+    delete process.env.COSMOS_ENDPOINT;
+    let queried = false;
+    cosmos.queryMeetings = async () => {
+      queried = true;
+      return [];
+    };
+
+    const result = await writeMeetingHistory({ projectName: "tina", meetingId: "2026-10-13-130104", meetingPath });
+
+    assert.deepEqual(result, { status: "unavailable" });
+    assert.equal(queried, false);
   });
 
   it("reports unavailable instead of throwing when Cosmos fails", async () => {
