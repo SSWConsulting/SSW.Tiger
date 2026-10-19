@@ -49,22 +49,39 @@ async function protectedMeetings(projectName) {
 
 /**
  * Fetch prior meetings and write them, plus `history/status.json`.
- * Never throws - returns the history status (also written to status.json when possible).
+ * Never throws. On any failure `history/` is removed, so protected data can't
+ * sit on disk under a status that lacks `includesProtectedMeetings`.
+ *
+ * @returns {{ status: "loaded" | "none" | "unavailable", meetingIds?: string[],
+ *   reason?: string, includesProtectedMeetings?: boolean }}
  */
 async function writeMeetingHistory({ projectName, meetingId, meetingPath }) {
   const historyDir = path.join(meetingPath, "history");
+  const clear = () => fs.rm(historyDir, { recursive: true, force: true }).catch(() => {});
+
+  let result;
   try {
-    const status = await loadHistory({ projectName, meetingId, historyDir });
-    await fs.mkdir(historyDir, { recursive: true });
-    await fs.writeFile(path.join(historyDir, "status.json"), JSON.stringify(status, null, 2), "utf-8");
-    return status;
+    result = await loadHistory({ projectName, meetingId, historyDir });
   } catch (err) {
-    // Filesystem trouble - the analyzer finds no status.json and no history
-    log("error", "Failed to write meeting history (non-fatal)", { error: err.message });
+    log("error", "Failed to load meeting history (non-fatal)", { error: err.message });
+    await clear();
+    result = { status: "unavailable", reason: "History could not be loaded" };
+  }
+
+  try {
+    // The agent only needs the status; the protection flag is for the deploy step
+    const { includesProtectedMeetings, ...agentStatus } = result;
+    await fs.mkdir(historyDir, { recursive: true });
+    await fs.writeFile(path.join(historyDir, "status.json"), JSON.stringify(agentStatus, null, 2), "utf-8");
+    return result;
+  } catch (err) {
+    log("error", "Failed to write meeting history status (non-fatal)", { error: err.message });
+    await clear();
     return { status: "unavailable", reason: "Could not write history files" };
   }
 }
 
+/** Write prior meetings to `historyDir`. Throws on Cosmos or filesystem errors. */
 async function loadHistory({ projectName, meetingId, historyDir }) {
   // Clear stale files so the folder only ever holds this run's history
   await fs.rm(historyDir, { recursive: true, force: true });
@@ -74,39 +91,34 @@ async function loadHistory({ projectName, meetingId, historyDir }) {
     return { status: "unavailable", reason: "Cosmos DB not configured" };
   }
 
-  try {
-    const { projectProtected, excludeIds } = await protectedMeetings(projectName);
-    const meetings = await cosmos.queryMeetings({
-      projectName,
-      beforeMeetingId: meetingId,
-      excludeMeetingIds: excludeIds,
-      requireConsolidated: true,
-      limit: HISTORY_LIMIT,
-    });
-    if (meetings.length === 0) return { status: "none" };
+  const { projectProtected, excludeIds } = await protectedMeetings(projectName);
+  const meetings = await cosmos.queryMeetings({
+    projectName,
+    beforeMeetingId: meetingId,
+    excludeMeetingIds: excludeIds,
+    requireConsolidated: true,
+    limit: HISTORY_LIMIT,
+  });
+  if (meetings.length === 0) return { status: "none" };
 
-    await fs.mkdir(historyDir, { recursive: true });
-    for (const m of meetings) {
-      const record = {
-        meetingId: m.meetingId,
-        meetingDate: m.meetingDate,
-        consolidated: pick(m.consolidated, HISTORY_FIELDS),
-      };
-      await fs.writeFile(
-        path.join(historyDir, `${path.basename(m.meetingId)}.json`),
-        JSON.stringify(record, null, 2),
-        "utf-8",
-      );
-    }
-
-    const meetingIds = meetings.map((m) => m.meetingId);
-    log("info", "Wrote meeting history for trend analysis", { count: meetingIds.length });
-    // In a protected project every history meeting is itself protected
-    return { status: "loaded", meetingIds, includesProtectedMeetings: projectProtected };
-  } catch (err) {
-    log("error", "Failed to fetch meeting history (non-fatal)", { error: err.message });
-    return { status: "unavailable", reason: "Cosmos DB read failed" };
+  await fs.mkdir(historyDir, { recursive: true });
+  for (const m of meetings) {
+    const record = {
+      meetingId: m.meetingId,
+      meetingDate: m.meetingDate,
+      consolidated: pick(m.consolidated, HISTORY_FIELDS),
+    };
+    await fs.writeFile(
+      path.join(historyDir, `${path.basename(m.meetingId)}.json`),
+      JSON.stringify(record, null, 2),
+      "utf-8",
+    );
   }
+
+  const meetingIds = meetings.map((m) => m.meetingId);
+  log("info", "Wrote meeting history for trend analysis", { count: meetingIds.length });
+  // In a protected project every history meeting is itself protected
+  return { status: "loaded", meetingIds, includesProtectedMeetings: projectProtected };
 }
 
 module.exports = { writeMeetingHistory };

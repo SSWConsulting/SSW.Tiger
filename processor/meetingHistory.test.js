@@ -55,7 +55,6 @@ describe("writeMeetingHistory", () => {
     assert.deepEqual(await readJson("status.json"), {
       status: "loaded",
       meetingIds: ["2026-10-13-101845", "2026-09-29-100000"],
-      includesProtectedMeetings: false,
     });
     const record = await readJson("2026-10-13-101845.json");
     assert.deepEqual(record.consolidated, { nextSteps: ["a"] });
@@ -115,6 +114,21 @@ describe("writeMeetingHistory", () => {
 
     assert.equal((await readJson("status.json")).status, "unavailable");
     assert.equal(queried, false);
+  });
+
+  it("removes partly written history when a write fails, so protected data can't linger", async () => {
+    cosmos.getProjectPolicy = async () => ({ passwordProtectionEnabled: true });
+    cosmos.queryMeetings = async () => [
+      { meetingId: "2026-10-06-100000", meetingDate: "2026-10-06", consolidated: { nextSteps: ["a"] } },
+      // BigInt can't be serialised, so writing the second file throws
+      { meetingId: "2026-09-29-100000", meetingDate: "2026-09-29", consolidated: { nextSteps: [1n] } },
+    ];
+
+    const result = await run();
+
+    assert.equal(result.status, "unavailable");
+    assert.equal(result.includesProtectedMeetings, undefined);
+    await assert.rejects(fs.access(path.join(meetingPath, "history", "2026-10-06-100000.json")));
   });
 
   it("writes an unavailable status instead of throwing when Cosmos fails", async () => {
