@@ -10,48 +10,57 @@
 
 const fs = require("fs").promises;
 const path = require("path");
-const { queryMeetings } = require("../lib/cosmosClient");
+const cosmos = require("../lib/cosmosClient");
+const { log } = require("../lib/logger");
 
 // Enough for the agent's "3-meeting trend" plus one, without bloating its context
 const HISTORY_LIMIT = 4;
 
 /**
- * Pick the meetings that happened before `meetingId`, newest first.
- * Meeting IDs start with YYYY-MM-DD-HHmmss, so they sort chronologically as
- * strings. Later meetings are excluded so reprocessing an old transcript
- * doesn't "compare" against its own future.
- */
-function selectPriorMeetings(meetings, meetingId, limit = HISTORY_LIMIT) {
-  return meetings
-    .filter((m) => m.consolidated && m.meetingId && m.meetingId < meetingId)
-    .sort((a, b) => b.meetingId.localeCompare(a.meetingId))
-    .slice(0, limit);
-}
-
-/**
  * Write prior meetings' consolidated analysis to `{meetingPath}/history/`.
- * Returns the meeting IDs written (newest first), or [] when there are none.
+ *
+ * Non-fatal: returns `{ status: "loaded", meetingIds }` (newest first),
+ * `{ status: "none" }` when the project has no earlier meetings, or
+ * `{ status: "unavailable" }` when Cosmos isn't configured or the read failed -
+ * so the prompt never claims "first meeting" for a project that has history.
  */
-async function writeMeetingHistory({ projectName, meetingId, meetingDate, meetingPath }) {
-  // Over-fetch slightly: the current meeting (on reprocess) and later same-day
-  // meetings can land in the window and get filtered out below
-  const meetings = await queryMeetings({ projectName, endDate: meetingDate, limit: HISTORY_LIMIT + 3 });
-  const prior = selectPriorMeetings(meetings, meetingId);
-  if (prior.length === 0) return [];
-
-  const historyDir = path.join(meetingPath, "history");
-  await fs.mkdir(historyDir, { recursive: true });
-
-  for (const m of prior) {
-    const record = { meetingId: m.meetingId, meetingDate: m.meetingDate, consolidated: m.consolidated };
-    await fs.writeFile(
-      path.join(historyDir, `${m.meetingId}.json`),
-      JSON.stringify(record, null, 2),
-      "utf-8",
-    );
+async function writeMeetingHistory({ projectName, meetingId, meetingPath }) {
+  if (!process.env.COSMOS_ENDPOINT) {
+    log("warn", "COSMOS_ENDPOINT not set, skipping meeting history");
+    return { status: "unavailable" };
   }
 
-  return prior.map((m) => m.meetingId);
+  try {
+    const meetings = await cosmos.queryMeetings({
+      projectName,
+      beforeMeetingId: meetingId,
+      limit: HISTORY_LIMIT,
+    });
+    const prior = meetings.filter((m) => m.consolidated);
+
+    // Clear any stale files so the folder matches what the prompt lists
+    const historyDir = path.join(meetingPath, "history");
+    await fs.rm(historyDir, { recursive: true, force: true });
+
+    if (prior.length === 0) return { status: "none" };
+
+    await fs.mkdir(historyDir, { recursive: true });
+    for (const m of prior) {
+      const record = { meetingId: m.meetingId, meetingDate: m.meetingDate, consolidated: m.consolidated };
+      await fs.writeFile(
+        path.join(historyDir, `${path.basename(m.meetingId)}.json`),
+        JSON.stringify(record, null, 2),
+        "utf-8",
+      );
+    }
+
+    const meetingIds = prior.map((m) => m.meetingId);
+    log("info", "Wrote meeting history for trend analysis", { count: meetingIds.length });
+    return { status: "loaded", meetingIds };
+  } catch (err) {
+    log("warn", "Failed to fetch meeting history (non-fatal)", { error: err.message });
+    return { status: "unavailable" };
+  }
 }
 
-module.exports = { selectPriorMeetings, writeMeetingHistory, HISTORY_LIMIT };
+module.exports = { writeMeetingHistory };

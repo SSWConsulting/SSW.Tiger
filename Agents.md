@@ -141,6 +141,7 @@ Skills in `.claude/skills/` are user-facing workflows that orchestrate the agent
 projects/{project-name}/
 ├── {YYYY-MM-DD-HHmmss}/            # Meeting folder (self-contained)
 │   ├── transcript.vtt               # Input
+│   ├── history/                     # Input — prior meetings' consolidated.json from Cosmos DB
 │   ├── analysis/
 │   │   ├── timeline.json            # Intermediate (agent output)
 │   │   ├── people.json              # Intermediate

@@ -109,17 +109,8 @@ async function processTranscript(transcriptPath, projectSlug) {
     });
   }
 
-  // Pull prior meetings for the longitudinal-analyzer (non-fatal - without
-  // them the Trends tab just falls back to "establishing baseline")
-  let historyMeetingIds = [];
-  if (process.env.COSMOS_ENDPOINT) {
-    try {
-      historyMeetingIds = await writeMeetingHistory({ projectName: projectSlug, meetingId, meetingDate, meetingPath });
-      log("info", "Wrote meeting history for trend analysis", { count: historyMeetingIds.length });
-    } catch (err) {
-      log("warn", "Failed to fetch meeting history (non-fatal)", { error: err.message });
-    }
-  }
+  // Pull prior meetings for the longitudinal-analyzer (non-fatal)
+  const history = await writeMeetingHistory({ projectName: projectSlug, meetingId, meetingPath });
 
   // Invoke Claude Code CLI (uses display name for human-readable prompt)
   await invokeClaudeWithRetry({
@@ -128,7 +119,7 @@ async function processTranscript(transcriptPath, projectSlug) {
     meetingId,
     meetingDate,
     meetingPath,
-    historyMeetingIds,
+    history,
     outputDir: OUTPUT_DIR,
     rootDir: ROOT_DIR,
   });
