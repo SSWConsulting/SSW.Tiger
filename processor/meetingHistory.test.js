@@ -55,6 +55,7 @@ describe("writeMeetingHistory", () => {
     assert.deepEqual(await readJson("status.json"), {
       status: "loaded",
       meetingIds: ["2026-10-13-101845", "2026-09-29-100000"],
+      includesProtectedMeetings: false,
     });
     const record = await readJson("2026-10-13-101845.json");
     assert.deepEqual(record.consolidated, { nextSteps: ["a"] });
@@ -76,18 +77,19 @@ describe("writeMeetingHistory", () => {
     assert.deepEqual(queryArgs.excludeMeetingIds, ["2026-09-29-100000"]);
   });
 
-  it("keeps protected meetings when the whole project is protected", async () => {
+  it("keeps protected meetings when the whole project is protected, and flags the run", async () => {
     cosmos.getProjectPolicy = async () => ({ passwordProtectionEnabled: true });
     cosmos.listMeetingSecurityByProject = async () => [{ meetingId: "2026-09-29-100000", passwordEnabled: true }];
     let queryArgs;
     cosmos.queryMeetings = async (args) => {
       queryArgs = args;
-      return [];
+      return [{ meetingId: "2026-09-29-100000", meetingDate: "2026-09-29", consolidated: { nextSteps: ["b"] } }];
     };
 
-    await run();
+    const result = await run();
 
     assert.deepEqual(queryArgs.excludeMeetingIds, []);
+    assert.equal(result.includesProtectedMeetings, true);
   });
 
   it("writes a none status and clears stale files when there are no earlier meetings", async () => {

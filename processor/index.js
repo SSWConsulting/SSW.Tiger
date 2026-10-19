@@ -110,7 +110,7 @@ async function processTranscript(transcriptPath, projectSlug) {
   }
 
   // Pull prior meetings for the longitudinal-analyzer (non-fatal)
-  await writeMeetingHistory({ projectName: projectSlug, meetingId, meetingPath });
+  const history = await writeMeetingHistory({ projectName: projectSlug, meetingId, meetingPath });
 
   // Invoke Claude Code CLI (uses display name for human-readable prompt)
   await invokeClaudeWithRetry({
@@ -153,6 +153,7 @@ async function processTranscript(transcriptPath, projectSlug) {
     dashboardPath: canonicalPath,
     projectName: projectSlug,
     meetingId,
+    requireProtection: history.includesProtectedMeetings === true,
   });
 
   // Persist to Cosmos DB (non-fatal)

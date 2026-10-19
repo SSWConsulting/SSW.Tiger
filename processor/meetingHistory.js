@@ -31,16 +31,20 @@ const pick = (obj, keys) =>
   Object.fromEntries(keys.filter((k) => obj[k] !== undefined).map((k) => [k, obj[k]]));
 
 /**
- * Meeting IDs whose dashboards are password protected on their own. Their
- * analysis must not surface in a later dashboard - unless the whole project is
- * protected, in which case every dashboard (including this one) is too.
+ * Which protected meetings to leave out of history. Meetings protected on
+ * their own must not surface in a later dashboard - unless the whole project
+ * is protected, in which case they're kept and the run is flagged so the
+ * deploy refuses to publish this dashboard publicly (see deployDashboard).
  */
-async function protectedMeetingIds(projectName) {
+async function protectedMeetings(projectName) {
   const policy = await cosmos.getProjectPolicy(projectName);
-  if (policy?.passwordProtectionEnabled) return [];
+  if (policy?.passwordProtectionEnabled) return { projectProtected: true, excludeIds: [] };
 
   const records = await cosmos.listMeetingSecurityByProject(projectName);
-  return records.filter((r) => r.passwordEnabled).map((r) => r.meetingId);
+  return {
+    projectProtected: false,
+    excludeIds: records.filter((r) => r.passwordEnabled).map((r) => r.meetingId),
+  };
 }
 
 /**
@@ -71,10 +75,11 @@ async function loadHistory({ projectName, meetingId, historyDir }) {
   }
 
   try {
+    const { projectProtected, excludeIds } = await protectedMeetings(projectName);
     const meetings = await cosmos.queryMeetings({
       projectName,
       beforeMeetingId: meetingId,
-      excludeMeetingIds: await protectedMeetingIds(projectName),
+      excludeMeetingIds: excludeIds,
       requireConsolidated: true,
       limit: HISTORY_LIMIT,
     });
@@ -96,7 +101,8 @@ async function loadHistory({ projectName, meetingId, historyDir }) {
 
     const meetingIds = meetings.map((m) => m.meetingId);
     log("info", "Wrote meeting history for trend analysis", { count: meetingIds.length });
-    return { status: "loaded", meetingIds };
+    // In a protected project every history meeting is itself protected
+    return { status: "loaded", meetingIds, includesProtectedMeetings: projectProtected };
   } catch (err) {
     log("error", "Failed to fetch meeting history (non-fatal)", { error: err.message });
     return { status: "unavailable", reason: "Cosmos DB read failed" };
