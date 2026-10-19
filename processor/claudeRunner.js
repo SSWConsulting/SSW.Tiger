@@ -253,10 +253,12 @@ function extractEventPreview(event) {
  * @param {string} params.meetingPath - absolute path to meeting folder
  * @param {string} params.outputDir - absolute path to output directory
  * @param {string} params.rootDir - absolute path to project root (for templates, CLAUDE.md)
+ * @param {string[]} [params.historyMeetingIds] - prior meetings written to
+ *   `{meetingPath}/history/` for the longitudinal-analyzer (newest first)
  * @param {boolean} [params.resumeDashboardOnly] - skip analysis, rebuild the
  *   dashboard from the existing consolidated.json (used by the retry path)
  */
-async function invokeClaude({ projectName, projectSlug, meetingId, meetingDate, meetingPath, outputDir, rootDir, resumeDashboardOnly = false }) {
+async function invokeClaude({ projectName, projectSlug, meetingId, meetingDate, meetingPath, outputDir, rootDir, historyMeetingIds = [], resumeDashboardOnly = false }) {
   await fs.mkdir(outputDir, { recursive: true });
 
   const authConfig = getClaudeAuthMethod();
@@ -267,7 +269,10 @@ Meeting Date: ${meetingDate}
 Meeting folder: projects/${projectSlug}/${meetingId}/
 Transcript: projects/${projectSlug}/${meetingId}/transcript.vtt
 Attendees (meeting invite list - use as suggestion for name resolution): projects/${projectSlug}/${meetingId}/attendees.json
-Dashboard template: templates/dashboard.html`;
+Dashboard template: templates/dashboard.html
+${historyMeetingIds.length > 0
+    ? `Previous meetings (consolidated analysis for the longitudinal-analyzer, newest first): ${historyMeetingIds.map((id) => `projects/${projectSlug}/${meetingId}/history/${id}.json`).join(", ")}`
+    : "Previous meetings: none available - this is the first analyzed meeting for this project"}`;
 
   // CLAUDE.md states the path with {placeholders}; this resolves them, and is
   // the path checkOutputExists looks for.

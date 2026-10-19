@@ -262,6 +262,8 @@ All sections below use `<li>` bullet points inside `<ul>` — consistent style t
 projects/{project-name}/
 ├── 2026-01-22/                       # Self-contained meeting folder
 │   ├── transcript.vtt                # Meeting transcript
+│   ├── history/                      # Prior meetings' consolidated analysis (from Cosmos DB, for longitudinal-analyzer)
+│   │   └── 2026-01-08-100000.json
 │   ├── analysis/                     # Meeting-specific analysis
 │   │   ├── timeline.json             # Raw agent output
 │   │   ├── people.json               # Raw agent output
