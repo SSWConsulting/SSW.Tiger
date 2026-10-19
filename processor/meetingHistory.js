@@ -49,11 +49,16 @@ async function protectedMeetingIds(projectName) {
  */
 async function writeMeetingHistory({ projectName, meetingId, meetingPath }) {
   const historyDir = path.join(meetingPath, "history");
-  const status = await loadHistory({ projectName, meetingId, historyDir });
-
-  await fs.mkdir(historyDir, { recursive: true });
-  await fs.writeFile(path.join(historyDir, "status.json"), JSON.stringify(status, null, 2), "utf-8");
-  return status;
+  try {
+    const status = await loadHistory({ projectName, meetingId, historyDir });
+    await fs.mkdir(historyDir, { recursive: true });
+    await fs.writeFile(path.join(historyDir, "status.json"), JSON.stringify(status, null, 2), "utf-8");
+    return status;
+  } catch (err) {
+    // Filesystem trouble - the analyzer finds no status.json and no history
+    log("error", "Failed to write meeting history (non-fatal)", { error: err.message });
+    return { status: "unavailable", reason: "Could not write history files" };
+  }
 }
 
 async function loadHistory({ projectName, meetingId, historyDir }) {
