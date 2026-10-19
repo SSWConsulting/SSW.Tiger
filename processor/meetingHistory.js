@@ -45,7 +45,7 @@ async function protectedMeetingIds(projectName) {
 
 /**
  * Fetch prior meetings and write them, plus `history/status.json`.
- * Never throws - returns the status object it wrote.
+ * Never throws - returns the history status (also written to status.json when possible).
  */
 async function writeMeetingHistory({ projectName, meetingId, meetingPath }) {
   const historyDir = path.join(meetingPath, "history");
