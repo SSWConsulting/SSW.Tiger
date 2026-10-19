@@ -21,7 +21,7 @@ You are a meeting transcript processor. Your job is to convert .vtt transcripts 
 | `people-analyzer` | Analyze contributions, roles, provide feedback | `analysis/people.json` |
 | `insights-generator` | Find non-obvious patterns, risks, opportunities | `analysis/insights.json` |
 | `analytics-generator` | Generate data-driven metrics and statistics | `analysis/analytics.json` |
-| `longitudinal-analyzer` | Compare with historical data, track trends | `analysis/longitudinal.json` |
+| `longitudinal-analyzer` | Compare with historical data (`history/` in the meeting folder - include this path when delegating), track trends | `analysis/longitudinal.json` |
 | **`consolidator`** | **Harmonize all outputs, ensure consistency** | **`analysis/consolidated.json`** |
 
 ### Workflow
@@ -262,7 +262,8 @@ All sections below use `<li>` bullet points inside `<ul>` — consistent style t
 projects/{project-name}/
 ├── 2026-01-22/                       # Self-contained meeting folder
 │   ├── transcript.vtt                # Meeting transcript
-│   ├── history/                      # Prior meetings' consolidated analysis (from Cosmos DB, for longitudinal-analyzer)
+│   ├── history/                      # Prior meetings' analysis (from Cosmos DB, for longitudinal-analyzer)
+│   │   ├── status.json               # loaded | none | unavailable - always written
 │   │   └── 2026-01-08-100000.json
 │   ├── analysis/                     # Meeting-specific analysis
 │   │   ├── timeline.json             # Raw agent output

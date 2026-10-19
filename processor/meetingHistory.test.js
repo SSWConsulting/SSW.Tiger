@@ -7,56 +7,101 @@ const path = require("path");
 const cosmos = require("../lib/cosmosClient");
 const { writeMeetingHistory } = require("./meetingHistory");
 
+const CURRENT = "2026-10-13-130104";
+
 describe("writeMeetingHistory", () => {
   let meetingPath;
-  const originalQuery = cosmos.queryMeetings;
-  const originalEndpoint = process.env.COSMOS_ENDPOINT;
+  const original = {
+    queryMeetings: cosmos.queryMeetings,
+    getProjectPolicy: cosmos.getProjectPolicy,
+    listMeetingSecurityByProject: cosmos.listMeetingSecurityByProject,
+    endpoint: process.env.COSMOS_ENDPOINT,
+  };
+
+  const readJson = async (name) =>
+    JSON.parse(await fs.readFile(path.join(meetingPath, "history", name), "utf-8"));
+  const run = () => writeMeetingHistory({ projectName: "tina", meetingId: CURRENT, meetingPath });
 
   beforeEach(async () => {
     meetingPath = await fs.mkdtemp(path.join(os.tmpdir(), "history-"));
     process.env.COSMOS_ENDPOINT = "https://example.documents.azure.com:443/";
+    cosmos.getProjectPolicy = async () => null;
+    cosmos.listMeetingSecurityByProject = async () => [];
   });
 
   afterEach(async () => {
-    cosmos.queryMeetings = originalQuery;
-    if (originalEndpoint === undefined) delete process.env.COSMOS_ENDPOINT;
-    else process.env.COSMOS_ENDPOINT = originalEndpoint;
+    cosmos.queryMeetings = original.queryMeetings;
+    cosmos.getProjectPolicy = original.getProjectPolicy;
+    cosmos.listMeetingSecurityByProject = original.listMeetingSecurityByProject;
+    if (original.endpoint === undefined) delete process.env.COSMOS_ENDPOINT;
+    else process.env.COSMOS_ENDPOINT = original.endpoint;
     await fs.rm(meetingPath, { recursive: true, force: true });
   });
 
-  it("asks only for earlier analysed meetings and writes one file per meeting", async () => {
+  it("writes earlier analysed meetings, trimmed to the audited fields, and a loaded status", async () => {
     let queryArgs;
     cosmos.queryMeetings = async (args) => {
       queryArgs = args;
       return [
-        { meetingId: "2026-10-13-101845", meetingDate: "2026-10-13", consolidated: { nextSteps: ["a"] } },
+        { meetingId: "2026-10-13-101845", meetingDate: "2026-10-13", consolidated: { nextSteps: ["a"], timeline: ["big"] } },
         { meetingId: "2026-09-29-100000", meetingDate: "2026-09-29", consolidated: { nextSteps: ["b"] } },
       ];
     };
 
-    const result = await writeMeetingHistory({ projectName: "tina", meetingId: "2026-10-13-130104", meetingPath });
+    await run();
 
-    assert.equal(queryArgs.beforeMeetingId, "2026-10-13-130104");
+    assert.equal(queryArgs.beforeMeetingId, CURRENT);
     assert.equal(queryArgs.requireConsolidated, true);
-    assert.deepEqual(result, { status: "loaded", meetingIds: ["2026-10-13-101845", "2026-09-29-100000"] });
-    const files = (await fs.readdir(path.join(meetingPath, "history"))).sort();
-    assert.deepEqual(files, ["2026-09-29-100000.json", "2026-10-13-101845.json"]);
-    const record = JSON.parse(await fs.readFile(path.join(meetingPath, "history", "2026-09-29-100000.json"), "utf-8"));
-    assert.deepEqual(record.consolidated, { nextSteps: ["b"] });
+    assert.deepEqual(await readJson("status.json"), {
+      status: "loaded",
+      meetingIds: ["2026-10-13-101845", "2026-09-29-100000"],
+    });
+    const record = await readJson("2026-10-13-101845.json");
+    assert.deepEqual(record.consolidated, { nextSteps: ["a"] });
   });
 
-  it("reports none and clears stale files when the project has no earlier meetings", async () => {
+  it("excludes individually protected meetings when the project is public", async () => {
+    cosmos.listMeetingSecurityByProject = async () => [
+      { meetingId: "2026-09-29-100000", passwordEnabled: true },
+      { meetingId: "2026-09-15-100000", passwordEnabled: false },
+    ];
+    let queryArgs;
+    cosmos.queryMeetings = async (args) => {
+      queryArgs = args;
+      return [];
+    };
+
+    await run();
+
+    assert.deepEqual(queryArgs.excludeMeetingIds, ["2026-09-29-100000"]);
+  });
+
+  it("keeps protected meetings when the whole project is protected", async () => {
+    cosmos.getProjectPolicy = async () => ({ passwordProtectionEnabled: true });
+    cosmos.listMeetingSecurityByProject = async () => [{ meetingId: "2026-09-29-100000", passwordEnabled: true }];
+    let queryArgs;
+    cosmos.queryMeetings = async (args) => {
+      queryArgs = args;
+      return [];
+    };
+
+    await run();
+
+    assert.deepEqual(queryArgs.excludeMeetingIds, []);
+  });
+
+  it("writes a none status and clears stale files when there are no earlier meetings", async () => {
     await fs.mkdir(path.join(meetingPath, "history"));
     await fs.writeFile(path.join(meetingPath, "history", "stale.json"), "{}");
     cosmos.queryMeetings = async () => [];
 
-    const result = await writeMeetingHistory({ projectName: "tina", meetingId: "2026-10-13-130104", meetingPath });
+    await run();
 
-    assert.deepEqual(result, { status: "none" });
-    await assert.rejects(fs.access(path.join(meetingPath, "history")));
+    assert.deepEqual(await fs.readdir(path.join(meetingPath, "history")), ["status.json"]);
+    assert.deepEqual(await readJson("status.json"), { status: "none" });
   });
 
-  it("reports unavailable without querying when Cosmos isn't configured", async () => {
+  it("writes an unavailable status without querying when Cosmos isn't configured", async () => {
     delete process.env.COSMOS_ENDPOINT;
     let queried = false;
     cosmos.queryMeetings = async () => {
@@ -64,19 +109,20 @@ describe("writeMeetingHistory", () => {
       return [];
     };
 
-    const result = await writeMeetingHistory({ projectName: "tina", meetingId: "2026-10-13-130104", meetingPath });
+    await run();
 
-    assert.deepEqual(result, { status: "unavailable" });
+    assert.equal((await readJson("status.json")).status, "unavailable");
     assert.equal(queried, false);
   });
 
-  it("reports unavailable instead of throwing when Cosmos fails", async () => {
+  it("writes an unavailable status instead of throwing when Cosmos fails", async () => {
     cosmos.queryMeetings = async () => {
       throw new Error("boom");
     };
 
-    const result = await writeMeetingHistory({ projectName: "tina", meetingId: "2026-10-13-130104", meetingPath });
+    const result = await run();
 
-    assert.deepEqual(result, { status: "unavailable" });
+    assert.equal(result.status, "unavailable");
+    assert.equal((await readJson("status.json")).status, "unavailable");
   });
 });

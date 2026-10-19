@@ -110,7 +110,7 @@ async function processTranscript(transcriptPath, projectSlug) {
   }
 
   // Pull prior meetings for the longitudinal-analyzer (non-fatal)
-  const history = await writeMeetingHistory({ projectName: projectSlug, meetingId, meetingPath });
+  await writeMeetingHistory({ projectName: projectSlug, meetingId, meetingPath });
 
   // Invoke Claude Code CLI (uses display name for human-readable prompt)
   await invokeClaudeWithRetry({
@@ -119,7 +119,6 @@ async function processTranscript(transcriptPath, projectSlug) {
     meetingId,
     meetingDate,
     meetingPath,
-    history,
     outputDir: OUTPUT_DIR,
     rootDir: ROOT_DIR,
   });

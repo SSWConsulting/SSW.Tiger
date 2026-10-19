@@ -1,8 +1,9 @@
 /**
  * Meeting History for Longitudinal Analysis
  *
- * Writes the project's most recent prior meetings' consolidated analysis from
- * Cosmos DB to `{meetingPath}/history/` for the longitudinal-analyzer.
+ * Writes the project's most recent prior meetings' analysis from Cosmos DB to
+ * `{meetingPath}/history/` for the longitudinal-analyzer, plus a `status.json`
+ * that always says whether history loaded, doesn't exist, or couldn't be read.
  */
 
 const fs = require("fs").promises;
@@ -13,37 +14,74 @@ const { log } = require("../lib/logger");
 // Enough for the agent's "3-meeting trend" plus one, without bloating its context
 const HISTORY_LIMIT = 4;
 
+// The parts of consolidated.json the longitudinal-analyzer audits. Copying
+// only these keeps its context small and limits what a past meeting exposes.
+const HISTORY_FIELDS = [
+  "metadata",
+  "executiveSummary",
+  "participants",
+  "keyDecisions",
+  "doneThisSprint",
+  "nextSteps",
+  "consolidatedTrends",
+  "consolidatedAnalytics",
+];
+
+const pick = (obj, keys) =>
+  Object.fromEntries(keys.filter((k) => obj[k] !== undefined).map((k) => [k, obj[k]]));
+
 /**
- * Write prior meetings' consolidated analysis to `{meetingPath}/history/`.
- *
- * Non-fatal: returns `{ status: "loaded", meetingIds }` (newest first),
- * `{ status: "none" }` when the project has no earlier meetings, or
- * `{ status: "unavailable" }` when Cosmos isn't configured or the read failed -
- * so the prompt never claims "first meeting" for a project that has history.
+ * Meeting IDs whose dashboards are password protected on their own. Their
+ * analysis must not surface in a later dashboard - unless the whole project is
+ * protected, in which case every dashboard (including this one) is too.
+ */
+async function protectedMeetingIds(projectName) {
+  const policy = await cosmos.getProjectPolicy(projectName);
+  if (policy?.passwordProtectionEnabled) return [];
+
+  const records = await cosmos.listMeetingSecurityByProject(projectName);
+  return records.filter((r) => r.passwordEnabled).map((r) => r.meetingId);
+}
+
+/**
+ * Fetch prior meetings and write them, plus `history/status.json`.
+ * Never throws - returns the status object it wrote.
  */
 async function writeMeetingHistory({ projectName, meetingId, meetingPath }) {
+  const historyDir = path.join(meetingPath, "history");
+  const status = await loadHistory({ projectName, meetingId, historyDir });
+
+  await fs.mkdir(historyDir, { recursive: true });
+  await fs.writeFile(path.join(historyDir, "status.json"), JSON.stringify(status, null, 2), "utf-8");
+  return status;
+}
+
+async function loadHistory({ projectName, meetingId, historyDir }) {
+  // Clear stale files so the folder only ever holds this run's history
+  await fs.rm(historyDir, { recursive: true, force: true });
+
   if (!process.env.COSMOS_ENDPOINT) {
     log("warn", "COSMOS_ENDPOINT not set, skipping meeting history");
-    return { status: "unavailable" };
+    return { status: "unavailable", reason: "Cosmos DB not configured" };
   }
 
   try {
     const meetings = await cosmos.queryMeetings({
       projectName,
       beforeMeetingId: meetingId,
+      excludeMeetingIds: await protectedMeetingIds(projectName),
       requireConsolidated: true,
       limit: HISTORY_LIMIT,
     });
-
-    // Clear any stale files so the folder matches what the prompt lists
-    const historyDir = path.join(meetingPath, "history");
-    await fs.rm(historyDir, { recursive: true, force: true });
-
     if (meetings.length === 0) return { status: "none" };
 
     await fs.mkdir(historyDir, { recursive: true });
     for (const m of meetings) {
-      const record = { meetingId: m.meetingId, meetingDate: m.meetingDate, consolidated: m.consolidated };
+      const record = {
+        meetingId: m.meetingId,
+        meetingDate: m.meetingDate,
+        consolidated: pick(m.consolidated, HISTORY_FIELDS),
+      };
       await fs.writeFile(
         path.join(historyDir, `${path.basename(m.meetingId)}.json`),
         JSON.stringify(record, null, 2),
@@ -56,7 +94,7 @@ async function writeMeetingHistory({ projectName, meetingId, meetingPath }) {
     return { status: "loaded", meetingIds };
   } catch (err) {
     log("error", "Failed to fetch meeting history (non-fatal)", { error: err.message });
-    return { status: "unavailable" };
+    return { status: "unavailable", reason: "Cosmos DB read failed" };
   }
 }
 

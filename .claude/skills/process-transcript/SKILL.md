@@ -55,7 +55,7 @@ Delegate to each specialized agent in `.claude/agents/`:
    - Calculates efficiency scores
 
 5. **longitudinal-analyzer** → `analysis/longitudinal.json`
-   - Compares with previous meetings (if available)
+   - Compares with previous meetings from `history/` in the meeting folder (read `history/status.json` first)
    - Identifies trends and patterns over time
    - Tracks improvement and recurring issues
 
