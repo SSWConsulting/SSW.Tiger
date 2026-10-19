@@ -100,9 +100,13 @@ function buildDashboardUploadArgs({ dashboardDir, blobDestination, storageAccoun
 /**
  * Deploy dashboard to Azure Blob Storage.
  *
+ * @param {Object} params
+ * @param {boolean} [params.requireProtection] - the dashboard quotes protected
+ *   meetings (via Trends history), so it must never be published publicly -
+ *   even where prepareDashboardForDeployment would otherwise fail open
  * @returns {string} deployed URL
  */
-async function deployDashboard({ dashboardPath, projectName, meetingId }) {
+async function deployDashboard({ dashboardPath, projectName, meetingId, requireProtection = false }) {
   const storageAccount = process.env.DASHBOARD_STORAGE_ACCOUNT;
   if (!storageAccount) {
     throw new Error("DASHBOARD_STORAGE_ACCOUNT not set");
@@ -113,6 +117,11 @@ async function deployDashboard({ dashboardPath, projectName, meetingId }) {
     projectName,
     meetingId,
   });
+  if (requireProtection && !security.passwordProtected) {
+    throw new Error(
+      `Refusing to publish a public dashboard for '${projectName}/${meetingId}': its Trends history includes password-protected meetings`,
+    );
+  }
   const dashboardDir = security.uploadDir || path.dirname(dashboardPath);
 
   const blobDestination = `$web/${projectName}/${meetingId}`;

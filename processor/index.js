@@ -22,6 +22,7 @@ const { validateCredentials, invokeClaude, hasConsolidatedAnalysis } = require("
 const { checkOutputExists, copyToOutputDirectory, deployDashboard, persistToCosmos, deployProjectIndex } = require("./deployer");
 const { validateAndRepairDashboard } = require("./dashboardValidator");
 const { publishTranscript } = require("./transcriptHubPublisher");
+const { writeMeetingHistory } = require("./meetingHistory");
 
 const ROOT_DIR = path.join(__dirname, "..");
 const OUTPUT_DIR = process.env.OUTPUT_DIR || path.join(ROOT_DIR, "output");
@@ -108,6 +109,9 @@ async function processTranscript(transcriptPath, projectSlug) {
     });
   }
 
+  // Pull prior meetings for the longitudinal-analyzer (non-fatal)
+  const history = await writeMeetingHistory({ projectName: projectSlug, meetingId, meetingPath });
+
   // Invoke Claude Code CLI (uses display name for human-readable prompt)
   await invokeClaudeWithRetry({
     projectName: displayName,
@@ -149,6 +153,7 @@ async function processTranscript(transcriptPath, projectSlug) {
     dashboardPath: canonicalPath,
     projectName: projectSlug,
     meetingId,
+    requireProtection: history.includesProtectedMeetings === true,
   });
 
   // Persist to Cosmos DB (non-fatal)

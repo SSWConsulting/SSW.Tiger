@@ -267,7 +267,8 @@ Meeting Date: ${meetingDate}
 Meeting folder: projects/${projectSlug}/${meetingId}/
 Transcript: projects/${projectSlug}/${meetingId}/transcript.vtt
 Attendees (meeting invite list - use as suggestion for name resolution): projects/${projectSlug}/${meetingId}/attendees.json
-Dashboard template: templates/dashboard.html`;
+Dashboard template: templates/dashboard.html
+Previous meetings (for the longitudinal-analyzer - pass it this path): projects/${projectSlug}/${meetingId}/history/ (read status.json first)`;
 
   // CLAUDE.md states the path with {placeholders}; this resolves them, and is
   // the path checkOutputExists looks for.
