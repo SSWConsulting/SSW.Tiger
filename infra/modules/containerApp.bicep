@@ -27,6 +27,9 @@ param claudeModel string = 'claude-opus-4-5-20251101'
 @description('Storage account name for dashboard static website hosting')
 param dashboardStorageAccountName string
 
+@description('Dashboard hostname (or HTTPS origin) used to build deployed dashboard URLs')
+param dashboardBaseUrl string
+
 @description('Cosmos DB endpoint for meeting metadata persistence')
 param cosmosEndpoint string = ''
 
@@ -41,7 +44,6 @@ param transcriptHubAppInstallationId string = ''
 
 var envName = toLower('ce-${project}-${environment}')
 var jobName = toLower('job-${project}-${environment}')
-var dashboardBaseUrl = environment == 'staging' ? 'dashboards.sswtiger.com' : 'dashboards-${environment}.sswtiger.com'
 
 // Opt-in: without a repo the publisher no-ops, and the App secret need not exist
 var transcriptHubEnabled = !empty(transcriptHubRepo)

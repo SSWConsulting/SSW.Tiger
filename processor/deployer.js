@@ -28,6 +28,7 @@ const {
   encryptDashboardPassword,
 } = require("../lib/keyVaultPasswords");
 const { DASHBOARD_HTML_CACHE_CONTROL } = require("../lib/dashboardBlob");
+const { dashboardUrl } = require("../lib/dashboardUrl");
 
 /**
  * Check that the dashboard HTML exists at the canonical location.
@@ -112,6 +113,9 @@ async function deployDashboard({ dashboardPath, projectName, meetingId, requireP
     throw new Error("DASHBOARD_STORAGE_ACCOUNT not set");
   }
 
+  // Fail fast on a malformed DASHBOARD_BASE_URL before anything is uploaded
+  if (process.env.DASHBOARD_BASE_URL) dashboardUrl(process.env.DASHBOARD_BASE_URL);
+
   const security = await prepareDashboardForDeployment({
     dashboardPath,
     projectName,
@@ -181,7 +185,7 @@ async function deployDashboard({ dashboardPath, projectName, meetingId, requireP
   }
 
   const storagePath = `${projectName}/${meetingId}`;
-  const deployedUrl = `https://${host}/${storagePath}`;
+  const deployedUrl = dashboardUrl(host, [projectName, meetingId]);
   log("info", "Dashboard deployed", { url: deployedUrl });
   return {
     deployedUrl,
@@ -334,6 +338,27 @@ async function persistToCosmos({ projectName, meetingId, meetingDate, dashboardP
 }
 
 /**
+ * Read the display name stored on an already-published project index.
+ * Returns "" when the blob or its metadata is missing, or az fails.
+ */
+function readPublishedDisplayName({ execFileSync, isWindows, storageAccount, blobName }) {
+  try {
+    const output = execFileSync("az", quoteForShell([
+      "storage", "blob", "metadata", "show",
+      "--container-name", "$web",
+      "--name", blobName,
+      "--account-name", storageAccount,
+      "--auth-mode", "login",
+      "-o", "json",
+    ], isWindows), { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], shell: isWindows });
+    const value = JSON.parse(output || "{}").displayname;
+    return value ? decodeURIComponent(value) : "";
+  } catch {
+    return "";
+  }
+}
+
+/**
  * Generate and deploy the per-project index page listing all meeting
  * dashboards, so https://{host}/{project}/ shows a landing page.
  *
@@ -364,12 +389,22 @@ async function deployProjectIndex({ projectName, displayName, currentMeeting }) 
   }
   meetings = mergeCurrentMeeting(meetings, currentMeeting);
 
+  const { execFileSync } = require("child_process");
+  const isWindows = process.platform === "win32";
+  const blobName = `${projectName}/index.html`;
+
+  // --overwrite replaces blob metadata, so a caller without a display name
+  // (deploy-local) keeps the one already published rather than reverting to the slug
+  const resolvedDisplayName = displayName
+    || readPublishedDisplayName({ execFileSync, isWindows, storageAccount, blobName })
+    || projectName;
+
   // Render from template
   const templatePath = path.join(__dirname, "..", "templates", "project-index.html");
   const template = await fs.readFile(templatePath, "utf-8");
   const html = renderProjectIndex({
     template,
-    displayName: displayName || projectName,
+    displayName: resolvedDisplayName,
     meetings,
     generatedAt: new Date().toISOString(),
   });
@@ -378,15 +413,12 @@ async function deployProjectIndex({ projectName, displayName, currentMeeting }) 
   await fs.writeFile(localPath, html, "utf-8");
 
   // Upload as {project}/index.html in the static website container
-  const blobName = `${projectName}/index.html`;
   log("info", "Deploying project index to blob storage", {
     storageAccount,
     blobName,
     meetingCount: meetings.length,
   });
 
-  const { execFileSync } = require("child_process");
-  const isWindows = process.platform === "win32";
   try {
     execFileSync("az", quoteForShell([
       "storage", "blob", "upload",
@@ -396,6 +428,9 @@ async function deployProjectIndex({ projectName, displayName, currentMeeting }) 
       "--account-name", storageAccount,
       "--auth-mode", "login",
       "--content-type", "text/html; charset=utf-8",
+      "--content-cache-control", DASHBOARD_HTML_CACHE_CONTROL,
+      // Read back by the root portal; URI-encoded because blob metadata must be ASCII
+      "--metadata", `displayname=${encodeURIComponent(resolvedDisplayName)}`,
       "--overwrite",
     ], isWindows), { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], shell: isWindows });
   } catch (err) {
@@ -404,7 +439,7 @@ async function deployProjectIndex({ projectName, displayName, currentMeeting }) 
   }
 
   const host = process.env.DASHBOARD_BASE_URL;
-  const indexUrl = host ? `https://${host.replace(/^https?:\/\//, "").replace(/\/$/, "")}/${projectName}/` : `/${projectName}/`;
+  const indexUrl = host ? `${dashboardUrl(host, [projectName])}/` : `/${encodeURIComponent(projectName)}/`;
   log("info", "Project index deployed", { url: indexUrl });
   return indexUrl;
 }

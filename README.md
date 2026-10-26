@@ -277,6 +277,33 @@ npm run tiger:security -- show --project <project> --meeting-id <meeting-id> --e
 npm run tiger:security -- rotate --dashboard-url <dashboard-url> --yes --env-file .env.test
 ```
 
+## Dashboard portal and hostname migration
+
+The root index (`/index.html`) lists published projects alphabetically, with project search and links to each project’s existing meeting list. It uses the existing dashboard's SSW design tokens. Links are relative, so the same pages work on the current hostname and `portal.sswtiger.com`.
+
+Both automated processing and `processor/deploy-local.js` rebuild the portal after deploying a meeting. The portal discovers published `project/index.html` blobs, including projects missing from Cosmos DB. It lists project names only; it does not read analysis content, passwords or unlock links. Existing dashboard password protection remains in place.
+
+To publish or rebuild the root index without processing a meeting:
+
+```bash
+npm ci
+az login
+# Set DASHBOARD_STORAGE_ACCOUNT in .env; DASHBOARD_BASE_URL is optional.
+npm run deploy:portal
+```
+
+The signed-in identity needs Blob data read/write access to the dashboard storage account. In Azure, the processor uses its existing managed identity. Failed storage listings leave the existing index untouched; concurrent updates use ETag checks and retry with a fresh listing.
+
+The current hostname remains `dashboards.sswtiger.com` until sysadmin finishes DNS and HTTPS:
+
+1. Publish the portal index on the existing storage account and verify it on the current domain.
+2. Have sysadmin route `portal.sswtiger.com` to the same static website and verify HTTPS plus nested dashboard paths.
+3. Change `dashboardBaseUrl` in `infra/staging.bicepparam` to `portal.sswtiger.com` and redeploy `infra/main.bicep`. This single parameter configures **both** the Function App and Container App Job; the Function App passes it to each new job. Update local `.env` files' `DASHBOARD_BASE_URL` as well. A hostname or full HTTPS origin is accepted.
+4. Verify a new deployment and its Teams notification use the new hostname. The `DEPLOYED_URL=https://...` output contract is unchanged.
+5. Ask sysadmin to redirect the old domain to the new domain while preserving paths. Redirects and certificates are managed outside this repository. Existing notifications still need the old domain or redirects to work.
+
+The portal has no dependency on the new DNS record, and hostname migration does not require regenerating historical dashboards. Add the `sswtiger.com` Portal button after the new root page is verified.
+
 ## 📝 Example Output
 
 After processing a transcript, you'll get:

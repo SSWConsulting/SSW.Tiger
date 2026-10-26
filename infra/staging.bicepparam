@@ -2,6 +2,9 @@ using './main.bicep'
 
 param project = 'tiger'
 param environment = 'staging'
+
+// Switch to portal.sswtiger.com once its DNS and HTTPS are ready
+param dashboardBaseUrl = 'dashboards.sswtiger.com'
 param costCategoryTag = { 'cost-category': 'dev/test' }
 
 // GitHub Container Registry settings

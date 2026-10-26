@@ -844,7 +844,7 @@ function extractProjectName(subject) {
 function generateFilename(meeting, transcriptDate) {
   // Use transcript createdDateTime (actual recording time)
   // Format: {date}-{time}.vtt (date+time is sufficient for uniqueness)
-  // This becomes the deploy URL: dashboards.sswtiger.com/{project}/{date}-{time}
+  // This becomes the deploy path {project}/{date}-{time}; the host comes from DASHBOARD_BASE_URL
   // Convert to Australian Eastern Time for correct local date
   const date = convertToAustralianDate(transcriptDate);
   const time = convertToAustralianTime(transcriptDate);

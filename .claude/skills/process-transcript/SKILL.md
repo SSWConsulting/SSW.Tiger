@@ -136,7 +136,7 @@ After generating the dashboard, offer deployment options:
 1. **Ask Claude:** "deploy the dashboard" → triggers the `deploy-dashboard` skill
 2. **Run manually:** `node processor/deploy-local.js {project} {meeting-id}`
 
-The deployed URL will be: `https://dashboards.sswtiger.com/{project}/{meeting-id}`
+Deployment uses `DASHBOARD_BASE_URL` (currently `dashboards.sswtiger.com`, migrating to `portal.sswtiger.com` after DNS/HTTPS is ready). Report the URL returned by the deployment script; do not hardcode the hostname. The deployment also updates the root portal index.
 
 > **Note:** When running under `processor.js` (Azure pipeline), deployment is handled automatically by `deployer.js`. Do NOT deploy from within this skill in that context.
 
@@ -156,7 +156,7 @@ The deployed URL will be: `https://dashboards.sswtiger.com/{project}/{meeting-id
   - Quality score: 92/100
 
 ✓ Dashboard generated: projects/{project}/dashboards/{date}/index.html
-✓ Deployed to: https://dashboards.sswtiger.com/{project}/{meeting-id}
+✓ Deployed to: {deployedUrl returned by the deployment script}
 ```
 
 ## File Structure

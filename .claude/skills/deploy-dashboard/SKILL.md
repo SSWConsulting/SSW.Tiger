@@ -1,12 +1,12 @@
 ---
 name: deploy-dashboard
-description: Deploy a meeting dashboard to Azure Blob Storage (dashboards.sswtiger.com) and persist to Cosmos DB. Use when the user wants to deploy, publish, share, or host a dashboard online.
+description: Deploy a meeting dashboard to Azure Blob Storage (configured dashboard hostname) and persist to Cosmos DB. Use when the user wants to deploy, publish, share, or host a dashboard online.
 allowed-tools: Bash
 ---
 
 # Deploy Dashboard to Azure Blob Storage
 
-Deploy a locally-generated meeting dashboard to Azure Blob Storage (served via dashboards.sswtiger.com) and save meeting data to Cosmos DB.
+Deploy a locally-generated meeting dashboard to Azure Blob Storage (served via `DASHBOARD_BASE_URL`) and save meeting data to Cosmos DB.
 
 ## Instructions
 
@@ -26,15 +26,20 @@ The script (`processor/deploy-local.js`) reuses the same `deployer.js` as the Az
 1. Uploads dashboard files to Azure Blob Storage
 2. Persists meeting metadata + consolidated analysis to Cosmos DB (if `COSMOS_ENDPOINT` is set)
 3. Regenerates and uploads the per-project index page (`{project}/index.html`) listing all of that project's meeting dashboards
-4. Returns the public URL
+4. Rebuilds the root portal index (`index.html`) from published project index blobs
+5. Returns the public URL
 
 ## Deployment URL Convention
 
-URLs follow the pattern: `https://dashboards.sswtiger.com/{project}/{meeting-id}`
+URLs use `DASHBOARD_BASE_URL` (currently `dashboards.sswtiger.com`; switch to `portal.sswtiger.com` after DNS and HTTPS are ready). Do not hardcode the hostname when reporting a deployment.
+
+Current example: `https://dashboards.sswtiger.com/{project}/{meeting-id}`
 
 Example: `https://dashboards.sswtiger.com/yakshaver/2026-01-22-094557`
 
 The project index page lists every meeting: `https://dashboards.sswtiger.com/{project}/`
+
+The root portal lists published projects and links to each project’s existing meeting list. Rebuild it independently with `npm run deploy:portal`.
 
 ## Prerequisites
 

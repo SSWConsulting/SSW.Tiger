@@ -15,6 +15,7 @@ param containerAppJobImage string
 param managedIdentityId string
 param managedIdentityClientId string
 param dashboardStorageAccountName string
+param dashboardBaseUrl string
 
 // Application Insights for logging
 param appInsightsConnectionString string
@@ -37,7 +38,6 @@ param transcriptHubAppInstallationId string = ''
 
 var functionAppName = toLower('func-${project}-${environment}')
 var hostingPlanName = toLower('plan-${project}-${environment}')
-var dashboardBaseUrl = environment == 'staging' ? 'dashboards.sswtiger.com' : 'dashboards-${environment}.sswtiger.com'
 
 // App Service Plan (Consumption - serverless)
 resource hostingPlan 'Microsoft.Web/serverfarms@2023-12-01' = {

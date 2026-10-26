@@ -20,6 +20,7 @@ const { log } = require("../lib/logger");
 const { validateTranscriptFilename, setupProjectStructure } = require("./projectSetup");
 const { validateCredentials, invokeClaude, hasConsolidatedAnalysis } = require("./claudeRunner");
 const { checkOutputExists, copyToOutputDirectory, deployDashboard, persistToCosmos, deployProjectIndex } = require("./deployer");
+const { deployPortalIndex } = require("./portalIndex");
 const { validateAndRepairDashboard } = require("./dashboardValidator");
 const { publishTranscript } = require("./transcriptHubPublisher");
 const { writeMeetingHistory } = require("./meetingHistory");
@@ -186,6 +187,13 @@ async function processTranscript(transcriptPath, projectSlug) {
     log("error", "Failed to deploy project index (non-fatal)", {
       error: err.message,
     });
+  }
+
+  // Update the root portal index (non-fatal - must not block the meeting notification)
+  try {
+    await deployPortalIndex();
+  } catch (err) {
+    log("error", "Failed to deploy portal index (non-fatal)", { error: err.message });
   }
 
   // Copy to output directory for convenience
