@@ -19,6 +19,9 @@ param environment string
 @description('Dashboard hostname shared by the Function App and processor. Switch to portal.sswtiger.com after DNS and HTTPS are ready.')
 param dashboardBaseUrl string = environment == 'staging' ? 'dashboards.sswtiger.com' : 'dashboards-${environment}.sswtiger.com'
 
+@description('Report container. Switch from $web to reports after Portal migration validation.')
+param dashboardContainer string = '$web'
+
 @description('Cost category tag for billing')
 param costCategoryTag CostCategoryTag
 
@@ -150,6 +153,7 @@ module containerApp 'modules/containerApp.bicep' = {
     claudeModel: claudeModel
     dashboardStorageAccountName: dashboardStorage.outputs.name
     dashboardBaseUrl: dashboardBaseUrl
+    dashboardContainer: dashboardContainer
     cosmosEndpoint: cosmosDb.outputs.endpoint
     transcriptHubRepo: transcriptHubRepo
     transcriptHubAppId: transcriptHubAppId
@@ -188,6 +192,7 @@ module functionApp 'modules/functionApp.bicep' = {
     appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
     dashboardStorageAccountName: dashboardStorage.outputs.name
     dashboardBaseUrl: dashboardBaseUrl
+    dashboardContainer: dashboardContainer
     cosmosEndpoint: cosmosDb.outputs.endpoint
     claudeModel: claudeModel
     transcriptHubRepo: transcriptHubRepo

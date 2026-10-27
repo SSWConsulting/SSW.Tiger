@@ -128,7 +128,7 @@ async function deployDashboard({ dashboardPath, projectName, meetingId, requireP
   }
   const dashboardDir = security.uploadDir || path.dirname(dashboardPath);
 
-  const blobDestination = `$web/${projectName}/${meetingId}`;
+  const blobDestination = `${process.env.DASHBOARD_CONTAINER || "$web"}/${projectName}/${meetingId}`;
 
   log("info", "Deploying dashboard to blob storage", {
     storageAccount,
@@ -345,7 +345,7 @@ function readPublishedDisplayName({ execFileSync, isWindows, storageAccount, blo
   try {
     const output = execFileSync("az", quoteForShell([
       "storage", "blob", "metadata", "show",
-      "--container-name", "$web",
+      "--container-name", process.env.DASHBOARD_CONTAINER || "$web",
       "--name", blobName,
       "--account-name", storageAccount,
       "--auth-mode", "login",
@@ -423,7 +423,7 @@ async function deployProjectIndex({ projectName, displayName, currentMeeting }) 
     execFileSync("az", quoteForShell([
       "storage", "blob", "upload",
       "--file", localPath,
-      "--container-name", "$web",
+      "--container-name", process.env.DASHBOARD_CONTAINER || "$web",
       "--name", blobName,
       "--account-name", storageAccount,
       "--auth-mode", "login",

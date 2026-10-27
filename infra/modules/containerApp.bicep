@@ -29,6 +29,7 @@ param dashboardStorageAccountName string
 
 @description('Dashboard hostname (or HTTPS origin) used to build deployed dashboard URLs')
 param dashboardBaseUrl string
+param dashboardContainer string = '$web'
 
 @description('Cosmos DB endpoint for meeting metadata persistence')
 param cosmosEndpoint string = ''
@@ -172,6 +173,7 @@ resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
             { name: 'CLAUDE_CODE_OAUTH_TOKEN', secretRef: 'anthropic-oauth-token' }
             { name: 'DASHBOARD_STORAGE_ACCOUNT', value: dashboardStorageAccountName }
             { name: 'DASHBOARD_BASE_URL', value: dashboardBaseUrl }
+            { name: 'DASHBOARD_CONTAINER', value: dashboardContainer }
             { name: 'CLAUDE_MODEL', value: claudeModel }
             { name: 'NODE_ENV', value: environment == 'prod' ? 'production' : 'development' }
             { name: 'GRAPH_CLIENT_ID', secretRef: 'graph-client-id' }

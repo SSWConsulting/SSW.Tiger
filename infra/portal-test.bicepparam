@@ -1,0 +1,22 @@
+// Coordinated Portal cutover. See portal/README.md before deployment.
+using './main.bicep'
+
+param project = 'tiger'
+param environment = 'test'
+param costCategoryTag = { 'cost-category': 'dev/test' }
+
+// GitHub Container Registry settings
+param githubOrg = 'sswconsulting'
+param imageTag = 'test'
+
+// Claude model for the processor
+param claudeModel = 'claude-opus-4-5-20251101'
+
+// Skip Logic App deployment to preserve Portal configuration
+param deployLogicApp = false
+param manageKeyVaultRoleAssignment = false
+
+//az deployment group create --resource-group "SSW.Transcript-Intelligence-Group-Event-Reasoning.Dev" --template-file main.bicep --parameters test.bicepparam
+
+param dashboardBaseUrl = 'portal-test.sswtiger.com'
+param dashboardContainer = 'reports'

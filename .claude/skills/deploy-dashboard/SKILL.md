@@ -27,11 +27,11 @@ The script (`processor/deploy-local.js`) reuses the same `deployer.js` as the Az
 2. Persists meeting metadata + consolidated analysis to Cosmos DB (if `COSMOS_ENDPOINT` is set)
 3. Regenerates and uploads the per-project index page (`{project}/index.html`) listing all of that project's meeting dashboards
 4. Rebuilds the root portal index (`index.html`) from published project index blobs
-5. Returns the public URL
+5. Returns the configured report URL (requires Portal sign-in after cutover)
 
 ## Deployment URL Convention
 
-URLs use `DASHBOARD_BASE_URL` (currently `dashboards.sswtiger.com`; switch to `portal.sswtiger.com` after DNS and HTTPS are ready). Do not hardcode the hostname when reporting a deployment.
+URLs use `DASHBOARD_BASE_URL`. After authenticated Portal cutover, set **both** `DASHBOARD_BASE_URL` to the Portal hostname and `DASHBOARD_CONTAINER=reports`. Point the hostname at App Service, not public Storage hosting. Follow `portal/TEST-DEPLOYMENT.md` for test-only validation and `portal/README.md` for migration. Do not switch production while testing. Do not hardcode the hostname when reporting a deployment.
 
 Current example: `https://dashboards.sswtiger.com/{project}/{meeting-id}`
 
@@ -39,13 +39,15 @@ Example: `https://dashboards.sswtiger.com/yakshaver/2026-01-22-094557`
 
 The project index page lists every meeting: `https://dashboards.sswtiger.com/{project}/`
 
-The root portal lists published projects and links to each project’s existing meeting list. Rebuild it independently with `npm run deploy:portal`.
+The authenticated Portal lists published project indexes from the private report container. `npm run deploy:portal` only rebuilds the static root index; it does not deploy the App Service application.
 
 ## Prerequisites
 
 - Azure CLI installed and logged in (`az login`)
 - `DASHBOARD_STORAGE_ACCOUNT` environment variable set in `.env`
-- `DASHBOARD_BASE_URL` environment variable set in `.env` (optional, falls back to Azure hostname)
+- `DASHBOARD_BASE_URL` set to the verified Portal hostname after cutover
+- `DASHBOARD_CONTAINER=reports` after cutover, including in local password-management tools
+- Existing `$web` defaults are only for legacy publishing before cutover
 
 ## Output
 

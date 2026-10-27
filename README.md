@@ -277,32 +277,19 @@ npm run tiger:security -- show --project <project> --meeting-id <meeting-id> --e
 npm run tiger:security -- rotate --dashboard-url <dashboard-url> --yes --env-file .env.test
 ```
 
-## Dashboard portal and hostname migration
+## Authenticated Portal and hostname migration
 
-The root index (`/index.html`) lists published projects alphabetically, with project search and links to each project’s existing meeting list. It uses the existing dashboard's SSW design tokens. Links are relative, so the same pages work on the current hostname and `portal.sswtiger.com`.
+The Portal runs on **Azure App Service** and signs SSW employees in through the existing IdentityServer using application-managed OIDC with Authorization Code + PKCE. Users browse all published projects and their meeting reports. Existing report passwords remain required.
 
-Both automated processing and `processor/deploy-local.js` rebuild the portal after deploying a meeting. The portal discovers published `project/index.html` blobs, including projects missing from Cosmos DB. It lists project names only; it does not read analysis content, passwords or unlock links. Existing dashboard password protection remains in place.
+Test and production use separate Web Apps on one shared Linux B1 App Service Plan. Manage the plan once with `infra/portal-plan.bicep`; each `infra/portal.bicep` deployment references that existing plan. App settings, identities, storage and IdentityServer clients remain separate.
 
-To publish or rebuild the root index without processing a meeting:
+The Portal hostname must point to App Service, **not** the Storage static website. Reports are served from the private `reports` container through the authenticated application. The old dashboard hostname redirects to Portal while preserving report paths and query parameters.
 
-```bash
-npm ci
-az login
-# Set DASHBOARD_STORAGE_ACCOUNT in .env; DASHBOARD_BASE_URL is optional.
-npm run deploy:portal
-```
+Follow [the Portal integration guide](portal/README.md) for architecture and IdentityServer client registration, and [the test-environment runbook](portal/TEST-DEPLOYMENT.md) for the test-only setup and acceptance sequence. Do not change production infrastructure, IdentityServer production registrations, DNS or public storage while validating test.
 
-The signed-in identity needs Blob data read/write access to the dashboard storage account. In Azure, the processor uses its existing managed identity. Failed storage listings leave the existing index untouched; concurrent updates use ETag checks and retry with a fresh listing.
+At cutover, configure both `DASHBOARD_BASE_URL` and `DASHBOARD_CONTAINER` in the processor, Function job overrides and local publishing/password-management tools. Changing the hostname alone leaves reports publicly accessible.
 
-The current hostname remains `dashboards.sswtiger.com` until sysadmin finishes DNS and HTTPS:
-
-1. Publish the portal index on the existing storage account and verify it on the current domain.
-2. Have sysadmin route `portal.sswtiger.com` to the same static website and verify HTTPS plus nested dashboard paths.
-3. Change `dashboardBaseUrl` in `infra/staging.bicepparam` to `portal.sswtiger.com` and redeploy `infra/main.bicep`. This single parameter configures **both** the Function App and Container App Job; the Function App passes it to each new job. Update local `.env` files' `DASHBOARD_BASE_URL` as well. A hostname or full HTTPS origin is accepted.
-4. Verify a new deployment and its Teams notification use the new hostname. The `DEPLOYED_URL=https://...` output contract is unchanged.
-5. Ask sysadmin to redirect the old domain to the new domain while preserving paths. Redirects and certificates are managed outside this repository. Existing notifications still need the old domain or redirects to work.
-
-The portal has no dependency on the new DNS record, and hostname migration does not require regenerating historical dashboards. Add the `sswtiger.com` Portal button after the new root page is verified.
+`npm run deploy:portal` is a **static index rebuild utility**, not the authenticated Portal application deployment. It uses the configured report container, and continues to support legacy `$web` publishing before cutover. After cutover, set `DASHBOARD_CONTAINER=reports`. Deploy the Web application through the Portal workflow described in the runbook.
 
 ## 📝 Example Output
 

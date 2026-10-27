@@ -1,0 +1,21 @@
+{
+  "name": "ssw-tiger-portal",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "dependencies": {
+    "@azure/identity": "4.13.0",
+    "@azure/storage-blob": "^12.27.0",
+    "openid-client": "^6.0.0"
+  },
+  "overrides": {
+    "uuid": "11.1.1"
+  }
+}

@@ -80,3 +80,9 @@ infra/main.json
 
 # ARMADA logbook tooling (walkthrough video recipes, recordings, demo sites)
 .armada/
+# Portal local secrets and infrastructure build outputs
+portal/.env
+infra/portal.json
+# Local migration manifests and test-only deployment parameters
+portal/.migration*.json
+infra/portal-app-test.local.bicepparam

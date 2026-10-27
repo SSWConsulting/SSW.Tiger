@@ -136,7 +136,7 @@ After generating the dashboard, offer deployment options:
 1. **Ask Claude:** "deploy the dashboard" → triggers the `deploy-dashboard` skill
 2. **Run manually:** `node processor/deploy-local.js {project} {meeting-id}`
 
-Deployment uses `DASHBOARD_BASE_URL` (currently `dashboards.sswtiger.com`, migrating to `portal.sswtiger.com` after DNS/HTTPS is ready). Report the URL returned by the deployment script; do not hardcode the hostname. The deployment also updates the root portal index.
+Deployment uses `DASHBOARD_BASE_URL` and `DASHBOARD_CONTAINER`. Authenticated Portal cutover requires the Portal hostname to point at App Service and `DASHBOARD_CONTAINER=reports` for both the job and Function overrides; changing DNS alone is insufficient. Follow `portal/TEST-DEPLOYMENT.md` for test-only validation and leave production unchanged. Report the returned URL rather than hardcoding a hostname. The deployment also updates the static root index, which is not the App Service application.
 
 > **Note:** When running under `processor.js` (Azure pipeline), deployment is handled automatically by `deployer.js`. Do NOT deploy from within this skill in that context.
 

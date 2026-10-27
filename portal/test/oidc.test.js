@@ -1,0 +1,47 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { generateKeyPairSync, sign, createHash } from 'node:crypto';
+import * as oidc from 'openid-client';
+import { createAuth } from '../src/auth.js';
+
+test('real OIDC client sends S256, exchanges verifier and validates signed identity', async () => {
+  const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const jwk = publicKey.export({ format: 'jwk' });
+  const config = { issuer: 'https://identity.test', clientId: 'tiger', clientSecret: 'test-secret', origin: 'https://portal.test', redirectUri: 'https://portal.test/auth/callback' };
+  let transaction; let tokenRequests = 0; let wrongNonce = false; let badSignature = false;
+  const json = data => new Response(JSON.stringify(data), { headers: { 'Content-Type': 'application/json' } });
+  const auth = await createAuth(config, { [oidc.customFetch]: async (input, options) => {
+    const url = String(input);
+    if (url.endsWith('/.well-known/openid-configuration')) return json({ issuer: config.issuer, authorization_endpoint: `${config.issuer}/connect/authorize`, token_endpoint: `${config.issuer}/connect/token`, jwks_uri: `${config.issuer}/jwks`, end_session_endpoint: `${config.issuer}/connect/endsession`, response_types_supported: ['code'], subject_types_supported: ['public'], id_token_signing_alg_values_supported: ['RS256'], code_challenge_methods_supported: ['S256'], token_endpoint_auth_methods_supported: ['client_secret_post'] });
+    if (url.endsWith('/jwks')) return json({ keys: [{ ...jwk, kid: 'test-key', use: 'sig', alg: 'RS256' }] });
+    assert.ok(url.endsWith('/connect/token'));
+    tokenRequests++;
+    const body = new URLSearchParams(options.body);
+    assert.equal(body.get('code_verifier'), transaction.verifier);
+    assert.equal(body.get('client_secret'), config.clientSecret);
+    assert.equal(body.get('redirect_uri'), config.redirectUri);
+    const now = Math.floor(Date.now() / 1000);
+    const header = Buffer.from(JSON.stringify({ alg: 'RS256', kid: 'test-key' })).toString('base64url');
+    const payload = Buffer.from(JSON.stringify({ iss: config.issuer, sub: 'employee-1', aud: config.clientId, exp: now + 300, iat: now, nonce: wrongNonce ? 'wrong-nonce' : transaction.nonce, email: 'staff@ssw.com.au' })).toString('base64url');
+    const unsigned = `${header}.${payload}`;
+    const signature = sign('RSA-SHA256', Buffer.from(unsigned), privateKey).toString('base64url');
+    const signedPart = badSignature ? Buffer.alloc(256, 0).toString('base64url') : signature;
+    return json({ access_token: 'test-access-token', token_type: 'Bearer', expires_in: 300, id_token: `${unsigned}.${signedPart}` });
+  } });
+  const start = await auth.begin(); transaction = start.transaction;
+  const authorize = new URL(start.url);
+  assert.equal(authorize.searchParams.get('code_challenge_method'), 'S256');
+  assert.equal(authorize.searchParams.get('code_challenge'), createHash('sha256').update(transaction.verifier).digest('base64url'));
+  assert.equal(authorize.searchParams.get('state'), transaction.state);
+  const result = await auth.finish(new URL(`${config.redirectUri}?code=test-code&state=${transaction.state}`), transaction);
+  assert.equal(result.claims.sub, 'employee-1');
+  assert.equal(tokenRequests, 1);
+  await assert.rejects(auth.finish(new URL(`${config.redirectUri}?code=test-code&state=wrong`), transaction));
+  assert.equal(tokenRequests, 1);
+  wrongNonce = true;
+  await assert.rejects(auth.finish(new URL(`${config.redirectUri}?code=test-code&state=${transaction.state}`), transaction));
+  wrongNonce = false; badSignature = true;
+  await assert.rejects(auth.finish(new URL(`${config.redirectUri}?code=test-code&state=${transaction.state}`), transaction));
+  const logout = new URL(auth.logout(result.idToken));
+  assert.equal(logout.searchParams.get('post_logout_redirect_uri'), 'https://portal.test/signed-out');
+});

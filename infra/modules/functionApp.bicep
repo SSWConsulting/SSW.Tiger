@@ -16,6 +16,7 @@ param managedIdentityId string
 param managedIdentityClientId string
 param dashboardStorageAccountName string
 param dashboardBaseUrl string
+param dashboardContainer string = '$web'
 
 // Application Insights for logging
 param appInsightsConnectionString string
@@ -124,6 +125,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'CONTAINER_APP_JOB_IMAGE', value: containerAppJobImage }
         { name: 'DASHBOARD_STORAGE_ACCOUNT', value: dashboardStorageAccountName }
         { name: 'DASHBOARD_BASE_URL', value: dashboardBaseUrl }
+        { name: 'DASHBOARD_CONTAINER', value: dashboardContainer }
         // Passed through to Container App Job at start time
         { name: 'COSMOS_ENDPOINT', value: cosmosEndpoint }
         { name: 'COSMOS_PROJECT_POLICIES_CONTAINER', value: 'projectPolicies' }
