@@ -47,7 +47,7 @@ Use `.env.example` as the configuration reference. Keep local `.env` files untra
 | `PORTAL_LEGACY_HOSTS` | Legacy hosts redirected to the canonical origin, preserving path and query |
 | `PORT` | HTTP listener port |
 
-Azure data access uses managed identity in hosting and `DefaultAzureCredential` for local development. Infrastructure creates a dedicated `id-tiger-portal-{environment}` identity, separate from the processor. It receives container-scoped read access to reports and meeting metadata, and write access to sessions and users. Enable `manageRoleAssignments` when provisioning these grants, or have an administrator apply them before deploying. Existing apps must detach the processor identity; release preflight rejects extra identities. No processor Key Vault access is granted.
+Azure data access uses managed identity in hosting and `DefaultAzureCredential` for local development. The runtime identity needs read access to reports and meeting metadata, and write access to sessions and users.
 
 Changing the Portal origin does not migrate historical reports or remove public copies. The processor's `DASHBOARD_BASE_URL` and `DASHBOARD_CONTAINER` determine where new reports are linked and stored. The pipeline does not publish a root project listing in either container; the authenticated Portal generates it on request. Existing `$web` reports require a separate migration; `scripts/migrate-reports.js` provides copy/verification and manifest-based cleanup. Deployment, migration and acceptance records are maintained outside this repository.
 

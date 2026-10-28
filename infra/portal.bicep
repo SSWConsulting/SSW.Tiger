@@ -15,8 +15,9 @@ param dashboardStorageAccountName string
 param dashboardContainer string = 'reports'
 param manageRoleAssignments bool = false
 param bindCustomDomains bool = false
-// Dedicated Portal identity; it receives only the container-scoped data roles below.
-param managedIdentityName string = 'id-${project}-portal-${environment}'
+// Reuse the processor identity for the selected environment; do not create another identity.
+param managedIdentityName string = 'id-${project}-${environment}'
+param managedIdentityResourceGroup string = resourceGroup().name
 // Keep the existing test plan name to adopt it without moving the test app.
 // Both test and staging apps must reference the same separately managed plan.
 param sharedPlanName string = 'plan-${project}-portal-test'
@@ -26,9 +27,9 @@ var appName = 'app-${project}-portal-${environment}'
 var host = replace(portalOrigin, 'https://', '')
 var domains = concat([host], empty(legacyHosts) ? [] : split(legacyHosts, ','))
 
-resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = {
   name: managedIdentityName
-  location: location
+  scope: resourceGroup(managedIdentityResourceGroup)
 }
 resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
   name: dashboardStorageAccountName

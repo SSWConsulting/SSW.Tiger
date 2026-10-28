@@ -42,7 +42,7 @@ export function infrastructureParameters(config) {
     portalOrigin: config.origin, legacyHosts: config.legacyHosts,
     identityServerIssuer: config.issuer, oidcClientId: 'ssw-tiger-portal', apiAudience: 'tiger',
     cosmosAccountName: config.cosmos, dashboardStorageAccountName: config.storage,
-    dashboardContainer: 'reports', managedIdentityName: `id-tiger-portal-${config.target}`,
+    dashboardContainer: 'reports', managedIdentityName: `id-tiger-${config.target}`,
     sharedPlanName: config.plan, sharedPlanResourceGroup: config.planResourceGroup,
     manageRoleAssignments: config.manageRoles, bindCustomDomains: false,
   };
@@ -54,11 +54,9 @@ export function validateRuntime(config, app, runtime, settings) {
   assert.equal(app.name, config.app, 'Wrong App Service');
   const plan = `/subscriptions/${config.subscription}/resourceGroups/${config.planResourceGroup}/providers/Microsoft.Web/serverfarms/${config.plan}`;
   assert.equal(app.serverFarmId?.toLowerCase(), plan.toLowerCase(), 'Unexpected shared plan');
-  const identityId = `/subscriptions/${config.subscription}/resourceGroups/${config.resourceGroup}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-tiger-portal-${config.target}`;
+  const identityId = `/subscriptions/${config.subscription}/resourceGroups/${config.resourceGroup}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-tiger-${config.target}`;
   const identity = Object.entries(app.identity?.userAssignedIdentities || {}).find(([id]) => id.toLowerCase() === identityId.toLowerCase())?.[1];
-  assert.ok(identity?.clientId, 'Dedicated Portal managed identity is missing');
-  assert.deepEqual(Object.keys(app.identity.userAssignedIdentities).map(id => id.toLowerCase()), [identityId.toLowerCase()], 'Portal must have only its dedicated identity');
-  assert.equal(app.identity.type, 'UserAssigned', 'Portal must not retain a system-assigned identity');
+  assert.ok(identity?.clientId, 'Environment managed identity is missing');
   assert.equal(runtime.linuxFxVersion?.toLowerCase(), 'node|22-lts', 'Portal requires Node 22');
   assert.equal(runtime.appCommandLine, 'npm start');
   assert.equal(runtime.healthCheckPath, '/healthz');

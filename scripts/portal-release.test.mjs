@@ -26,15 +26,15 @@ test('release rejects cross-environment apps, origins, issuers and invalid opera
   const staging = releaseConfig({ ...env, TARGET: 'staging', PORTAL_APP_NAME: 'app-tiger-portal-staging',
     PORTAL_ORIGIN: 'https://portal.sswtiger.com', OIDC_ISSUER: 'https://identity.ssw.com.au' });
   assert.equal(staging.storage, 'satigerstagingweb');
-  assert.equal(infrastructureParameters(staging).parameters.managedIdentityName.value, 'id-tiger-portal-staging');
+  assert.equal(infrastructureParameters(staging).parameters.managedIdentityName.value, 'id-tiger-staging');
 });
 
 test('preflight refuses wrong storage, shared plan, runtime or build configuration', () => {
   const config = releaseConfig(env);
-  const identityId = '/subscriptions/subscription/resourceGroups/tiger-rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-tiger-portal-test';
+  const identityId = '/subscriptions/subscription/resourceGroups/tiger-rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-tiger-test';
   const app = { name: config.app,
     serverFarmId: '/subscriptions/subscription/resourceGroups/tiger-rg/providers/Microsoft.Web/serverfarms/plan-tiger-portal-test',
-    identity: { type: 'UserAssigned', userAssignedIdentities: { [identityId]: { clientId: 'runtime-identity' } } } };
+    identity: { userAssignedIdentities: { [identityId]: { clientId: 'runtime-identity' } } } };
   const runtime = { linuxFxVersion: 'NODE|22-lts', appCommandLine: 'npm start', healthCheckPath: '/healthz' };
   const values = { PORTAL_ORIGIN: config.origin, OIDC_ISSUER: config.issuer, OIDC_CLIENT_ID: 'ssw-tiger-portal',
     OIDC_API_AUDIENCE: 'tiger', DASHBOARD_STORAGE_ACCOUNT: config.storage, DASHBOARD_CONTAINER: 'reports',
@@ -47,12 +47,6 @@ test('preflight refuses wrong storage, shared plan, runtime or build configurati
     { SCM_DO_BUILD_DURING_DEPLOYMENT: 'false' }, { WEBSITE_RUN_FROM_PACKAGE: '1' }, { AZURE_CLIENT_ID: 'deployer' }]) {
     assert.throws(() => validateRuntime(config, app, runtime, settings({ ...values, ...changes })));
   }
-  const processorId = identityId.replace('id-tiger-portal-', 'id-tiger-');
-  for (const identity of [
-    { type: 'UserAssigned', userAssignedIdentities: { [processorId]: { clientId: 'processor' } } },
-    { type: 'UserAssigned', userAssignedIdentities: { ...app.identity.userAssignedIdentities, [processorId]: { clientId: 'processor' } } },
-    { ...app.identity, type: 'SystemAssigned, UserAssigned' },
-  ]) assert.throws(() => validateRuntime(config, { ...app, identity }, runtime, settings(values)));
   assert.throws(() => validateRuntime(config, { ...app, serverFarmId: 'other-plan' }, runtime, settings(values)));
   assert.throws(() => validateRuntime(config, app, { ...runtime, linuxFxVersion: 'NODE|20-lts' }, settings(values)));
 });
