@@ -26,6 +26,7 @@ function container(initial = {}) {
         async upload(bytes, length, options) {
           if (data.has(name)) throw error(412);
           assert.equal(options.conditions.ifNoneMatch, '*');
+          assert.equal(typeof options.metadata, 'object');
           set(name, bytes);
         },
         async delete(options) {
@@ -52,6 +53,16 @@ test('migration uses ordinary container read permission and persists evidence wi
   assert.equal(f.saved().entries['crm/meeting/index.html'].sourceEtag, f.source.data.get('crm/meeting/index.html').etag);
   assert.equal(f.target.data.get('crm/meeting/index.html').bytes.toString(), 'encrypted password page');
   assert.equal((await migrateReports(f.options)).blobCount, 3);
+});
+
+test('historical reports with empty metadata can be copied without deleting their source', async () => {
+  for (const metadata of ['', null, undefined]) {
+    const f = fixture();
+    for (const entry of f.source.data.values()) entry.metadata = metadata;
+    assert.equal((await migrateReports(f.options)).mode, 'copied-verified');
+    assert.equal(f.target.data.size, 3);
+    assert.equal(f.source.data.size, 3);
+  }
 });
 
 test('cleanup permits newer private root and project indexes using the original manifest', async () => {

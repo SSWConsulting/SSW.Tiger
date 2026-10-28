@@ -1,0 +1,19 @@
+name: Deploy Portal Test
+run-name: Portal test · ${{ inputs.operation }} · ${{ github.ref_name }}
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Test release operation; infrastructure excludes the shared plan and pipeline
+        type: choice
+        options: [deploy, preview-infrastructure, apply-infrastructure-and-deploy]
+        default: deploy
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  release:
+    uses: ./.github/workflows/portal-release.yml
+    with:
+      target: test
+      operation: ${{ inputs.operation }}

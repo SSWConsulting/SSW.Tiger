@@ -1,0 +1,134 @@
+name: Portal release implementation
+on:
+  workflow_call:
+    inputs:
+      target:
+        required: true
+        type: string
+      operation:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: portal/package-lock.json
+      - run: npm ci --prefix portal
+      - run: npm test --prefix portal
+      - run: node --test scripts/portal-*.test.mjs
+      - name: Validate Portal infrastructure
+        run: az bicep build --file infra/portal.bicep --stdout > /dev/null
+      - name: Package source with release revision
+        env:
+          REVISION: ${{ github.sha }}
+          TARGET: ${{ inputs.target }}
+          OPERATION: ${{ inputs.operation }}
+        run: |
+          node scripts/portal-release.mjs package "$RUNNER_TEMP/portal-package"
+          cd "$RUNNER_TEMP/portal-package"
+          zip -qr "$RUNNER_TEMP/portal.zip" .
+          cp release.json "$RUNNER_TEMP/release.json"
+          cd "$RUNNER_TEMP"
+          sha256sum portal.zip > portal.zip.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portal-${{ inputs.target }}-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/portal.zip
+            ${{ runner.temp }}/portal.zip.sha256
+            ${{ runner.temp }}/release.json
+          retention-days: 30
+  release:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: ${{ inputs.target == 'staging' && 'portal-production' || 'portal-test' }}
+    # 同一环境跨分支互斥；不取消正在进行的部署。
+    concurrency:
+      group: portal-app-${{ inputs.target }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TARGET: ${{ inputs.target }}
+      OPERATION: ${{ inputs.operation }}
+      REVISION: ${{ github.sha }}
+      PORTAL_APP_NAME: ${{ vars.PORTAL_APP_NAME }}
+      PORTAL_RESOURCE_GROUP: ${{ vars.PORTAL_RESOURCE_GROUP }}
+      PORTAL_ORIGIN: ${{ vars.PORTAL_ORIGIN }}
+      OIDC_ISSUER: ${{ vars.OIDC_ISSUER }}
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      PORTAL_SHARED_PLAN_RESOURCE_GROUP: ${{ vars.PORTAL_SHARED_PLAN_RESOURCE_GROUP }}
+      PORTAL_LEGACY_HOSTS: ${{ vars.PORTAL_LEGACY_HOSTS }}
+      PORTAL_MANAGE_ROLE_ASSIGNMENTS: ${{ vars.PORTAL_MANAGE_ROLE_ASSIGNMENTS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate deployment configuration
+        run: node scripts/portal-release.mjs configure "$RUNNER_TEMP/portal-parameters.json"
+      - uses: actions/download-artifact@v4
+        with:
+          name: portal-${{ inputs.target }}-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/portal-artifact
+      - name: Verify release package integrity
+        working-directory: ${{ runner.temp }}/portal-artifact
+        run: sha256sum --check portal.zip.sha256
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Preview application infrastructure
+        if: inputs.operation != 'deploy'
+        run: |
+          az deployment group what-if --resource-group "$PORTAL_RESOURCE_GROUP" \
+            --template-file infra/portal.bicep --parameters @"$RUNNER_TEMP/portal-parameters.json"
+      - name: Apply application infrastructure
+        if: inputs.operation == 'apply-infrastructure-and-deploy'
+        run: |
+          az deployment group create --resource-group "$PORTAL_RESOURCE_GROUP" \
+            --name "portal-${TARGET}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --template-file infra/portal.bicep --parameters @"$RUNNER_TEMP/portal-parameters.json" \
+            --output none
+      - name: Check App Service runtime and environment
+        if: inputs.operation != 'preview-infrastructure'
+        run: |
+          az webapp show --resource-group "$PORTAL_RESOURCE_GROUP" --name "$PORTAL_APP_NAME" \
+            --query '{name:name,serverFarmId:serverFarmId,identity:identity,host:defaultHostName}' \
+            --output json > "$RUNNER_TEMP/portal-app.json"
+          az webapp config show --resource-group "$PORTAL_RESOURCE_GROUP" --name "$PORTAL_APP_NAME" \
+            --query '{linuxFxVersion:linuxFxVersion,appCommandLine:appCommandLine,healthCheckPath:healthCheckPath}' \
+            --output json > "$RUNNER_TEMP/portal-runtime.json"
+          az webapp config appsettings list --resource-group "$PORTAL_RESOURCE_GROUP" --name "$PORTAL_APP_NAME" \
+            --output json > "$RUNNER_TEMP/portal-settings.json"
+          node scripts/portal-release.mjs preflight "$RUNNER_TEMP"
+      - name: Deploy packaged Portal source
+        if: inputs.operation != 'preview-infrastructure'
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.PORTAL_APP_NAME }}
+          package: ${{ runner.temp }}/portal-artifact/portal.zip
+      - name: Check deployed revision, anonymous access and OIDC redirect
+        if: inputs.operation != 'preview-infrastructure'
+        run: node scripts/portal-smoke.mjs
+      - name: Release summary
+        if: always()
+        env:
+          RELEASE_STATUS: ${{ job.status }}
+        run: node scripts/portal-release.mjs summary >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove temporary App Service settings
+        if: always()
+        run: rm -f "$RUNNER_TEMP/portal-settings.json"

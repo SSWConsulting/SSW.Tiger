@@ -1,18 +1,8 @@
-name: Portal
+name: Portal CI
 on:
   pull_request:
-    paths: ['portal/**', 'infra/portal*.bicep*', '.github/workflows/portal.yml']
+    paths: ['portal/**', 'scripts/portal-*.mjs', 'infra/portal*.bicep*', '.github/workflows/*portal*.yml']
   workflow_dispatch:
-    inputs:
-      target:
-        description: Target application (production requires its own protected environment)
-        type: choice
-        options: [test, production]
-        default: test
-      deploy:
-        description: Deploy after configuring IdentityServer, Key Vault, storage and domains
-        type: boolean
-        default: false
 permissions:
   contents: read
 jobs:
@@ -27,31 +17,8 @@ jobs:
           cache-dependency-path: portal/package-lock.json
       - run: npm ci --prefix portal
       - run: npm test --prefix portal
-  deploy:
-    if: github.event_name == 'workflow_dispatch' && inputs.deploy
-    needs: verify
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.target == 'production' && 'portal-production' || 'portal-test' }}
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-      - name: Verify application target
-        env:
-          TARGET: ${{ inputs.target }}
-          APP_NAME: ${{ vars.PORTAL_APP_NAME }}
+      - run: node --test scripts/portal-*.test.mjs
+      - name: Validate Portal infrastructure
         run: |
-          expected=app-tiger-portal-test
-          if [ "$TARGET" = production ]; then expected=app-tiger-portal-staging; fi
-          test "$APP_NAME" = "$expected" || { echo 'Portal app does not match the selected target'; exit 1; }
-      - uses: azure/login@v2
-        with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      - name: Deploy Portal source (App Service builds locked dependencies)
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: ${{ vars.PORTAL_APP_NAME }}
-          package: portal
+          az bicep build --file infra/portal.bicep --stdout > /dev/null
+          az bicep build --file infra/portal-plan.bicep --stdout > /dev/null

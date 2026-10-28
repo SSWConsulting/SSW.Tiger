@@ -42,7 +42,9 @@ export async function migrateReports({ source, target, manifest, saveManifest, a
       if (remove) throw new Error(`Missing migration record; copy and verify first: ${item.name}`);
       try {
         await to.upload(bytes, bytes.length, {
-          conditions: { ifNoneMatch: '*' }, metadata: item.metadata,
+          conditions: { ifNoneMatch: '*' },
+          // 历史 Blob 的空元数据可能被 SDK 解析为空字符串。
+          metadata: item.metadata && typeof item.metadata === 'object' ? item.metadata : {},
           blobHTTPHeaders: { blobContentType: item.properties.contentType, blobCacheControl: 'no-cache, max-age=0, must-revalidate' },
         });
       } catch (error) { if (![409, 412].includes(error.statusCode)) throw error; }

@@ -1,8 +1,10 @@
 import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
 import { loadConfig } from './config.js';
 import { createStorage } from './storage.js';
 import { createAuth } from './auth.js';
 import { createHandler } from './app.js';
+import { createApiAuth } from './apiAuth.js';
 
 const config = loadConfig();
 const storage = createStorage(config);
@@ -12,9 +14,14 @@ const getAuth = () => pendingAuth ||= createAuth(config).catch(error => { pendin
 const auth = {
   begin: async () => (await getAuth()).begin(),
   finish: async (...args) => (await getAuth()).finish(...args),
+  refresh: async session => (await getAuth()).refresh(session),
+  revoke: async token => (await getAuth()).revoke(token),
   logout: async idToken => (await getAuth()).logout(idToken),
 };
-const server = createServer(createHandler({ config, ...storage, auth }));
+// 发布包内保存 commit，避免把旧进程误判为本次部署成功。
+const release = await readFile(new URL('../release.json', import.meta.url), 'utf8')
+  .then(JSON.parse).catch(error => { if (error.code === 'ENOENT') return { revision: 'development' }; throw error; });
+const server = createServer(createHandler({ config, ...storage, auth, apiAuth: createApiAuth(config), revision: release.revision }));
 server.requestTimeout = 30000;
 server.headersTimeout = 15000;
 server.listen(config.port, () => console.log(`TIGER Portal listening on ${config.port}`));

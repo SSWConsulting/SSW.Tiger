@@ -1,0 +1,19 @@
+name: Deploy Portal Staging
+run-name: Portal staging · ${{ inputs.operation }} · ${{ github.ref_name }}
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Release operation (staging serves live traffic)
+        type: choice
+        options: [deploy, preview-infrastructure, apply-infrastructure-and-deploy]
+        default: deploy
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  release:
+    uses: ./.github/workflows/portal-release.yml
+    with:
+      target: staging
+      operation: ${{ inputs.operation }}

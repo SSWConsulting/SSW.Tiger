@@ -11,8 +11,10 @@
     "node": ">=22.0.0"
   },
   "dependencies": {
+    "@azure/cosmos": "^4.10.1",
     "@azure/identity": "4.13.0",
     "@azure/storage-blob": "^12.27.0",
+    "jose": "^6.2.13",
     "openid-client": "^6.0.0"
   },
   "overrides": {
