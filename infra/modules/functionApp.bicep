@@ -15,6 +15,8 @@ param containerAppJobImage string
 param managedIdentityId string
 param managedIdentityClientId string
 param dashboardStorageAccountName string
+param dashboardBaseUrl string
+param dashboardContainer string = '$web'
 
 // Application Insights for logging
 param appInsightsConnectionString string
@@ -37,7 +39,6 @@ param transcriptHubAppInstallationId string = ''
 
 var functionAppName = toLower('func-${project}-${environment}')
 var hostingPlanName = toLower('plan-${project}-${environment}')
-var dashboardBaseUrl = environment == 'staging' ? 'dashboards.sswtiger.com' : 'dashboards-${environment}.sswtiger.com'
 
 // App Service Plan (Consumption - serverless)
 resource hostingPlan 'Microsoft.Web/serverfarms@2023-12-01' = {
@@ -124,6 +125,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'CONTAINER_APP_JOB_IMAGE', value: containerAppJobImage }
         { name: 'DASHBOARD_STORAGE_ACCOUNT', value: dashboardStorageAccountName }
         { name: 'DASHBOARD_BASE_URL', value: dashboardBaseUrl }
+        { name: 'DASHBOARD_CONTAINER', value: dashboardContainer }
         // Passed through to Container App Job at start time
         { name: 'COSMOS_ENDPOINT', value: cosmosEndpoint }
         { name: 'COSMOS_PROJECT_POLICIES_CONTAINER', value: 'projectPolicies' }

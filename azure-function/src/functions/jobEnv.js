@@ -39,6 +39,7 @@ function buildJobEnv({
     { name: "AZURE_CLIENT_ID", value: env.AZURE_CLIENT_ID },
     { name: "DASHBOARD_STORAGE_ACCOUNT", value: env.DASHBOARD_STORAGE_ACCOUNT },
     { name: "DASHBOARD_BASE_URL", value: env.DASHBOARD_BASE_URL },
+    { name: "DASHBOARD_CONTAINER", value: env.DASHBOARD_CONTAINER || "$web" },
     { name: "KEY_VAULT_URL", value: env.KEY_VAULT_URL || "" },
     // Secrets from job configuration (defined in containerApp.bicep)
     { name: "CLAUDE_CODE_OAUTH_TOKEN", secretRef: "anthropic-oauth-token" },

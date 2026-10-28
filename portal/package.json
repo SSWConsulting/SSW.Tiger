@@ -1,0 +1,29 @@
+{
+  "name": "ssw-tiger-portal",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "NODE_ENV=production node src/server.js",
+    "test": "node --test test/*.test.js",
+    "dev": "node src/server.js --dev",
+    "build": "node scripts/build.mjs",
+    "test:next": "npm run build && NODE_ENV=production node --test test/next.integration.mjs"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "dependencies": {
+    "@azure/cosmos": "^4.10.1",
+    "@azure/identity": "4.13.0",
+    "@azure/storage-blob": "^12.27.0",
+    "jose": "^6.2.13",
+    "next": "16.4.3",
+    "openid-client": "^6.0.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "overrides": {
+    "uuid": "11.1.1"
+  }
+}

@@ -2,6 +2,12 @@ using './main.bicep'
 
 param project = 'tiger'
 param environment = 'staging'
+
+// New meetings publish to the Portal; existing reports stay where they are.
+// Before applying, deploy and verify the Portal resources and Function code that forwards DASHBOARD_CONTAINER.
+// Verify that the configured processor image supports private report publishing.
+param dashboardBaseUrl = 'portal.sswtiger.com'
+param dashboardContainer = 'reports'
 param costCategoryTag = { 'cost-category': 'dev/test' }
 
 // GitHub Container Registry settings
@@ -19,4 +25,4 @@ param transcriptHubAppInstallationId = '154848166'
 // Skip Logic App deployment to preserve Portal configuration
 param deployLogicApp = false
 
-// Deploy with: az deployment group create --resource-group "SSW.Transcript-Intelligence-Group-Event-Reasoning.Dev" --template-file main.bicep --parameters main.bicepparam
+// From the repository root: az deployment group create --resource-group "SSW.Transcript-Intelligence-Group-Event-Reasoning.Dev" --template-file infra/main.bicep --parameters infra/staging.bicepparam

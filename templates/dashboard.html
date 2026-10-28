@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{PROJECT_NAME}} - Meeting Dashboard ({{DATE}})</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js" integrity="sha384-9Ax3MmS9AClxJyd5/zafcXXjxmwFhZCdsT6HJoJjarvCaAkJlk5QDzjLJm+Wdx5F" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js" integrity="sha384-b0GXujLkk9eYYSmcSfoyZbfyElGAQnDyY0skCHSG6w3JgTMFnz11ggrTAr7seu9f" crossorigin="anonymous"></script>
     <!-- SSW Design System: Inter (body/heading) + IBM Plex Mono (mono) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -301,7 +301,8 @@
     </style>
 </head>
 <body>
-    <div x-data="{ activeTab: 'overview', collapsed: false }" :class="collapsed ? 'ds-shell ds-shell--collapsed' : 'ds-shell'">
+    <!-- Apply static layout and icon classes before Alpine initializes to prevent a flash on cold loads. -->
+    <div class="ds-shell" x-data="{ activeTab: 'overview', collapsed: false }" :class="collapsed ? 'ds-shell ds-shell--collapsed' : 'ds-shell'">
 
         <!-- ==================== DS SIDEBAR (lg+) ==================== -->
         <aside class="ds-sidebar no-print">
@@ -333,23 +334,23 @@
             </div>
 
             <nav class="flex flex-col gap-1">
-                <button title="Overview" @click="activeTab = 'overview'" :class="activeTab === 'overview' ? 'ds-navitem ds-navitem--active' : 'ds-navitem'">
+                <button class="ds-navitem" title="Overview" @click="activeTab = 'overview'" :class="activeTab === 'overview' ? 'ds-navitem ds-navitem--active' : 'ds-navitem'">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
                     <span class="ds-navlabel">Overview</span>
                 </button>
-                <button title="Timeline" @click="activeTab = 'timeline'" :class="activeTab === 'timeline' ? 'ds-navitem ds-navitem--active' : 'ds-navitem'">
+                <button class="ds-navitem" title="Timeline" @click="activeTab = 'timeline'" :class="activeTab === 'timeline' ? 'ds-navitem ds-navitem--active' : 'ds-navitem'">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
                     <span class="ds-navlabel">Timeline</span>
                 </button>
-                <button title="People &amp; Roles" @click="activeTab = 'people'" :class="activeTab === 'people' ? 'ds-navitem ds-navitem--active' : 'ds-navitem'">
+                <button class="ds-navitem" title="People &amp; Roles" @click="activeTab = 'people'" :class="activeTab === 'people' ? 'ds-navitem ds-navitem--active' : 'ds-navitem'">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                     <span class="ds-navlabel">People &amp; Roles</span>
                 </button>
-                <button title="Insights" @click="activeTab = 'insights'" :class="activeTab === 'insights' ? 'ds-navitem ds-navitem--active' : 'ds-navitem'">
+                <button class="ds-navitem" title="Insights" @click="activeTab = 'insights'" :class="activeTab === 'insights' ? 'ds-navitem ds-navitem--active' : 'ds-navitem'">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>
                     <span class="ds-navlabel">Insights</span>
                 </button>
-                <button title="Trends" @click="activeTab = 'trends'" :class="activeTab === 'trends' ? 'ds-navitem ds-navitem--active' : 'ds-navitem'">
+                <button class="ds-navitem" title="Trends" @click="activeTab = 'trends'" :class="activeTab === 'trends' ? 'ds-navitem ds-navitem--active' : 'ds-navitem'">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
                     <span class="ds-navlabel">Trends</span>
                 </button>
@@ -383,11 +384,11 @@
                     <!-- Mobile nav (below lg) -->
                     <div class="ds-mobilebar mt-4">
                         <div class="ds-topnav">
-                            <button title="Overview" @click="activeTab = 'overview'" :class="activeTab === 'overview' ? 'ds-topnav-item ds-topnav-item--active' : 'ds-topnav-item'">Overview</button>
-                            <button title="Timeline" @click="activeTab = 'timeline'" :class="activeTab === 'timeline' ? 'ds-topnav-item ds-topnav-item--active' : 'ds-topnav-item'">Timeline</button>
-                            <button title="People &amp; Roles" @click="activeTab = 'people'" :class="activeTab === 'people' ? 'ds-topnav-item ds-topnav-item--active' : 'ds-topnav-item'">People</button>
-                            <button title="Insights" @click="activeTab = 'insights'" :class="activeTab === 'insights' ? 'ds-topnav-item ds-topnav-item--active' : 'ds-topnav-item'">Insights</button>
-                            <button title="Trends" @click="activeTab = 'trends'" :class="activeTab === 'trends' ? 'ds-topnav-item ds-topnav-item--active' : 'ds-topnav-item'">Trends</button>
+                            <button class="ds-topnav-item" title="Overview" @click="activeTab = 'overview'" :class="activeTab === 'overview' ? 'ds-topnav-item ds-topnav-item--active' : 'ds-topnav-item'">Overview</button>
+                            <button class="ds-topnav-item" title="Timeline" @click="activeTab = 'timeline'" :class="activeTab === 'timeline' ? 'ds-topnav-item ds-topnav-item--active' : 'ds-topnav-item'">Timeline</button>
+                            <button class="ds-topnav-item" title="People &amp; Roles" @click="activeTab = 'people'" :class="activeTab === 'people' ? 'ds-topnav-item ds-topnav-item--active' : 'ds-topnav-item'">People</button>
+                            <button class="ds-topnav-item" title="Insights" @click="activeTab = 'insights'" :class="activeTab === 'insights' ? 'ds-topnav-item ds-topnav-item--active' : 'ds-topnav-item'">Insights</button>
+                            <button class="ds-topnav-item" title="Trends" @click="activeTab = 'trends'" :class="activeTab === 'trends' ? 'ds-topnav-item ds-topnav-item--active' : 'ds-topnav-item'">Trends</button>
                         </div>
                     </div>
                 </div>

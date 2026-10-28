@@ -27,7 +27,14 @@ const {
   getPasswordEncryptionKey,
   encryptDashboardPassword,
 } = require("../lib/keyVaultPasswords");
-const { DASHBOARD_HTML_CACHE_CONTROL } = require("../lib/dashboardBlob");
+const {
+  DASHBOARD_HTML_CACHE_CONTROL,
+  dashboardContainerName,
+  usesPrivateContainer,
+  encodeDisplayName,
+  decodeDisplayName,
+} = require("../lib/dashboardBlob");
+const { dashboardUrl } = require("../lib/dashboardUrl");
 
 /**
  * Check that the dashboard HTML exists at the canonical location.
@@ -85,7 +92,7 @@ function quoteForShell(args, useShell) {
   });
 }
 
-function buildDashboardUploadArgs({ dashboardDir, blobDestination, storageAccount }) {
+function buildDashboardUploadArgs({ dashboardDir, blobDestination, storageAccount, displayName }) {
   return [
     "storage", "blob", "upload-batch",
     "--source", dashboardDir,
@@ -93,6 +100,7 @@ function buildDashboardUploadArgs({ dashboardDir, blobDestination, storageAccoun
     "--account-name", storageAccount,
     "--auth-mode", "login",
     "--content-cache-control", DASHBOARD_HTML_CACHE_CONTROL,
+    ...(displayName ? ["--metadata", `displayname=${encodeDisplayName(displayName)}`] : []),
     "--overwrite",
   ];
 }
@@ -106,11 +114,14 @@ function buildDashboardUploadArgs({ dashboardDir, blobDestination, storageAccoun
  *   even where prepareDashboardForDeployment would otherwise fail open
  * @returns {string} deployed URL
  */
-async function deployDashboard({ dashboardPath, projectName, meetingId, requireProtection = false }) {
+async function deployDashboard({ dashboardPath, projectName, meetingId, displayName, requireProtection = false }) {
   const storageAccount = process.env.DASHBOARD_STORAGE_ACCOUNT;
   if (!storageAccount) {
     throw new Error("DASHBOARD_STORAGE_ACCOUNT not set");
   }
+
+  // Fail fast on a malformed DASHBOARD_BASE_URL before anything is uploaded
+  if (process.env.DASHBOARD_BASE_URL) dashboardUrl(process.env.DASHBOARD_BASE_URL);
 
   const security = await prepareDashboardForDeployment({
     dashboardPath,
@@ -124,7 +135,7 @@ async function deployDashboard({ dashboardPath, projectName, meetingId, requireP
   }
   const dashboardDir = security.uploadDir || path.dirname(dashboardPath);
 
-  const blobDestination = `$web/${projectName}/${meetingId}`;
+  const blobDestination = `${dashboardContainerName()}/${projectName}/${meetingId}`;
 
   log("info", "Deploying dashboard to blob storage", {
     storageAccount,
@@ -158,6 +169,7 @@ async function deployDashboard({ dashboardPath, projectName, meetingId, requireP
       dashboardDir,
       blobDestination,
       storageAccount,
+      displayName,
     }), isWindows), { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], shell: isWindows });
   } catch (err) {
     log("error", "Blob upload failed", { stderr: err.stderr });
@@ -181,7 +193,7 @@ async function deployDashboard({ dashboardPath, projectName, meetingId, requireP
   }
 
   const storagePath = `${projectName}/${meetingId}`;
-  const deployedUrl = `https://${host}/${storagePath}`;
+  const deployedUrl = dashboardUrl(host, [projectName, meetingId]);
   log("info", "Dashboard deployed", { url: deployedUrl });
   return {
     deployedUrl,
@@ -334,6 +346,34 @@ async function persistToCosmos({ projectName, meetingId, meetingDate, dashboardP
 }
 
 /**
+ * Read the display name stored on an already-published project index.
+ * Returns "" when the blob or its metadata is missing; other az failures are
+ * logged so a fallback to the slug is never silent.
+ */
+function readPublishedDisplayName({ execFileSync, isWindows, storageAccount, blobName }) {
+  let output;
+  try {
+    output = execFileSync("az", quoteForShell([
+      "storage", "blob", "metadata", "show",
+      "--container-name", dashboardContainerName(),
+      "--name", blobName,
+      "--account-name", storageAccount,
+      "--auth-mode", "login",
+      "-o", "json",
+    ], isWindows), { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], shell: isWindows });
+  } catch (err) {
+    if (!/BlobNotFound|does not exist/i.test(String(err.stderr || ""))) {
+      log("warn", "Could not read published project display name, falling back to slug", {
+        blobName,
+        stderr: err.stderr,
+      });
+    }
+    return "";
+  }
+  return decodeDisplayName(JSON.parse(output || "{}").displayname);
+}
+
+/**
  * Generate and deploy the per-project index page listing all meeting
  * dashboards, so https://{host}/{project}/ shows a landing page.
  *
@@ -346,6 +386,12 @@ async function persistToCosmos({ projectName, meetingId, meetingDate, dashboardP
  * @returns {string} deployed index URL (without hostname lookup, path only on fallback)
  */
 async function deployProjectIndex({ projectName, displayName, currentMeeting }) {
+  // The Portal lists private reports dynamically, so static project pages no longer need to be published.
+  if (usesPrivateContainer()) {
+    return process.env.DASHBOARD_BASE_URL
+      ? `${dashboardUrl(process.env.DASHBOARD_BASE_URL, [projectName])}/`
+      : `/${encodeURIComponent(projectName)}/`;
+  }
   const storageAccount = process.env.DASHBOARD_STORAGE_ACCOUNT;
   if (!storageAccount) {
     throw new Error("DASHBOARD_STORAGE_ACCOUNT not set");
@@ -364,12 +410,22 @@ async function deployProjectIndex({ projectName, displayName, currentMeeting }) 
   }
   meetings = mergeCurrentMeeting(meetings, currentMeeting);
 
+  const { execFileSync } = require("child_process");
+  const isWindows = process.platform === "win32";
+  const blobName = `${projectName}/index.html`;
+
+  // --overwrite replaces blob metadata, so a caller without a display name
+  // (deploy-local) keeps the one already published rather than reverting to the slug
+  const resolvedDisplayName = displayName
+    || readPublishedDisplayName({ execFileSync, isWindows, storageAccount, blobName })
+    || projectName;
+
   // Render from template
   const templatePath = path.join(__dirname, "..", "templates", "project-index.html");
   const template = await fs.readFile(templatePath, "utf-8");
   const html = renderProjectIndex({
     template,
-    displayName: displayName || projectName,
+    displayName: resolvedDisplayName,
     meetings,
     generatedAt: new Date().toISOString(),
   });
@@ -378,24 +434,24 @@ async function deployProjectIndex({ projectName, displayName, currentMeeting }) 
   await fs.writeFile(localPath, html, "utf-8");
 
   // Upload as {project}/index.html in the static website container
-  const blobName = `${projectName}/index.html`;
   log("info", "Deploying project index to blob storage", {
     storageAccount,
     blobName,
     meetingCount: meetings.length,
   });
 
-  const { execFileSync } = require("child_process");
-  const isWindows = process.platform === "win32";
   try {
     execFileSync("az", quoteForShell([
       "storage", "blob", "upload",
       "--file", localPath,
-      "--container-name", "$web",
+      "--container-name", dashboardContainerName(),
       "--name", blobName,
       "--account-name", storageAccount,
       "--auth-mode", "login",
       "--content-type", "text/html; charset=utf-8",
+      "--content-cache-control", DASHBOARD_HTML_CACHE_CONTROL,
+      // Read back by the root portal; URI-encoded because blob metadata must be ASCII
+      "--metadata", `displayname=${encodeDisplayName(resolvedDisplayName)}`,
       "--overwrite",
     ], isWindows), { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], shell: isWindows });
   } catch (err) {
@@ -404,7 +460,7 @@ async function deployProjectIndex({ projectName, displayName, currentMeeting }) 
   }
 
   const host = process.env.DASHBOARD_BASE_URL;
-  const indexUrl = host ? `https://${host.replace(/^https?:\/\//, "").replace(/\/$/, "")}/${projectName}/` : `/${projectName}/`;
+  const indexUrl = host ? `${dashboardUrl(host, [projectName])}/` : `/${encodeURIComponent(projectName)}/`;
   log("info", "Project index deployed", { url: indexUrl });
   return indexUrl;
 }

@@ -27,6 +27,10 @@ param claudeModel string = 'claude-opus-4-5-20251101'
 @description('Storage account name for dashboard static website hosting')
 param dashboardStorageAccountName string
 
+@description('Dashboard hostname (or HTTPS origin) used to build deployed dashboard URLs')
+param dashboardBaseUrl string
+param dashboardContainer string = '$web'
+
 @description('Cosmos DB endpoint for meeting metadata persistence')
 param cosmosEndpoint string = ''
 
@@ -41,7 +45,6 @@ param transcriptHubAppInstallationId string = ''
 
 var envName = toLower('ce-${project}-${environment}')
 var jobName = toLower('job-${project}-${environment}')
-var dashboardBaseUrl = environment == 'staging' ? 'dashboards.sswtiger.com' : 'dashboards-${environment}.sswtiger.com'
 
 // Opt-in: without a repo the publisher no-ops, and the App secret need not exist
 var transcriptHubEnabled = !empty(transcriptHubRepo)
@@ -170,6 +173,7 @@ resource processorJob 'Microsoft.App/jobs@2025-01-01' = {
             { name: 'CLAUDE_CODE_OAUTH_TOKEN', secretRef: 'anthropic-oauth-token' }
             { name: 'DASHBOARD_STORAGE_ACCOUNT', value: dashboardStorageAccountName }
             { name: 'DASHBOARD_BASE_URL', value: dashboardBaseUrl }
+            { name: 'DASHBOARD_CONTAINER', value: dashboardContainer }
             { name: 'CLAUDE_MODEL', value: claudeModel }
             { name: 'NODE_ENV', value: environment == 'prod' ? 'production' : 'development' }
             { name: 'GRAPH_CLIENT_ID', secretRef: 'graph-client-id' }

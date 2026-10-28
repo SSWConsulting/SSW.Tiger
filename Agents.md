@@ -46,7 +46,10 @@ SSW.Tiger/
 ├── infra/                               # Bicep IaC
 │   ├── main.bicep                       # Orchestrator
 │   ├── staging.bicepparam               # Environment params
+│   ├── portal*.bicep / portal-*.bicepparam  # Portal App Service + shared plan
 │   └── modules/                         # Per-resource modules
+├── portal/                              # Authenticated report Portal (standalone Node app, see portal/README.md)
+├── scripts/                             # Portal release/smoke checks and maintenance scripts
 ├── .claude/
 │   ├── agents/                          # 6 analysis agent prompts
 │   └── skills/                          # 6 user-facing skill definitions

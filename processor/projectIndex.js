@@ -9,13 +9,7 @@
  * meeting that was just deployed in case persistence was skipped or lagging.
  */
 
-const escapeHtml = (value) =>
-  String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+const { escapeHtml } = require("../lib/sanitize");
 
 /**
  * Format an ISO date (YYYY-MM-DD) as Australian format (DD/MM/YYYY).
