@@ -5,6 +5,10 @@ const { DASHBOARD_HTML_CACHE_CONTROL } = require("../lib/dashboardBlob");
 const { buildDashboardUploadArgs } = require("./deployer");
 
 describe("dashboard deployment upload arguments", () => {
+  it("stores the project display name on reports without a project index", () => {
+    const args = buildDashboardUploadArgs({ dashboardDir: '/tmp/dashboard', blobDestination: 'reports/yak/meeting', storageAccount: 'satiger', displayName: 'YakShaver 团队' });
+    assert.equal(args[args.indexOf('--metadata') + 1], `displayname=${encodeURIComponent('YakShaver 团队')}`);
+  });
   it("sets the shared cache policy on batch uploads", () => {
     const args = buildDashboardUploadArgs({
       dashboardDir: "C:\\temp\\dashboard",
@@ -16,6 +20,23 @@ describe("dashboard deployment upload arguments", () => {
     assert.notEqual(cacheControlIndex, -1);
     assert.equal(args[cacheControlIndex + 1], DASHBOARD_HTML_CACHE_CONTROL);
   });
+});
+
+it('private Portal deployments skip static project and root indexes', async () => {
+  const saved = { container: process.env.DASHBOARD_CONTAINER, base: process.env.DASHBOARD_BASE_URL };
+  process.env.DASHBOARD_CONTAINER = 'reports';
+  process.env.DASHBOARD_BASE_URL = 'https://portal.test';
+  try {
+    const { deployProjectIndex } = require('./deployer');
+    const { deployPortalIndex } = require('./portalIndex');
+    assert.equal(await deployProjectIndex({ projectName: 'Yak Team' }), 'https://portal.test/Yak%20Team/');
+    assert.equal(await deployPortalIndex({ container: new Proxy({}, { get() { throw new Error('Static storage must not be accessed'); } }) }), 'https://portal.test/');
+  } finally {
+    for (const [key, value] of [['DASHBOARD_CONTAINER', saved.container], ['DASHBOARD_BASE_URL', saved.base]]) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 });
 
 describe("deployDashboard", () => {
@@ -38,4 +59,12 @@ describe("deployDashboard", () => {
       }
     }
   });
+});
+
+it('stores subjects only on private report metadata, encoded for Azure ASCII metadata', () => {
+  const subject = '[YakShaver] 迭代评审 & Q&A';
+  for (const destination of ['reports/yak/meeting', '$web/yak/meeting']) {
+    const args = buildDashboardUploadArgs({ dashboardDir: '/tmp/dashboard', blobDestination: destination, storageAccount: 'satiger', meetingSubject: subject });
+    assert.equal(args.includes(`meetingsubject=${encodeURIComponent(subject)}`), destination.startsWith('reports/'));
+  }
 });

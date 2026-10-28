@@ -43,8 +43,11 @@ function renderPortalIndex({ template, projects, generatedAt }) {
   return template.replace(/\{\{(PROJECT_COUNT|PROJECT_LIST|GENERATED_AT)\}\}/g, (_, key) => values[key]);
 }
 
-async function deployPortalIndex({ container = getWebContainerClient() } = {}) {
+async function deployPortalIndex({ container } = {}) {
   const url = process.env.DASHBOARD_BASE_URL ? dashboardUrl(process.env.DASHBOARD_BASE_URL) : '/';
+  // 私有容器的项目入口由 Portal 提供，保留旧静态站点的发布兼容性。
+  if (process.env.DASHBOARD_CONTAINER && process.env.DASHBOARD_CONTAINER !== '$web') return url;
+  container ||= getWebContainerClient();
   const template = await fs.readFile(path.join(__dirname, '..', 'templates', 'portal-index.html'), 'utf8');
   const blob = container.getBlockBlobClient('index.html');
   // ETag guard: a parallel job must not overwrite a newer portal with a stale listing.

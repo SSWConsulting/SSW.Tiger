@@ -86,7 +86,13 @@ function quoteForShell(args, useShell) {
   });
 }
 
-function buildDashboardUploadArgs({ dashboardDir, blobDestination, storageAccount }) {
+function buildDashboardUploadArgs({ dashboardDir, blobDestination, storageAccount, displayName, meetingSubject }) {
+  const metadata = [
+    ...(displayName ? [`displayname=${encodeURIComponent(displayName)}`] : []),
+    // 原始会议主题仅写入私有报告，避免通过公开存储元数据泄露。
+    ...(blobDestination.split('/')[0] !== '$web' && meetingSubject?.trim()
+      ? [`meetingsubject=${encodeURIComponent(meetingSubject.trim())}`] : []),
+  ];
   return [
     "storage", "blob", "upload-batch",
     "--source", dashboardDir,
@@ -94,6 +100,7 @@ function buildDashboardUploadArgs({ dashboardDir, blobDestination, storageAccoun
     "--account-name", storageAccount,
     "--auth-mode", "login",
     "--content-cache-control", DASHBOARD_HTML_CACHE_CONTROL,
+    ...(metadata.length ? ["--metadata", ...metadata] : []),
     "--overwrite",
   ];
 }
@@ -107,7 +114,7 @@ function buildDashboardUploadArgs({ dashboardDir, blobDestination, storageAccoun
  *   even where prepareDashboardForDeployment would otherwise fail open
  * @returns {string} deployed URL
  */
-async function deployDashboard({ dashboardPath, projectName, meetingId, requireProtection = false }) {
+async function deployDashboard({ dashboardPath, projectName, meetingId, displayName, meetingSubject, requireProtection = false }) {
   const storageAccount = process.env.DASHBOARD_STORAGE_ACCOUNT;
   if (!storageAccount) {
     throw new Error("DASHBOARD_STORAGE_ACCOUNT not set");
@@ -162,6 +169,8 @@ async function deployDashboard({ dashboardPath, projectName, meetingId, requireP
       dashboardDir,
       blobDestination,
       storageAccount,
+      displayName,
+      meetingSubject,
     }), isWindows), { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], shell: isWindows });
   } catch (err) {
     log("error", "Blob upload failed", { stderr: err.stderr });
@@ -303,7 +312,7 @@ async function prepareDashboardForDeployment({ dashboardPath, projectName, meeti
 /**
  * Persist meeting metadata and consolidated JSON to Cosmos DB.
  */
-async function persistToCosmos({ projectName, meetingId, meetingDate, dashboardPath, meetingPath }) {
+async function persistToCosmos({ projectName, meetingId, meetingDate, meetingSubject, dashboardPath, meetingPath }) {
   const consolidatedPath = path.join(meetingPath, "analysis", "consolidated.json");
 
   let consolidated = null;
@@ -329,6 +338,7 @@ async function persistToCosmos({ projectName, meetingId, meetingDate, dashboardP
     meetingId,
     meetingDate,
     dashboardPath,
+    meetingSubject,
     consolidated,
     metadata,
   });
@@ -371,6 +381,12 @@ function readPublishedDisplayName({ execFileSync, isWindows, storageAccount, blo
  * @returns {string} deployed index URL (without hostname lookup, path only on fallback)
  */
 async function deployProjectIndex({ projectName, displayName, currentMeeting }) {
+  // 私有报告由 Portal 动态列出，无需再发布静态项目页。
+  if (process.env.DASHBOARD_CONTAINER && process.env.DASHBOARD_CONTAINER !== "$web") {
+    return process.env.DASHBOARD_BASE_URL
+      ? `${dashboardUrl(process.env.DASHBOARD_BASE_URL, [projectName])}/`
+      : `/${encodeURIComponent(projectName)}/`;
+  }
   const storageAccount = process.env.DASHBOARD_STORAGE_ACCOUNT;
   if (!storageAccount) {
     throw new Error("DASHBOARD_STORAGE_ACCOUNT not set");

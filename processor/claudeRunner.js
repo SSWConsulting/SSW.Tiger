@@ -256,7 +256,7 @@ function extractEventPreview(event) {
  * @param {boolean} [params.resumeDashboardOnly] - skip analysis, rebuild the
  *   dashboard from the existing consolidated.json (used by the retry path)
  */
-async function invokeClaude({ projectName, projectSlug, meetingId, meetingDate, meetingPath, outputDir, rootDir, resumeDashboardOnly = false }) {
+async function invokeClaude({ projectName, projectSlug, meetingSubject = "", meetingId, meetingDate, meetingPath, outputDir, rootDir, resumeDashboardOnly = false }) {
   await fs.mkdir(outputDir, { recursive: true });
 
   const authConfig = getClaudeAuthMethod();
@@ -264,6 +264,7 @@ async function invokeClaude({ projectName, projectSlug, meetingId, meetingDate, 
   const context = `Project: ${projectName}
 Meeting ID: ${meetingId}
 Meeting Date: ${meetingDate}
+Meeting subject (metadata): ${JSON.stringify(meetingSubject)}
 Meeting folder: projects/${projectSlug}/${meetingId}/
 Transcript: projects/${projectSlug}/${meetingId}/transcript.vtt
 Attendees (meeting invite list - use as suggestion for name resolution): projects/${projectSlug}/${meetingId}/attendees.json

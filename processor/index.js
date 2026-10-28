@@ -77,6 +77,7 @@ async function processTranscript(transcriptPath, projectSlug) {
   const { meetingId, meetingDate, meetingTime } = validateTranscriptFilename(resolvedPath);
   // Display name for Claude prompt / notifications (from env, set by entrypoint.sh)
   const displayName = process.env.PROJECT_NAME || projectSlug;
+  const meetingSubject = process.env.MEETING_SUBJECT?.trim() || "";
   const projectPath = path.join(ROOT_DIR, "projects", projectSlug);
   const meetingPath = path.join(projectPath, meetingId);
 
@@ -116,6 +117,7 @@ async function processTranscript(transcriptPath, projectSlug) {
   // Invoke Claude Code CLI (uses display name for human-readable prompt)
   await invokeClaudeWithRetry({
     projectName: displayName,
+    meetingSubject,
     projectSlug,
     meetingId,
     meetingDate,
@@ -154,6 +156,8 @@ async function processTranscript(transcriptPath, projectSlug) {
     dashboardPath: canonicalPath,
     projectName: projectSlug,
     meetingId,
+    displayName,
+    meetingSubject,
     requireProtection: history.includesProtectedMeetings === true,
   });
 
@@ -164,6 +168,7 @@ async function processTranscript(transcriptPath, projectSlug) {
         projectName: projectSlug,
         meetingId,
         meetingDate,
+        meetingSubject,
         dashboardPath: storagePath,
         meetingPath,
       });
@@ -181,7 +186,7 @@ async function processTranscript(transcriptPath, projectSlug) {
     await deployProjectIndex({
       projectName: projectSlug,
       displayName,
-      currentMeeting: { meetingId, meetingDate },
+      currentMeeting: { meetingId, meetingDate, meetingSubject },
     });
   } catch (err) {
     log("error", "Failed to deploy project index (non-fatal)", {
