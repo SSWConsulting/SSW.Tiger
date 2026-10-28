@@ -20,6 +20,8 @@ export class UserStore {
     if (!normalized) throw new Error('Invalid email');
     return `email-block-${hash([this.issuer, normalized])}`;
   }
+  // Stored records must match the id, type and issuer they were looked up by.
+  owns(record, id, type) { return record.id === id && record.type === type && record.issuer === this.issuer; }
   async document(id) {
     try {
       const { resource } = await this.container.item(id, id).read();
@@ -29,7 +31,7 @@ export class UserStore {
   async readUser(id) {
     const user = await this.document(id);
     if (!user) return null;
-    if (user.id !== id || user.type !== 'user' || user.issuer !== this.issuer
+    if (!this.owns(user, id, 'user')
       || typeof user.sub !== 'string' || !user.sub || typeof user._etag !== 'string'
       || typeof user.isActive !== 'boolean' || typeof user.emailVerified !== 'boolean'
       || normalizedEmail(user.email) !== user.email || !user.email
@@ -41,7 +43,7 @@ export class UserStore {
   async read(subject) {
     const identity = await this.document(this.identityId(subject));
     if (identity) {
-      if (identity.id !== this.identityId(subject) || identity.type !== 'identity' || identity.issuer !== this.issuer
+      if (!this.owns(identity, this.identityId(subject), 'identity')
         || identity.sub !== subject || typeof identity.userId !== 'string' || !identity.userId) throw new Error('Invalid stored identity');
       const stored = await this.readUser(identity.userId);
       if (!stored) throw new Error('Identity user missing');
@@ -56,7 +58,7 @@ export class UserStore {
     const id = this.emailBlockId(email);
     const block = await this.document(id);
     if (!block) return;
-    if (block.id !== id || block.type !== 'emailBlock' || block.issuer !== this.issuer
+    if (!this.owns(block, id, 'emailBlock')
       || block.email !== normalizedEmail(email) || typeof block.isBlocked !== 'boolean') throw new Error('Invalid email block');
     if (block.isBlocked) throw new UserAccessError('account_disabled');
   }
@@ -99,7 +101,7 @@ export class UserStore {
       catch (error) { if (error.code !== 409) throw error; }
       index = await this.document(id);
     }
-    if (!index || index.id !== id || index.type !== 'emailIdentity' || index.issuer !== this.issuer
+    if (!index || !this.owns(index, id, 'emailIdentity')
       || index.email !== email || typeof index.userId !== 'string' || !index.userId) throw new Error('Invalid email identity');
     if (preferred && index.userId !== preferred) throw new UserAccessError('account_link_conflict');
     return index.userId;

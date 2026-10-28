@@ -27,6 +27,12 @@ function cookies(req) {
 }
 function redirect(res, target, status = 302) { res.writeHead(status, { Location: target }); res.end(); }
 function html(res, status, body) { res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(body); }
+// HEAD answers with the page's headers only.
+function page(req, res, body) {
+  if (req.method === 'HEAD') { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); return res.end(); }
+  return html(res, 200, body);
+}
+const errorDetails = error => ({ code: error.code, message: error.message });
 function json(res, status, body) { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); }
 function equal(a, b) {
   const x = Buffer.from(a || ''); const y = Buffer.from(b || '');
@@ -46,7 +52,7 @@ export function createHandler({ config, auth, apiAuth, reports, sessions, users,
     if (!validSession(session, config) || !session.refreshToken) throw new ReauthenticationRequired();
     if (session.accessTokenExpiresAt > Date.now() + 30000) return session;
     const refreshed = await auth.refresh(session);
-    if (refreshed.claims && !isEmployee(refreshed.claims, config)) throw new ReauthenticationRequired();
+    if (refreshed.claims && !isEmployee(refreshed.claims)) throw new ReauthenticationRequired();
     const { claims, ...tokens } = refreshed;
     return { ...session, ...tokens };
   });
@@ -55,7 +61,7 @@ export function createHandler({ config, auth, apiAuth, reports, sessions, users,
     await sessions.remove(id, 'session');
     if (session?.refreshToken) {
       try { await auth.revoke(session.refreshToken); }
-      catch { logger.error('Portal refresh token revocation failed'); }
+      catch (error) { logger.error('Portal refresh token revocation failed', errorDetails(error)); }
     }
     return session;
   };
@@ -85,7 +91,7 @@ export function createHandler({ config, auth, apiAuth, reports, sessions, users,
           res.setHeader('Allow', method); return json(res, 405, { error: 'method_not_allowed' });
         }
         const claims = await apiAuth.verify(req.headers.authorization, { allowCallback: registration || roles });
-        if (!isEmployee(claims, config)) return json(res, 403, { error: 'ssw_staff_only' });
+        if (!isEmployee(claims)) return json(res, 403, { error: 'ssw_staff_only' });
         // IdentityServer sends an empty body. User data and roles never come from callers' JSON.
         if (registration && (req.headers['transfer-encoding'] || Number(req.headers['content-length'] || 0) !== 0)) {
           return json(res, 400, { error: 'registration_body_must_be_empty' });
@@ -132,7 +138,7 @@ export function createHandler({ config, auth, apiAuth, reports, sessions, users,
           return html(res, 400, messagePage('Sign-in expired', 'This sign-in link has expired or has already been used. Please start again.', '<a class="button" href="/auth/login">Sign in with SSW</a>'));
         }
         const identity = await auth.finish(url, transaction);
-        if (!isEmployee(identity.claims, config)) {
+        if (!isEmployee(identity.claims)) {
           return html(res, 403, messagePage('SSW staff access only', 'Your account is not approved for this internal Portal. Contact the TIGER owner.'));
         }
         if (!identity.refreshToken) throw new ReauthenticationRequired();
@@ -166,7 +172,7 @@ export function createHandler({ config, auth, apiAuth, reports, sessions, users,
         await endSession(jar[SESSION]);
         let target = `${config.origin}/`;
         try { if (session?.issuer === config.issuer && session.idToken) target = await auth.logout(session.idToken); }
-        catch { logger.error('Portal identity logout unavailable'); }
+        catch (error) { logger.error('Portal identity logout unavailable', errorDetails(error)); }
         res.setHeader('Set-Cookie', cookie(SESSION, '', 0));
         return redirect(res, target, req.method === 'POST' ? 303 : 302);
       }
@@ -188,9 +194,7 @@ export function createHandler({ config, auth, apiAuth, reports, sessions, users,
       }
       if (url.pathname === '/' || url.pathname === '/index.html') {
         const projects = await listProjects(reports, undefined, meetings);
-        const body = projectsPage(projects, session.user, session.csrf);
-        if (req.method === 'HEAD') { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); return res.end(); }
-        return html(res, 200, body);
+        return page(req, res, projectsPage(projects, session.user));
       }
       const name = reportName(url.pathname);
       if (!name) return html(res, 404, messagePage('Report not found', 'Return to All projects to find a meeting.'));
@@ -202,8 +206,7 @@ export function createHandler({ config, auth, apiAuth, reports, sessions, users,
       if (/^[^/]+\/index\.html$/.test(name)) {
         const [project] = await listProjects(reports, name.split('/')[0], meetings);
         if (!project) return html(res, 404, messagePage('Project not found', 'Return to All projects to find a meeting.'));
-        if (req.method === 'HEAD') { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); return res.end(); }
-        return html(res, 200, projectPage(project, session.user, session.csrf));
+        return page(req, res, projectPage(project, session.user));
       }
       const blob = reports.getBlockBlobClient(name);
       const response = req.method === 'HEAD' ? await blob.getProperties() : await blob.download();
@@ -214,7 +217,9 @@ export function createHandler({ config, auth, apiAuth, reports, sessions, users,
     } catch (error) {
       if (res.headersSent) { res.destroy(); return; }
       if (error instanceof ReauthenticationRequired) {
-        await endSession(cookies(req)[SESSION]);
+        // A failed cleanup must not leave the request hanging; the cookie is cleared either way.
+        try { await endSession(cookies(req)[SESSION]); }
+        catch (cleanupError) { logger.error('Portal session cleanup failed', errorDetails(cleanupError)); }
         res.setHeader('Set-Cookie', cookie(SESSION, '', 0));
         if (req.url?.startsWith('/api/')) return json(res, 401, { error: 'sign_in_required' });
         return redirect(res, `/auth/login?returnTo=${encodeURIComponent(safeReturnTo(req.url))}`);
@@ -235,17 +240,21 @@ export function createHandler({ config, auth, apiAuth, reports, sessions, users,
       const retryTarget = loginError
         ? `/auth/login?returnTo=${encodeURIComponent(safeReturnTo(new URL(req.url, config.origin).searchParams.get('returnTo')))}`
         : '/auth/login';
-      html(res, notFound ? 404 : authError ? 400 : 503, messagePage(
-        notFound ? 'Report not found' : loginError ? 'Unable to sign in' : authError ? 'Sign-in could not be completed' : 'Portal temporarily unavailable',
-        notFound ? 'This report may have moved or is no longer available. Browse your projects to find another meeting.'
-          : loginError ? 'The sign-in service is temporarily unavailable. Please try again in a few moments.'
-          : authError ? 'Something interrupted the sign-in. Start again, and if it keeps happening, contact the TIGER owner.'
-          : 'We couldn’t load this page. Please try again in a moment. If this continues, contact the TIGER owner.',
-        notFound ? '<a class="button" href="/">Browse projects</a>'
-          : loginError || authError ? `<a class="button" href="${escapeHtml(retryTarget)}">Try again</a>`
-          : `<a class="button" href="${escapeHtml(safeReturnTo(req.url))}">Try again</a>`,
-        notFound ? '404 · Report unavailable' : authError ? '400 · Sign-in interrupted' : '503 · Service unavailable',
-      ));
+      const retry = target => `<a class="button" href="${escapeHtml(target)}">Try again</a>`;
+      const failure = notFound ? {
+        status: 404, title: 'Report not found', action: '<a class="button" href="/">Browse projects</a>', label: '404 · Report unavailable',
+        message: 'This report may have moved or is no longer available. Browse your projects to find another meeting.',
+      } : loginError ? {
+        status: 503, title: 'Unable to sign in', action: retry(retryTarget), label: '503 · Service unavailable',
+        message: 'The sign-in service is temporarily unavailable. Please try again in a few moments.',
+      } : authError ? {
+        status: 400, title: 'Sign-in could not be completed', action: retry(retryTarget), label: '400 · Sign-in interrupted',
+        message: 'Something interrupted the sign-in. Start again, and if it keeps happening, contact the TIGER owner.',
+      } : {
+        status: 503, title: 'Portal temporarily unavailable', action: retry(safeReturnTo(req.url)), label: '503 · Service unavailable',
+        message: 'We couldn’t load this page. Please try again in a moment. If this continues, contact the TIGER owner.',
+      };
+      html(res, failure.status, messagePage(failure.title, failure.message, failure.action, failure.label));
     }
   };
 }

@@ -54,10 +54,13 @@ export function safeReturnTo(value) {
   } catch { return '/'; }
 }
 
+// A single path segment that can be served as-is: not empty, not a dot segment, no separators or control characters.
+export const safeSegment = part => Boolean(part) && part !== '.' && part !== '..' && !/[\\/\u0000-\u001f\u007f]/.test(part);
+
 export function reportName(pathname) {
   let parts;
   try { parts = pathname.split('/').filter(Boolean).map(decodeURIComponent); } catch { return null; }
-  if (!parts.length || parts.some(p => !p || p === '.' || p === '..' || /[\\/\u0000-\u001f\u007f]/.test(p))) return null;
+  if (!parts.length || !parts.every(safeSegment)) return null;
   if (parts.length === 1) return `${parts[0]}/index.html`;
   if ((parts.length === 2 && !parts.at(-1).includes('.')) || pathname.endsWith('/')) parts.push('index.html');
   return parts.join('/');

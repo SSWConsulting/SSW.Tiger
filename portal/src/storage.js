@@ -3,7 +3,7 @@ import { BlobServiceClient } from '@azure/storage-blob';
 import { CosmosClient } from '@azure/cosmos';
 import { DefaultAzureCredential, ManagedIdentityCredential } from '@azure/identity';
 import { UserStore } from './users.js';
-import { projectsFromBlobs } from './projects.js';
+import { meetingStats, projectsFromBlobs } from './projects.js';
 
 export function createStorage(config) {
   const credential = process.env.AZURE_CLIENT_ID
@@ -17,6 +17,12 @@ export function createStorage(config) {
     sessions: new SessionStore(service.getContainerClient(config.sessionContainer)),
     users: new UserStore(database.container(config.userContainer), config.issuer),
   };
+}
+
+async function readJson(response) {
+  const chunks = [];
+  for await (const chunk of response.readableStreamBody) chunks.push(chunk);
+  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
 
 // Store sessions in private Blob storage for multiple instances and logout revocation.
@@ -40,9 +46,7 @@ export class SessionStore {
     if (!blob) return null;
     try {
       const response = await blob.download();
-      const chunks = [];
-      for await (const chunk of response.readableStreamBody) chunks.push(chunk);
-      const data = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      const data = await readJson(response);
       if (consume || data.expiresAt <= this.now()) await blob.delete({ conditions: { ifMatch: response.etag } });
       return data.expiresAt > this.now() ? data : null;
     } catch (error) {
@@ -57,9 +61,7 @@ export class SessionStore {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const response = await blob.download();
-        const chunks = [];
-        for await (const chunk of response.readableStreamBody) chunks.push(chunk);
-        const current = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+        const current = await readJson(response);
         if (current.expiresAt <= this.now()) return null;
         const next = await transform(current);
         if (current.expiresAt <= this.now()) return null;
@@ -93,7 +95,7 @@ export async function listProjects(container, project, meetings) {
   }).fetchAll();
   const summaries = new Map(resources.map(item => [JSON.stringify([item.projectName, item.meetingId]), item.metadata]));
   for (const item of projects) for (const meeting of item.meetings) {
-    meeting.metadata = summaries.get(JSON.stringify([item.project, meeting.id])) || {};
+    meeting.stats = meetingStats(summaries.get(JSON.stringify([item.project, meeting.id])));
   }
   return projects;
 }

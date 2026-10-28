@@ -45,7 +45,12 @@ export async function migrateReports({ source, target, manifest, saveManifest, a
           conditions: { ifNoneMatch: '*' },
           // The SDK may parse empty metadata from historical blobs as an empty string.
           metadata: item.metadata && typeof item.metadata === 'object' ? item.metadata : {},
-          blobHTTPHeaders: { blobContentType: item.properties.contentType, blobCacheControl: 'no-cache, max-age=0, must-revalidate' },
+          // Keep the source's content headers; only cache control is reset because the Portal serves every report with no-store.
+          blobHTTPHeaders: {
+            blobContentType: item.properties.contentType, blobContentEncoding: item.properties.contentEncoding,
+            blobContentLanguage: item.properties.contentLanguage, blobContentDisposition: item.properties.contentDisposition,
+            blobCacheControl: 'no-cache, max-age=0, must-revalidate',
+          },
         });
       } catch (error) { if (![409, 412].includes(error.statusCode)) throw error; }
       const verified = await snapshot(to);
