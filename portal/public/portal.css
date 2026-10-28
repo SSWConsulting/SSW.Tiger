@@ -125,8 +125,7 @@ h2 { font-size: 20px; }
   .message-actions .button { width: 100%; }
 }
 
-/* Preserve the branding and meeting cards from the original static index on project pages. */
-.project-page { max-width: 976px; margin: 0 auto; }
+/* 项目页沿用公共 main 容器宽度，与首页保持对齐。 */
 .project-page .breadcrumb { margin-bottom: 24px; font-size: 16px; }
 .project-page .breadcrumb a { color: var(--accent); font-weight: 500; }
 .project-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 36px; }
