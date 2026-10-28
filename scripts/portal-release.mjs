@@ -11,7 +11,7 @@ export function releaseConfig(env) {
   const target = env.TARGET;
   const app = `app-tiger-portal-${target}`;
   const issuer = target === 'test' ? 'https://app-ssw-ident-staging-api.azurewebsites.net' : 'https://identity.ssw.com.au';
-  for (const key of ['PORTAL_RESOURCE_GROUP', 'PORTAL_ORIGIN', 'OIDC_ISSUER', 'AZURE_CLIENT_ID', 'AZURE_TENANT_ID', 'AZURE_SUBSCRIPTION_ID']) {
+  for (const key of ['PORTAL_RESOURCE_GROUP', 'PORTAL_ORIGIN', 'OIDC_ISSUER', 'AZURE_SUBSCRIPTION_ID']) {
     assert.ok(env[key]?.trim(), `Missing environment variable: ${key}`);
   }
   assert.equal(env.PORTAL_APP_NAME, app, 'Portal app does not match target');
@@ -87,10 +87,6 @@ export async function packageSource(directory, revision, source = 'portal') {
 
 async function main() {
   const [command, destination] = process.argv.slice(2);
-  if (command === 'summary') {
-    console.log(`### Portal release\n\n- Target: ${process.env.TARGET}\n- Operation: ${process.env.OPERATION}\n- Commit: ${process.env.REVISION}\n- Result: ${process.env.RELEASE_STATUS}\n- Origin: ${process.env.PORTAL_ORIGIN}\n\nRelease ZIP, SHA-256 and revision are retained in this run's artifacts for 30 days.\n`);
-    return;
-  }
   if (command === 'package') {
     assert.ok(['test', 'staging'].includes(process.env.TARGET));
     assert.ok(operations.includes(process.env.OPERATION));

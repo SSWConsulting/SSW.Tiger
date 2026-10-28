@@ -4,7 +4,7 @@ Phase 1–2: SSW staff sign in, browse all published projects, open their meetin
 
 The Portal lists private report storage, including historical reports whose non-fatal Cosmos write failed. It enriches published meetings with Cosmos metadata (participant count, duration and action items), querying summary fields only. Meetings without a Cosmos record remain visible without metadata chips. `portal/` is a standalone Node application; it does not change the Graph webhook's authentication.
 
-Project titles and **View all** open `/{project}/` as a native Portal page, with shared branding, account navigation, breadcrumbs and a complete meeting list using the original static index’s SSW square motif, date/time headings and individual meeting cards. `/{project}/index.html` is also handled by this route for existing links. Neither address reads a static project HTML body. The meeting list comes directly from published report paths, so it works without project index blobs. Project names use the latest report's `displayname` metadata, falling back to legacy project-index metadata or the project slug. Private-container deployments publish meeting reports only; static root/project indexes are retained only for legacy `$web` deployments until cutover. Existing static index blobs can be retired after migration verification; these code changes do not delete live blobs or change DNS. Individual meeting HTML and password unlock pages continue to be served as before.
+Project titles and **View all** open `/{project}/` as a native Portal page, with shared branding, account navigation, breadcrumbs and a complete meeting list using the original static index’s SSW square motif, date/time headings and individual meeting cards. `/{project}/index.html` is also handled by this route for existing links. Neither address reads a static project HTML body. The meeting list comes directly from published report paths, so it works without project index blobs. Project names use the newest report that has `displayname` metadata, falling back to legacy project-index metadata or the project slug. Private-container deployments publish meeting reports only; static root/project indexes are retained only for legacy `$web` deployments until cutover. Existing static index blobs can be retired after migration verification; these code changes do not delete live blobs or change DNS. Individual meeting HTML and password unlock pages continue to be served as before.
 
 Keep environment-specific deployment records and acceptance evidence outside this repository. Complete test acceptance before production cutover.
 
@@ -130,7 +130,7 @@ Use **two separate Web Apps on one Linux B1 App Service Plan**. The existing pla
 | Shared plan | `plan-tiger-portal-test` | The same plan/resource ID |
 | Existing managed identity | `id-tiger-test` | `id-tiger-staging` |
 | Storage account | Test dashboard account | Production dashboard account |
-| IdentityServer issuer and employee list | Test values | Separate production values |
+| IdentityServer issuer | Test values | Separate production values |
 | OIDC client ID | `ssw-tiger-portal` | `ssw-tiger-portal` |
 | GitHub deployment environment | `portal-test` | `portal-production` |
 

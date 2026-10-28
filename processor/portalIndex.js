@@ -1,12 +1,10 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { getWebContainerClient, dashboardHtmlHttpHeaders } = require('../lib/dashboardBlob');
+const { getWebContainerClient, dashboardHtmlHttpHeaders, decodeDisplayName, usesPrivateContainer } = require('../lib/dashboardBlob');
 const { dashboardUrl } = require('../lib/dashboardUrl');
 const { formatDate } = require('./projectIndex');
 const { log } = require('../lib/logger');
-
-const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) =>
-  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+const { escapeHtml } = require('../lib/sanitize');
 
 // Only list folders with a published project index, so every link resolves; indexes
 // published before displayname metadata existed show their slug
@@ -18,14 +16,6 @@ function projectsFromBlobs(blobs) {
     projects.set(match[1], { projectName: match[1], displayName: decodeDisplayName(blob.metadata?.displayname) || match[1] });
   }
   return [...projects.values()].sort((a, b) => a.displayName.localeCompare(b.displayName));
-}
-
-function decodeDisplayName(value) {
-  try {
-    return value ? decodeURIComponent(value) : '';
-  } catch {
-    return '';
-  }
 }
 
 function renderPortalIndex({ template, projects, generatedAt }) {
@@ -46,7 +36,7 @@ function renderPortalIndex({ template, projects, generatedAt }) {
 async function deployPortalIndex({ container } = {}) {
   const url = process.env.DASHBOARD_BASE_URL ? dashboardUrl(process.env.DASHBOARD_BASE_URL) : '/';
   // Use Portal project links for private containers while preserving publishing compatibility with legacy static sites.
-  if (process.env.DASHBOARD_CONTAINER && process.env.DASHBOARD_CONTAINER !== '$web') return url;
+  if (usesPrivateContainer()) return url;
   container ||= getWebContainerClient();
   const template = await fs.readFile(path.join(__dirname, '..', 'templates', 'portal-index.html'), 'utf8');
   const blob = container.getBlockBlobClient('index.html');

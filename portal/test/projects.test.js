@@ -60,7 +60,7 @@ test('published meetings keep Cosmos people and metrics without adding unpublish
   const projects = await listProjects(reports, undefined, meetings);
   const yak = projects.find(item => item.project === 'yak');
   assert.equal(yak.meetings.length, 2);
-  assert.equal(projects.find(item => item.project === 'other').meetings[0].metadata.participantCount, 3);
+  assert.equal(projects.find(item => item.project === 'other').meetings[0].stats.people, 3);
   const html = projectPage(yak, { name: '<Staff>' });
   assert.match(html, /6 people/);
   assert.match(html, /42 min/);
@@ -83,7 +83,7 @@ test('machine suffixes never become visible meeting titles', async () => {
   }
   const { projectPage, projectsPage } = await import('../src/views.js');
   const project = { project: 'yak', displayName: 'YakShaver', meetings: [
-    { ...meetingSummary('2026-08-21-152902-e1920a4b'), metadata: { participantCount: 6 } },
+    { ...meetingSummary('2026-08-21-152902-e1920a4b'), stats: { people: 6 } },
     { ...meetingSummary('2026-08-21-sprint-review'), title: 'A long meeting title <with details> & follow-up' },
   ] };
   for (const html of [projectPage(project, { name: 'Staff' }), projectsPage([project], { name: 'Staff' })]) {
@@ -100,7 +100,7 @@ test('machine suffixes never become visible meeting titles', async () => {
 test('home keeps calendar tiles and people in hover text, while project pages keep people chips', async () => {
   const { projectPage, projectsPage } = await import('../src/views.js');
   const project = { project: 'yak', displayName: 'YakShaver', meetings: [
-    { ...meetingSummary('2026-08-21-152902-e1920a4b'), metadata: { participantCount: 6 } },
+    { ...meetingSummary('2026-08-21-152902-e1920a4b'), stats: { people: 6 } },
     meetingSummary('kickoff'),
   ] };
   const home = projectsPage([project], { name: 'Staff' });

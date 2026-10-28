@@ -3,7 +3,7 @@ const { AzureCliCredential } = require('@azure/identity');
 const { createHash } = require('node:crypto');
 const { ensureDashboardInitialClasses } = require('../lib/dashboardPresentation');
 
-// Repair staging only; default to preview mode and never print or export meeting content.
+// Repair the test environment only; default to preview mode and never print or export meeting content.
 async function main() {
   const args = process.argv.slice(2);
   if (args.some(arg => arg !== '--apply')) throw new Error('Usage: node scripts/repair-dashboard-initial-classes.js [--apply]');

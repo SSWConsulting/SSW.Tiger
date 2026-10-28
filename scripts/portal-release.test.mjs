@@ -21,7 +21,7 @@ test('release rejects cross-environment apps, origins, issuers and invalid opera
   for (const changes of [
     { TARGET: 'production' }, { OPERATION: 'anything' }, { PORTAL_APP_NAME: 'app-tiger-portal-staging' },
     { OIDC_ISSUER: 'https://identity.ssw.com.au' }, { PORTAL_ORIGIN: 'https://portal.sswtiger.com' },
-    { AZURE_CLIENT_ID: '' }, { PORTAL_MANAGE_ROLE_ASSIGNMENTS: 'yes' },
+    { AZURE_SUBSCRIPTION_ID: '' }, { PORTAL_MANAGE_ROLE_ASSIGNMENTS: 'yes' },
   ]) assert.throws(() => releaseConfig({ ...env, ...changes }));
   const staging = releaseConfig({ ...env, TARGET: 'staging', PORTAL_APP_NAME: 'app-tiger-portal-staging',
     PORTAL_ORIGIN: 'https://portal.sswtiger.com', OIDC_ISSUER: 'https://identity.ssw.com.au' });

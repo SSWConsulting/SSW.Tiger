@@ -1,8 +1,8 @@
 // Build the project list from meeting reports while supporting name metadata from legacy project pages.
+import { safeSegment } from './config.js';
 
 // en-AU abbreviates September as "Sept", which breaks the 3-letter date tile.
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const unsafe =part => !part || part === '.' || part === '..';
 
 function decodeName(value, fallback) {
   try { return value ? decodeURIComponent(value) : fallback; } catch { return fallback; }
@@ -37,6 +37,12 @@ export function meetingSummary(id) {
   };
 }
 
+// Whole-number meeting stats ready for display; missing or invalid Cosmos values are left out.
+export function meetingStats(metadata = {}) {
+  const count = value => Number.isFinite(value) && value >= 0 ? Math.round(value) : undefined;
+  return { minutes: count(metadata.totalDurationMinutes), people: count(metadata.participantCount), actionItems: count(metadata.actionItemsCount) };
+}
+
 const newestFirst = (a, b) => b.sortKey.localeCompare(a.sortKey) || b.id.localeCompare(a.id);
 
 // Projects without any published meeting are left out.
@@ -45,7 +51,7 @@ export function projectsFromBlobs(blobs) {
   const entry = project => projects.get(project) ?? projects.set(project, { project, displayName: project, meetings: [] }).get(project);
   for (const blob of blobs) {
     const parts = blob.name.split('/');
-    if (parts.at(-1) !== 'index.html' || parts.length < 2 || parts.length > 3 || parts.slice(0, -1).some(unsafe)) continue;
+    if (parts.at(-1) !== 'index.html' || parts.length < 2 || parts.length > 3 || !parts.slice(0, -1).every(safeSegment)) continue;
     const project = entry(parts[0]);
     if (parts.length === 2) project.displayName = decodeName(blob.metadata?.displayname, parts[0]);
     else project.meetings.push({ ...meetingSummary(parts[1]), displayName: decodeName(blob.metadata?.displayname, '') });

@@ -25,9 +25,8 @@ The script (`processor/deploy-local.js`) reuses the same `deployer.js` as the Az
 
 1. Uploads dashboard files to Azure Blob Storage
 2. Persists meeting metadata + consolidated analysis to Cosmos DB (if `COSMOS_ENDPOINT` is set)
-3. Regenerates and uploads the per-project index page (`{project}/index.html`) listing all of that project's meeting dashboards
-4. Rebuilds the root portal index (`index.html`) from published project index blobs
-5. Returns the configured report URL (requires Portal sign-in after cutover)
+3. Legacy `$web` only: regenerates the per-project index page (`{project}/index.html`) and rebuilds the static root index (`index.html`). With a private container (`DASHBOARD_CONTAINER=reports`) both steps are skipped, because the Portal lists published reports directly
+4. Returns the configured report URL (requires Portal sign-in after cutover)
 
 ## Deployment URL Convention
 
@@ -39,7 +38,7 @@ Example: `https://dashboards.sswtiger.com/yakshaver/2026-01-22-094557`
 
 The project index page lists every meeting: `https://dashboards.sswtiger.com/{project}/`
 
-The authenticated Portal lists published project indexes from the private report container. `npm run deploy:portal` only rebuilds the static root index; it does not deploy the App Service application.
+The authenticated Portal builds its project and meeting lists from the published report paths in the private container; it does not read index blobs. `npm run deploy:portal` only rebuilds the legacy `$web` root index (and does nothing for a private container); it does not deploy the App Service application.
 
 ## Prerequisites
 

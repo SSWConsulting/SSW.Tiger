@@ -27,7 +27,13 @@ const {
   getPasswordEncryptionKey,
   encryptDashboardPassword,
 } = require("../lib/keyVaultPasswords");
-const { DASHBOARD_HTML_CACHE_CONTROL } = require("../lib/dashboardBlob");
+const {
+  DASHBOARD_HTML_CACHE_CONTROL,
+  dashboardContainerName,
+  usesPrivateContainer,
+  encodeDisplayName,
+  decodeDisplayName,
+} = require("../lib/dashboardBlob");
 const { dashboardUrl } = require("../lib/dashboardUrl");
 
 /**
@@ -94,7 +100,7 @@ function buildDashboardUploadArgs({ dashboardDir, blobDestination, storageAccoun
     "--account-name", storageAccount,
     "--auth-mode", "login",
     "--content-cache-control", DASHBOARD_HTML_CACHE_CONTROL,
-    ...(displayName ? ["--metadata", `displayname=${encodeURIComponent(displayName)}`] : []),
+    ...(displayName ? ["--metadata", `displayname=${encodeDisplayName(displayName)}`] : []),
     "--overwrite",
   ];
 }
@@ -129,7 +135,7 @@ async function deployDashboard({ dashboardPath, projectName, meetingId, displayN
   }
   const dashboardDir = security.uploadDir || path.dirname(dashboardPath);
 
-  const blobDestination = `${process.env.DASHBOARD_CONTAINER || "$web"}/${projectName}/${meetingId}`;
+  const blobDestination = `${dashboardContainerName()}/${projectName}/${meetingId}`;
 
   log("info", "Deploying dashboard to blob storage", {
     storageAccount,
@@ -341,23 +347,30 @@ async function persistToCosmos({ projectName, meetingId, meetingDate, dashboardP
 
 /**
  * Read the display name stored on an already-published project index.
- * Returns "" when the blob or its metadata is missing, or az fails.
+ * Returns "" when the blob or its metadata is missing; other az failures are
+ * logged so a fallback to the slug is never silent.
  */
 function readPublishedDisplayName({ execFileSync, isWindows, storageAccount, blobName }) {
+  let output;
   try {
-    const output = execFileSync("az", quoteForShell([
+    output = execFileSync("az", quoteForShell([
       "storage", "blob", "metadata", "show",
-      "--container-name", process.env.DASHBOARD_CONTAINER || "$web",
+      "--container-name", dashboardContainerName(),
       "--name", blobName,
       "--account-name", storageAccount,
       "--auth-mode", "login",
       "-o", "json",
     ], isWindows), { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], shell: isWindows });
-    const value = JSON.parse(output || "{}").displayname;
-    return value ? decodeURIComponent(value) : "";
-  } catch {
+  } catch (err) {
+    if (!/BlobNotFound|does not exist/i.test(String(err.stderr || ""))) {
+      log("warn", "Could not read published project display name, falling back to slug", {
+        blobName,
+        stderr: err.stderr,
+      });
+    }
     return "";
   }
+  return decodeDisplayName(JSON.parse(output || "{}").displayname);
 }
 
 /**
@@ -374,7 +387,7 @@ function readPublishedDisplayName({ execFileSync, isWindows, storageAccount, blo
  */
 async function deployProjectIndex({ projectName, displayName, currentMeeting }) {
   // The Portal lists private reports dynamically, so static project pages no longer need to be published.
-  if (process.env.DASHBOARD_CONTAINER && process.env.DASHBOARD_CONTAINER !== "$web") {
+  if (usesPrivateContainer()) {
     return process.env.DASHBOARD_BASE_URL
       ? `${dashboardUrl(process.env.DASHBOARD_BASE_URL, [projectName])}/`
       : `/${encodeURIComponent(projectName)}/`;
@@ -431,14 +444,14 @@ async function deployProjectIndex({ projectName, displayName, currentMeeting }) 
     execFileSync("az", quoteForShell([
       "storage", "blob", "upload",
       "--file", localPath,
-      "--container-name", process.env.DASHBOARD_CONTAINER || "$web",
+      "--container-name", dashboardContainerName(),
       "--name", blobName,
       "--account-name", storageAccount,
       "--auth-mode", "login",
       "--content-type", "text/html; charset=utf-8",
       "--content-cache-control", DASHBOARD_HTML_CACHE_CONTROL,
       // Read back by the root portal; URI-encoded because blob metadata must be ASCII
-      "--metadata", `displayname=${encodeURIComponent(resolvedDisplayName)}`,
+      "--metadata", `displayname=${encodeDisplayName(resolvedDisplayName)}`,
       "--overwrite",
     ], isWindows), { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], shell: isWindows });
   } catch (err) {
