@@ -10,7 +10,7 @@ export default function PortalPage({ kind, projects, project, user }) {
 }
 
 export function getServerSideProps({ req, res }) {
-  // 页面数据只能由通过鉴权的服务端请求注入，不能从 URL 或 Cookie 直接读取。
+  // Page data is injected only by the authorized server request, never read from the URL or cookies.
   if (!req.portalPage) return { notFound: true };
   res.setHeader('Cache-Control', 'private, no-store');
   return { props: req.portalPage };

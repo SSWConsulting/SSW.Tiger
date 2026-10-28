@@ -8,7 +8,7 @@ import { UserStore } from '../src/users.js';
 import { SessionStore } from '../src/storage.js';
 import { memoryContainer, memoryUsers, serve } from './helpers.js';
 
-// 使用构建后的真实 Next.js 和测试存储，覆盖框架与鉴权边界。
+// Uses the real built Next.js app with in-memory storage to cover the framework/authorization boundary.
 test('production Next.js pages preserve access checks, report passthrough and private data boundaries', async t => {
   const config = loadConfig({ PORTAL_ORIGIN: 'https://portal.test', OIDC_CLIENT_ID: 'tiger-portal',
     DASHBOARD_STORAGE_ACCOUNT: 'satigertestweb', COSMOS_ENDPOINT: 'https://cosmos.test' });
@@ -49,7 +49,7 @@ test('production Next.js pages preserve access checks, report passthrough and pr
   const head = await request('/demo/', { method: 'HEAD', headers });
   assert.equal(head.status, 200);
   assert.equal(await head.text(), '');
-  // 构建资源无需登录，但必须经过主机检查；数据路由不交给 Next.js。
+  // Build assets need no sign-in but still pass the host check; data routes are never handed to Next.js.
   const asset = rootHtml.match(/src="([^" ]*\/_next\/static\/[^" ]+\.js)"/)[1];
   assert.equal((await request(asset)).status, 200);
   assert.equal((await request(asset, { headers: { Host: 'evil.test' } })).status, 421);

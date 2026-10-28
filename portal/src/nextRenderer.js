@@ -8,9 +8,9 @@ export async function createNextRenderer({ dev = false } = {}) {
   return {
     serveAssets: handle,
     async renderPage(req, res, props) {
-      // 只传递展示数据，令牌和完整会话留在服务端；移除 Next.js 不支持的 undefined。
+      // Pass display data only; tokens and the full session stay server-side. JSON round-trip drops undefined, which Next.js rejects.
       req.portalPage = JSON.parse(JSON.stringify(props));
-      // 仅在鉴权后将首页和项目页交给同一个 Next.js 页面渲染。
+      // Only called after authorization: home and project pages share one Next.js page.
       await handle(req, res, { ...parse(req.url, true), pathname: '/', query: {} });
     },
     close: () => app.close(),

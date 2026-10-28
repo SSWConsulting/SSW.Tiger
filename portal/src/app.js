@@ -83,6 +83,8 @@ export function createHandler({ config, auth, apiAuth, reports, sessions, users,
       if (host !== config.host) return html(res, 421, messagePage('Unknown host', 'Use the configured TIGER Portal address.'));
       const url = new URL(req.url, config.origin);
       if (serveAssets && url.pathname.startsWith('/_next/static/') && ['GET', 'HEAD'].includes(req.method)) {
+        // Hand Next.js the normalized path that was checked, not raw dot segments that could resolve elsewhere.
+        req.url = url.pathname + url.search;
         return await serveAssets(req, res);
       }
       const registration = url.pathname === '/api/User/Register';
