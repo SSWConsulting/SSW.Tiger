@@ -86,3 +86,6 @@ infra/portal.json
 # Local migration manifests and test-only deployment parameters
 portal/.migration*.json
 infra/portal-app-test.local.bicepparam
+
+# Next.js Portal build cache
+portal/.next/

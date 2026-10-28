@@ -47,7 +47,7 @@ async function formBody(req) {
   return new URLSearchParams(body);
 }
 
-export function createHandler({ config, auth, apiAuth, reports, sessions, users, meetings, revision = 'development', logger = console }) {
+export function createHandler({ config, auth, apiAuth, reports, sessions, users, meetings, revision = 'development', logger = console, renderPage, serveAssets }) {
   const renewSession = async id => sessions.update(id, async session => {
     if (!validSession(session, config) || !session.refreshToken) throw new ReauthenticationRequired();
     if (session.accessTokenExpiresAt > Date.now() + 30000) return session;
@@ -82,6 +82,9 @@ export function createHandler({ config, auth, apiAuth, reports, sessions, users,
       }
       if (host !== config.host) return html(res, 421, messagePage('Unknown host', 'Use the configured TIGER Portal address.'));
       const url = new URL(req.url, config.origin);
+      if (serveAssets && url.pathname.startsWith('/_next/static/') && ['GET', 'HEAD'].includes(req.method)) {
+        return await serveAssets(req, res);
+      }
       const registration = url.pathname === '/api/User/Register';
       const roles = url.pathname === '/api/User/MyRoles';
       const bearerMe = url.pathname === '/api/me' && req.headers.authorization !== undefined;
@@ -194,6 +197,7 @@ export function createHandler({ config, auth, apiAuth, reports, sessions, users,
       }
       if (url.pathname === '/' || url.pathname === '/index.html') {
         const projects = await listProjects(reports, undefined, meetings);
+        if (renderPage) return await renderPage(req, res, { kind: 'projects', projects, user: session.user });
         return page(req, res, projectsPage(projects, session.user));
       }
       const name = reportName(url.pathname);
@@ -206,6 +210,7 @@ export function createHandler({ config, auth, apiAuth, reports, sessions, users,
       if (/^[^/]+\/index\.html$/.test(name)) {
         const [project] = await listProjects(reports, name.split('/')[0], meetings);
         if (!project) return html(res, 404, messagePage('Project not found', 'Return to All projects to find a meeting.'));
+        if (renderPage) return await renderPage(req, res, { kind: 'project', project, user: session.user });
         return page(req, res, projectPage(project, session.user));
       }
       const blob = reports.getBlockBlobClient(name);

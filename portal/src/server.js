@@ -1,3 +1,4 @@
+import { createNextRenderer } from './nextRenderer.js';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { loadConfig } from './config.js';
@@ -21,8 +22,12 @@ const auth = {
 // Store the commit in the release package to avoid mistaking an old process for a successful deployment.
 const release = await readFile(new URL('../release.json', import.meta.url), 'utf8')
   .then(JSON.parse).catch(error => { if (error.code === 'ENOENT') return { revision: 'development' }; throw error; });
-const server = createServer(createHandler({ config, ...storage, auth, apiAuth: createApiAuth(config), revision: release.revision }));
+const renderer = await createNextRenderer({ dev: process.argv.includes('--dev') });
+const server = createServer(createHandler({
+  config, ...storage, auth, apiAuth: createApiAuth(config), revision: release.revision,
+  ...renderer,
+}));
 server.requestTimeout = 30000;
 server.headersTimeout = 15000;
 server.listen(config.port, () => console.log(`TIGER Portal listening on ${config.port}`));
-process.on('SIGTERM', () => server.close());
+process.on('SIGTERM', () => server.close(() => renderer.close()));

@@ -1,12 +1,24 @@
-# TIGER Portal — App Service + application OIDC / PKCE
+# TIGER Portal — Next.js / React + application OIDC / PKCE
 
 Phase 1–2: SSW staff sign in, browse all published projects, open their meeting lists and existing HTML reports. Password-protected reports still require their existing password. A persistent user/role foundation is included; no administrator UI, per-meeting ACL, personal filtering or videos are introduced.
 
-The Portal lists private report storage, including historical reports whose non-fatal Cosmos write failed. It enriches published meetings with Cosmos metadata (participant count, duration and action items), querying summary fields only. Meetings without a Cosmos record remain visible without metadata chips. `portal/` is a standalone Node application; it does not change the Graph webhook's authentication.
+The Portal lists private report storage, including historical reports whose non-fatal Cosmos write failed. It enriches published meetings with Cosmos metadata (participant count, duration and action items), querying summary fields only. Meetings without a Cosmos record remain visible without metadata chips. `portal/` is a standalone Next.js / React application with a custom Node server; it does not change the Graph webhook's authentication.
 
 Project titles and **View all** open `/{project}/` as a native Portal page, with shared branding, account navigation, breadcrumbs and a complete meeting list using the original static index’s SSW square motif, date/time headings and individual meeting cards. `/{project}/index.html` is also handled by this route for existing links. Neither address reads a static project HTML body. The meeting list comes directly from published report paths, so it works without project index blobs. Project names use the newest report that has `displayname` metadata, falling back to legacy project-index metadata or the project slug. Private-container deployments publish meeting reports only; static root/project indexes are retained only for legacy `$web` deployments until cutover. Existing static index blobs can be retired after migration verification; these code changes do not delete live blobs or change DNS. Individual meeting HTML and password unlock pages continue to be served as before.
 
 Keep environment-specific deployment records and acceptance evidence outside this repository. Complete test acceptance before production cutover.
+
+## Next.js frontend architecture
+
+The existing Node request handler remains the authorization boundary for every project page, report and API. After checking the current Cosmos account and renewing its session, it invokes Next.js to render the home/project page. `pages/index.js` receives only the authorized public user and project summaries through server-side props; access/refresh tokens and storage clients never become page props. Normal anchors preserve full-request authorization and legacy URL behavior. Only `/_next/static/` build assets are passed directly to Next.js after host validation; `/_next/data/`, image optimization and arbitrary framework routes are not exposed.
+
+- `src/components.js`: React layout, project cards and meeting lists shared by Next.js and existing HTTP tests.
+- `pages/`: Next.js page, document and shared stylesheet entry.
+- `src/nextRenderer.js`: production/development framework adapter, initialized by `src/server.js`.
+- `src/app.js`, `auth.js`, `users.js`, `storage.js`: existing server-side access and data services.
+- Error pages remain lightweight server HTML, and meeting/password report bytes pass through unchanged.
+
+This uses the Next.js Pages Router with a custom server to retain the existing streaming report/authentication contracts. It does not use static export, standalone output or a separately deployed browser/backend pair. The release helper packages Next.js source and config; App Service builds it in the target environment. `npm run test:next --prefix portal` builds the production application and exercises real Next.js rendering through the authorization boundary using synthetic in-memory data. It requires no cloud credentials.
 
 ## IdentityServer registration
 
@@ -153,7 +165,7 @@ The existing test app and plan were created manually. Before the first IaC appli
    - Existing processor/security-tool identity: Blob write access on `reports` (existing account-level grants may already cover it; verify).
 5. Configure `COSMOS_ENDPOINT`, `COSMOS_DATABASE=tiger` and `PORTAL_USER_CONTAINER=users`. Verify the signed email-confirmation claims for each login/token path before granting access. Missing claims are denied.
 6. Bind and configure valid HTTPS certificates for **both** the portal and legacy dashboard hostnames. `bindCustomDomains` only creates hostname bindings after DNS verification; it does not create certificates or change DNS. Do not enable it before DNS is ready. You may initially use the app's Azure hostname as `PORTAL_ORIGIN`, with a matching IdentityServer callback, then update both when moving to the custom domain.
-7. Deploy **the contents of `portal/`** as the App Service application root. `npm start` runs `src/server.js`; App Service installs locked dependencies with build automation. Set `OIDC_API_AUDIENCE=tiger`, `COSMOS_ENDPOINT`, `COSMOS_DATABASE=tiger` and `PORTAL_USER_CONTAINER=users`. Run the local checks below, then publish manually using an authorized Azure account. Portal GitHub Actions are currently removed.
+7. Deploy **the contents of `portal/`** as the App Service application root. `npm start` runs `src/server.js`; App Service installs locked dependencies and runs `npm run build` with build automation. This build must finish before `npm start`; do not deploy source into a runtime that skips the Next.js build. Set `OIDC_API_AUDIENCE=tiger`, `COSMOS_ENDPOINT`, `COSMOS_DATABASE=tiger` and `PORTAL_USER_CONTAINER=users`. Run the local checks below, then publish manually using an authorized Azure account. Portal GitHub Actions are currently removed.
 
 ## Local validation and deployment
 
@@ -163,6 +175,7 @@ Run local validation before publishing:
 
 ```sh
 npm test --prefix portal
+npm run test:next --prefix portal
 node --test scripts/portal-*.test.mjs
 ```
 
@@ -249,7 +262,7 @@ npm test
 
 Tests include real OIDC-library PKCE generation and signed token validation using a test issuer, state rejection, single-use transactions, session expiry/revocation, employee denial, exact password-page passthrough and old-host path/query redirects. No production login is simulated as having succeeded. Real acceptance still requires IdentityServer client configuration, Azure roles, DNS/TLS and a company account.
 
-For manual local execution use an HTTPS development reverse proxy whose origin matches `PORTAL_ORIGIN`; register its callback with IdentityServer. The application uses Secure cookies in every environment and has no authentication bypass. Use `node --env-file=portal/.env portal/src/server.js` after filling the sample configuration. Keep `.env` untracked.
+For manual local execution use an HTTPS development reverse proxy whose origin matches `PORTAL_ORIGIN`; register its callback with IdentityServer. The application uses Secure cookies in every environment and has no authentication bypass. For local development use `node --env-file=portal/.env portal/src/server.js --dev` after filling the sample configuration. Production startup requires `npm run build --prefix portal` first. Keep `.env` untracked.
 
 
 ## Mock IdentityServer account-linking verification

@@ -97,19 +97,21 @@ test('machine suffixes never become visible meeting titles', async () => {
 });
 
 
-test('home keeps calendar tiles and people in hover text, while project pages keep people chips', async () => {
+test('home keeps calendar tiles without metric chips, while project pages retain meeting metrics', async () => {
   const { projectPage, projectsPage } = await import('../src/views.js');
   const project = { project: 'yak', displayName: 'YakShaver', meetings: [
-    { ...meetingSummary('2026-08-21-152902-e1920a4b'), stats: { people: 6 } },
+    { ...meetingSummary('2026-08-21-152902-e1920a4b'), stats: { people: 6, minutes: 45, actionItems: 4 } },
     meetingSummary('kickoff'),
   ] };
   const home = projectsPage([project], { name: 'Staff' });
   assert.match(home, /title="Meeting · 15:29 · 6 people"/);
-  assert.doesNotMatch(home, /class="meeting-chip">6 people/);
+  assert.doesNotMatch(home, /class="meeting-chip"|45 min|4 action items/);
   assert.match(home, /class="date-month">Aug/);
   assert.match(home, /class="date-day">21/);
   assert.match(home, /date-tile-blank/);
   const detail = projectPage(project, { name: 'Staff' });
   assert.match(detail, /class="meeting-chip">6 people/);
+  assert.match(detail, /class="meeting-chip">45 min/);
+  assert.match(detail, /class="meeting-chip">4 action items/);
   assert.doesNotMatch(detail, /class="date-tile"/);
 });

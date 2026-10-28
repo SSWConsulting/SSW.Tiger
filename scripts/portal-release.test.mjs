@@ -56,10 +56,10 @@ test('release package includes revision and runtime files without local secrets,
   t.after(() => rm(temp, { recursive: true, force: true }));
   const source = join(temp, 'source'); const output = join(temp, 'package');
   await mkdir(source);
-  for (const entry of ['src', 'public', 'node_modules', 'test']) await mkdir(join(source, entry));
-  for (const entry of ['package.json', 'package-lock.json', '.env']) await writeFile(join(source, entry), '{}');
+  for (const entry of ['src', 'pages', 'public', 'node_modules', 'test']) await mkdir(join(source, entry));
+  for (const entry of ['package.json', 'package-lock.json', 'next.config.mjs', '.env']) await writeFile(join(source, entry), '{}');
   await packageSource(output, revision, source);
-  assert.deepEqual((await readdir(output)).sort(), ['package-lock.json', 'package.json', 'public', 'release.json', 'src']);
+  assert.deepEqual((await readdir(output)).sort(), ['next.config.mjs', 'package-lock.json', 'package.json', 'pages', 'public', 'release.json', 'src']);
   assert.equal(JSON.parse(await readFile(join(output, 'release.json'), 'utf8')).revision, revision);
   await assert.rejects(() => packageSource(output, 'bad', source));
 });

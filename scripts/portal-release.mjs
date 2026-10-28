@@ -79,7 +79,7 @@ export async function packageSource(directory, revision, source = 'portal') {
   assert.match(revision || '', /^[a-f0-9]{40}$/, 'A full commit SHA is required');
   await mkdir(directory, { recursive: true });
   // Package runtime files only, excluding local secrets, tests, and node_modules.
-  for (const entry of ['src', 'public', 'package.json', 'package-lock.json']) {
+  for (const entry of ['src', 'pages', 'public', 'next.config.mjs', 'package.json', 'package-lock.json']) {
     await cp(resolve(source, entry), resolve(directory, entry), { recursive: true });
   }
   await writeFile(resolve(directory, 'release.json'), JSON.stringify({ revision }) + '\n');
