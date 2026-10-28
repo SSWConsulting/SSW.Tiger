@@ -217,8 +217,9 @@ export function createHandler({ config, auth, apiAuth, reports, sessions, users,
       }
       const blob = reports.getBlockBlobClient(name);
       const response = req.method === 'HEAD' ? await blob.getProperties() : await blob.download();
-      // 将报告脚本隔离到不透明源；保留密码表单事件，但不授予同源权限。
-      res.setHeader('Content-Security-Policy', 'sandbox allow-scripts allow-popups allow-forms');
+      // Isolate report scripts in an opaque origin. Forms keep password unlock working, and external
+      // links open unsandboxed; neither grants same-origin access to the Portal.
+      res.setHeader('Content-Security-Policy', 'sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms');
       res.writeHead(200, { 'Content-Type': response.contentType || (name.endsWith('.html') ? 'text/html; charset=utf-8' : 'application/octet-stream') });
       if (req.method === 'HEAD') return res.end();
       // Return password unlock pages unchanged without reading passwords or decrypting reports.

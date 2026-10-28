@@ -15,7 +15,7 @@ param dashboardStorageAccountName string
 param dashboardContainer string = 'reports'
 param manageRoleAssignments bool = false
 param bindCustomDomains bool = false
-// Portal 使用独立身份，仅授予下方容器级数据权限。
+// Dedicated Portal identity; it receives only the container-scoped data roles below.
 param managedIdentityName string = 'id-${project}-portal-${environment}'
 // Keep the existing test plan name to adopt it without moving the test app.
 // Both test and staging apps must reference the same separately managed plan.

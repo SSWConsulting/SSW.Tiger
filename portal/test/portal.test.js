@@ -194,9 +194,9 @@ test('Portal login, all projects, password report passthrough, legacy redirect a
   assert.equal((await request('/api/me', { headers: { Cookie: `__Host-tiger_session=${otherIssuer}` } })).status, 401);
   const protectedReport = await request('/crm/2026-10-27/', { headers: { Cookie: sessionCookie } });
   assert.equal(await protectedReport.text(), unlock);
-  assert.equal(protectedReport.headers.get('content-security-policy'), 'sandbox allow-scripts allow-popups allow-forms');
+  assert.equal(protectedReport.headers.get('content-security-policy'), 'sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms');
   const reportHead = await request('/crm/2026-10-27/', { method: 'HEAD', headers: { Cookie: sessionCookie } });
-  assert.equal(reportHead.headers.get('content-security-policy'), 'sandbox allow-scripts allow-popups allow-forms');
+  assert.equal(reportHead.headers.get('content-security-policy'), 'sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms');
   assert.equal(await reportHead.text(), '');
   assert.equal(root.headers.get('content-security-policy'), null);
   assert.equal(protectedReport.headers.get('cache-control'), 'private, no-store');

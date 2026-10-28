@@ -38,7 +38,7 @@ Example: `https://dashboards.sswtiger.com/yakshaver/2026-01-22-094557`
 
 The project index page lists every meeting: `https://dashboards.sswtiger.com/{project}/`
 
-The authenticated Portal builds its project and meeting lists from the published report paths in the private container; it does not read index blobs. `npm run deploy:portal` only rebuilds the legacy `$web` root index (and does nothing for a private container); it does not deploy the App Service application.
+The authenticated Portal builds its project and meeting lists from the published report paths in the private container; it does not read index blobs. The pipeline does not publish a root project listing in either container; the Portal generates it on request.
 
 ## Prerequisites
 
