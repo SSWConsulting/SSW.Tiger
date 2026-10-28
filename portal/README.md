@@ -153,55 +153,24 @@ The existing test app and plan were created manually. Before the first IaC appli
    - Existing processor/security-tool identity: Blob write access on `reports` (existing account-level grants may already cover it; verify).
 5. Configure `COSMOS_ENDPOINT`, `COSMOS_DATABASE=tiger` and `PORTAL_USER_CONTAINER=users`. Verify the signed email-confirmation claims for each login/token path before granting access. Missing claims are denied.
 6. Bind and configure valid HTTPS certificates for **both** the portal and legacy dashboard hostnames. `bindCustomDomains` only creates hostname bindings after DNS verification; it does not create certificates or change DNS. Do not enable it before DNS is ready. You may initially use the app's Azure hostname as `PORTAL_ORIGIN`, with a matching IdentityServer callback, then update both when moving to the custom domain.
-7. Deploy **the contents of `portal/`** as the App Service application root. `npm start` runs `src/server.js`; App Service installs locked dependencies with build automation. Set `OIDC_API_AUDIENCE=tiger`, `COSMOS_ENDPOINT`, `COSMOS_DATABASE=tiger` and `PORTAL_USER_CONTAINER=users`. Use the separate manual **Deploy Portal Test** or **Deploy Portal Staging** workflow described below; both test the source before publishing.
+7. Deploy **the contents of `portal/`** as the App Service application root. `npm start` runs `src/server.js`; App Service installs locked dependencies with build automation. Set `OIDC_API_AUDIENCE=tiger`, `COSMOS_ENDPOINT`, `COSMOS_DATABASE=tiger` and `PORTAL_USER_CONTAINER=users`. Run the local checks below, then publish manually using an authorized Azure account. Portal GitHub Actions are currently removed.
 
-## Manual App Service releases
+## Local validation and deployment
 
-`Deploy Portal Test` and `Deploy Portal Staging` are separate `workflow_dispatch` entry points. Select the branch in GitHub's **Run workflow** dialog. Neither pushes nor PRs deploy an application. **Portal CI** tests relevant PRs and compiles the Portal Bicep templates. The reusable `portal-release.yml` implements both release paths from the selected commit.
+Portal CI and the test/staging GitHub deployment workflows were removed while deployment authorization is unavailable. Changes to Portal no longer trigger a Portal-specific workflow. Existing container and Azure Function workflows remain separate.
 
-Staging serves live TIGER traffic. Its workflow deliberately retains the existing **`portal-production` GitHub environment**, while test uses `portal-test`. This preserves the intended OIDC environment subjects; do not rename only the workflow's environment without updating Azure federation. These workflow changes do not themselves deploy either app.
+Run local validation before publishing:
 
-| Operation | Effect |
-|---|---|
-| `deploy` (default) | Check the existing app configuration, deploy source, then run smoke checks |
-| `preview-infrastructure` | Run Bicep what-if only; no infrastructure write or source deployment |
-| `apply-infrastructure-and-deploy` | Run what-if, apply `infra/portal.bicep`, check configuration, deploy source and run smoke checks |
-
-First run `preview-infrastructure` and review its output before selecting the apply operation. The apply run repeats what-if for its selected commit; there is no interactive approval between its preview and apply steps. It manages the chosen Web App, private Blob containers, Cosmos users container and optional roles. It references the existing shared plan and environment identity. It never applies `infra/main.bicep`, `portal-test.bicepparam`, `portal-staging.bicepparam` or `portal-plan.bicep`, and never changes DNS/TLS or the transcript pipeline. Shared-plan provisioning remains a separate, explicitly reviewed operation.
-
-Configure these **GitHub Environment variables** for each environment before running a release:
-
-| Variable | Test | Staging / live |
-|---|---|---|
-| `PORTAL_APP_NAME` | `app-tiger-portal-test` | `app-tiger-portal-staging` |
-| `PORTAL_RESOURCE_GROUP` | Resource group containing the test app and environment resources | Resource group containing the staging app and environment resources |
-| `PORTAL_ORIGIN` | Exact HTTPS origin, initially the test Azure hostname or `https://portal-test.sswtiger.com` | Exact HTTPS origin, initially the staging Azure hostname or `https://portal.sswtiger.com` |
-| `OIDC_ISSUER` | `https://app-ssw-ident-staging-api.azurewebsites.net` | `https://identity.ssw.com.au` |
-| `AZURE_CLIENT_ID` | Deployment identity client ID | Deployment identity client ID |
-| `AZURE_TENANT_ID` | Azure tenant ID | Azure tenant ID |
-| `AZURE_SUBSCRIPTION_ID` | Intended subscription ID | Intended subscription ID |
-| `PORTAL_SHARED_PLAN_RESOURCE_GROUP` | Shared plan resource group; defaults to `PORTAL_RESOURCE_GROUP` | Same shared plan resource group |
-| `PORTAL_LEGACY_HOSTS` | Optional, defaults to `dashboards-test.sswtiger.com` | Optional, defaults to `dashboards.sswtiger.com` |
-| `PORTAL_MANAGE_ROLE_ASSIGNMENTS` | Optional `true`/`false`, defaults to `false` | Optional `true`/`false`, defaults to `false` |
-
-The release parameters fix Australia East, the existing `plan-tiger-portal-test`, environment-specific `id-tiger-{environment}`, `cosmos-tiger-{environment}` and `satiger{environment}web`, private `reports` and `portal-sessions`, and the `ssw-tiger-portal` public client. Unexpected apps, origins or issuers are rejected. DNS binding is disabled in these infrastructure operations. The deployment identity is distinct from the runtime managed identity; `AZURE_CLIENT_ID` in GitHub refers to the former, while the app setting refers to the latter.
-
-Use Azure OIDC federated credentials with audience `api://AzureADTokenExchange` and subjects:
-
-```text
-repo:SSWConsulting/SSW.Tiger:environment:portal-test
-repo:SSWConsulting/SSW.Tiger:environment:portal-production
+```sh
+npm test --prefix portal
+node --test scripts/portal-*.test.mjs
 ```
 
-Grant the deployment identity the required App Service read/configuration/deploy permissions; infrastructure operations also need resource-group deployment and the template's resource-management permissions. Enable `PORTAL_MANAGE_ROLE_ASSIGNMENTS=true` only when new roles are required and the identity can manage both Azure RBAC and Cosmos data-role assignments. Otherwise verify the runtime identity's existing grants separately. Restrict `portal-production` to intended release branches and configure its reviewers in GitHub environment settings; YAML alone does not install these repository settings or Azure credentials. Manual workflows normally become selectable after their definitions reach the default branch. The selected branch must contain these entry points and their reusable workflow/scripts.
+The local release helpers remain available: `scripts/portal-release.mjs` provides allowlisted source packaging and runtime configuration checks, and `scripts/portal-smoke.mjs` checks the deployed revision, anonymous access restrictions and OIDC login initiation. These scripts do not install GitHub workflows or grant Azure permissions. A packaged `release.json` records the revision served by `/healthz`; source without this manifest reports `development`.
 
-All release operations lock **`portal-app-test`** or **`portal-app-staging`** for the entire Azure job, including infrastructure and post-deploy checks. Branches share the same environment lock; test and staging can run independently. Running deployments are not cancelled. GitHub concurrency retains at most one pending job per group and can replace an older pending job with a newer one; it is not a FIFO release queue. CLI deployments and old workflow definitions do not participate in this lock.
+Deploy manually with an Azure account that already has access to the intended App Service. Keep test and staging targets explicit, and follow the test deployment evidence and acceptance checklist in [TEST-DEPLOYMENT.md](TEST-DEPLOYMENT.md). Review infrastructure with what-if before applying it. The removed workflow's environment locking no longer applies to manual releases; coordinate releases to the same app.
 
-Each release tests Portal and release tooling, compiles Bicep and builds an allowlisted source ZIP containing `src/`, `public/`, locked dependencies and a `release.json` with the full commit SHA. Local `.env`, tests and `node_modules` are excluded. The ZIP, SHA-256 and revision manifest are retained as workflow artifacts for 30 days; the deploy job verifies the checksum before publishing. Before source deployment, preflight reads the app's actual plan, managed identity, Node 22 runtime, startup command, health path, build setting and environment settings. Configuration drift fails the release instead of silently deploying into it.
-
-After publishing, smoke checks retry for up to approximately five minutes while the app restarts. They require `/healthz` to return the selected commit, anonymous `/` to require login, anonymous `/api/me` to return 401, and `/auth/login` to redirect to the configured IdentityServer with the expected callback, scopes, PKCE S256, state, nonce and Secure/HttpOnly transaction cookie. OIDC initiation exercises session writes. These checks do not log tokens, cookies or authorization URLs and do not complete a staff login, prove Cosmos/report permissions or replace the real acceptance checks in `TEST-DEPLOYMENT.md`. A failed check fails the release after the new version may already have been installed; it does not automatically roll back.
-
-For a compatible code rollback, select the previous branch/tag containing this release tooling and run the environment's manual workflow again. Review data compatibility first: the internal-user identity mapping migration specifically forbids rollback to the older subject-only implementation once mappings exist. Infrastructure changes and report/DNS cutover require their own recovery decision; a source rollback does not reverse them.
+The earlier `portal-test` GitHub Environment and `id-tiger-portal-test-deploy` federated identity remain configured but unused by this branch. The deployment identity was not granted an App Service role. Staging was not configured or deployed as part of that setup. Reintroducing Actions deployment later requires a separate authorization decision.
 
 Example shared-plan review (replace placeholders; these commands are instructions, not evidence of deployment):
 

@@ -1,26 +1,12 @@
 # Test-only Portal and IdentityServer integration
 
-## Manual release tooling — 2026-10-28
+## Portal Actions removed — 2026-10-28
 
-### Test GitHub OIDC setup
+At the user's request, Portal CI and both Portal deployment workflows were removed while Azure deployment authorization is unavailable. Validation and publishing remain local/manual; see [Local validation and deployment](README.md#local-validation-and-deployment). Existing container/Function workflows and application/runtime resources were not changed by this removal.
 
-Created GitHub Environment `portal-test` and configured the ten variables documented in README for the existing test App's Azure hostname, IdentityServer staging and shared plan. The dedicated deployment identity is `id-tiger-portal-test-deploy` (client ID `7be35e11-989b-45df-972b-07e0e32c719c`, principal ID `4db2d485-748d-4ea9-94b7-69277fc15ede`). Its `github-portal-test` federated credential trusts only `repo:SSWConsulting/SSW.Tiger:environment:portal-test` from `https://token.actions.githubusercontent.com` with audience `api://AzureADTokenExchange`. This deployment identity is separate from the existing runtime identity `id-tiger-test`.
+Earlier setup created GitHub Environment `portal-test` with ten variables and the deployment identity `id-tiger-portal-test-deploy` (client ID `7be35e11-989b-45df-972b-07e0e32c719c`, principal ID `4db2d485-748d-4ea9-94b7-69277fc15ede`). Its OIDC federation trusts `repo:SSWConsulting/SSW.Tiger:environment:portal-test`. These configurations remain unused by this branch; no Azure role assignment was granted and no staging configuration was created.
 
-The current operator could create the identity and federation but Azure denied `Microsoft.Authorization/roleAssignments/write`. An authorized Azure administrator must assign **Website Contributor** to that principal at the **test App Service resource only** before source deployment can succeed. No subscription/resource-group deployment role was granted. Infrastructure preview/apply needs additional explicitly scoped management permissions and is not enabled by this app-only grant. No staging identity, Environment or resource was configured.
-
-Administrator command (this records the required grant, not a successful assignment):
-
-```sh
-az role assignment create \
-  --assignee-object-id 4db2d485-748d-4ea9-94b7-69277fc15ede \
-  --assignee-principal-type ServicePrincipal \
-  --role de139f84-1756-47ae-9be6-808fbbe84772 \
-  --scope /subscriptions/b8b18dcf-d83b-47e2-9886-00c2e983629e/resourceGroups/SSW.Transcript-Intelligence-Group-Event-Reasoning.Dev/providers/Microsoft.Web/sites/app-tiger-portal-test
-```
-
-Test workflow [run 40626512714](https://github.com/SSWConsulting/SSW.Tiger/actions/runs/40626512714), dispatched from `portal-settings` at `0afd0e5`, passed the verification job (Portal/release-tool tests, Bicep compilation and artifact packaging). The Azure job failed at `azure/login@v2`; configuration preflight, source deployment and post-deploy smoke checks were not reached. The new deployment principal still lacks the required Azure role assignment. Test SCM basic publishing authentication was read back as disabled; no publish profile was fetched and that policy was not changed.
-
-The repository now defines separate **Deploy Portal Test** and **Deploy Portal Staging** manual workflows. See [Manual App Service releases](README.md#manual-app-service-releases) for Environment variables, Azure OIDC setup, infrastructure preview/apply options, cross-branch environment locking and post-deploy checks. PRs run CI only. The historical deployment evidence below describes earlier manual releases. Staging remains live-environment work and has not been deployed by this change.
+Historical test workflow [run 40626512714](https://github.com/SSWConsulting/SSW.Tiger/actions/runs/40626512714), from `portal-settings` at `0afd0e5`, passed Portal/release-tool tests, Bicep compilation and artifact packaging, then failed at `azure/login@v2`. It did not reach deployment or post-deploy checks. Test SCM basic publishing authentication was read back as disabled and was not changed; no publish profile was fetched.
 
 This runbook only targets TIGER **test** and the selected **IdentityServer test/staging** environment. It does not authorize production deployment. The resources whose names contain `staging` may serve TIGER production; do not use `infra/portal-staging.bicepparam`, `infra/staging.bicepparam`, the `latest` image, production DNS or the production IdentityServer issuer for this validation.
 
