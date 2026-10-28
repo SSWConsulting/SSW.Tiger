@@ -170,7 +170,7 @@ The local release helpers remain available: `scripts/portal-release.mjs` provide
 
 Deploy manually with an Azure account that already has access to the intended App Service. Keep test and staging targets explicit, and follow the test deployment evidence and acceptance checklist in [TEST-DEPLOYMENT.md](TEST-DEPLOYMENT.md). Review infrastructure with what-if before applying it. The removed workflow's environment locking no longer applies to manual releases; coordinate releases to the same app.
 
-The earlier `portal-test` GitHub Environment and `id-tiger-portal-test-deploy` federated identity remain configured but unused by this branch. The deployment identity was not granted an App Service role. Staging was not configured or deployed as part of that setup. Reintroducing Actions deployment later requires a separate authorization decision.
+The temporary `portal-test` GitHub Environment (including its variables), `github-portal-test` OIDC federated credential and `id-tiger-portal-test-deploy` deployment identity were deleted on 2026-10-28. The deployment identity had no Azure role assignments. The existing test App Service, shared-plan reference and `id-tiger-test` runtime identity were verified unchanged. Staging was not changed. Reintroducing Actions deployment later requires new deployment configuration and authorization.
 
 Example shared-plan review (replace placeholders; these commands are instructions, not evidence of deployment):
 
