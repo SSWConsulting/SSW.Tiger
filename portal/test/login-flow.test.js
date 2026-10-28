@@ -215,3 +215,18 @@ test('different login subjects share user roles while sessions and refresh retai
   }
   assert.equal(reportReads, readsBeforeDisable);
 });
+
+test('login and callbacks reject normalized external paths, including transactions saved before the fix', async t => {
+  const { request, sessions } = await setup(t);
+  const unsafe = ['/.//evil.example/phish', '/%2e//evil.example/x', '/a/..//evil.example/x'];
+  for (const [index, returnTo] of unsafe.entries()) {
+    const login = await request(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
+    const callback = await request(`/auth/callback?code=one&state=state-${index + 1}`, { headers: { Cookie: cookiePair(login) } });
+    assert.equal(callback.status, 302);
+    assert.equal(callback.headers.get('location'), '/');
+  }
+  const id = await sessions.create('login', { state: 'old-state', returnTo: '//evil.example/phish' }, 600);
+  const callback = await request('/auth/callback?code=one&state=old-state', { headers: { Cookie: `__Host-tiger_login=${id}` } });
+  assert.equal(callback.status, 302);
+  assert.equal(callback.headers.get('location'), '/');
+});

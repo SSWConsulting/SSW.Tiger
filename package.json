@@ -5,7 +5,6 @@
   "main": "processor/index.js",
   "scripts": {
     "start": "node processor/index.js",
-    "deploy:portal": "node processor/deploy-portal.js",
     "test": "node --test lib/**/*.test.js processor/**/*.test.js scripts/**/*.test.js azure-function/**/*.test.js",
     "tiger:security": "node scripts/tiger-security.js"
   },

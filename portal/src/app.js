@@ -158,7 +158,7 @@ export function createHandler({ config, auth, apiAuth, reports, sessions, users,
           throw error;
         }
         res.setHeader('Set-Cookie', [cookie(transactionName, '', 0), cookie(SESSION, id, SESSION_SECONDS)]);
-        return redirect(res, transaction.returnTo);
+        return redirect(res, safeReturnTo(transaction.returnTo));
       }
       if (url.pathname === '/signed-out' && req.method === 'GET') {
         await endSession(jar[SESSION]);
@@ -217,6 +217,8 @@ export function createHandler({ config, auth, apiAuth, reports, sessions, users,
       }
       const blob = reports.getBlockBlobClient(name);
       const response = req.method === 'HEAD' ? await blob.getProperties() : await blob.download();
+      // 将报告脚本隔离到不透明源；保留密码表单事件，但不授予同源权限。
+      res.setHeader('Content-Security-Policy', 'sandbox allow-scripts allow-popups allow-forms');
       res.writeHead(200, { 'Content-Type': response.contentType || (name.endsWith('.html') ? 'text/html; charset=utf-8' : 'application/octet-stream') });
       if (req.method === 'HEAD') return res.end();
       // Return password unlock pages unchanged without reading passwords or decrypting reports.

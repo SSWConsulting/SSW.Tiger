@@ -31,7 +31,7 @@ test('configuration and employee qualification require private storage and a ver
 });
 
 test('return URLs and blob paths reject external redirects and encoded separators', () => {
-  for (const value of ['//evil.test', '/\\evil.test', 'https://evil.test', '/auth/login']) assert.equal(safeReturnTo(value), '/');
+  for (const value of ['/.//evil.test/phish', '/%2e//evil.test/x', '/a/..//evil.test/x', '//evil.test', '/\\evil.test', 'https://evil.test', '/auth/login']) assert.equal(safeReturnTo(value), '/');
   assert.equal(safeReturnTo('/CRM/2026-10-27/?tab=people'), '/CRM/2026-10-27/?tab=people');
   assert.equal(reportName('/CRM/index.html'), 'CRM/index.html');
   assert.equal(reportName('/CRM/2026-10-27/'), 'CRM/2026-10-27/index.html');
@@ -194,6 +194,11 @@ test('Portal login, all projects, password report passthrough, legacy redirect a
   assert.equal((await request('/api/me', { headers: { Cookie: `__Host-tiger_session=${otherIssuer}` } })).status, 401);
   const protectedReport = await request('/crm/2026-10-27/', { headers: { Cookie: sessionCookie } });
   assert.equal(await protectedReport.text(), unlock);
+  assert.equal(protectedReport.headers.get('content-security-policy'), 'sandbox allow-scripts allow-popups allow-forms');
+  const reportHead = await request('/crm/2026-10-27/', { method: 'HEAD', headers: { Cookie: sessionCookie } });
+  assert.equal(reportHead.headers.get('content-security-policy'), 'sandbox allow-scripts allow-popups allow-forms');
+  assert.equal(await reportHead.text(), '');
+  assert.equal(root.headers.get('content-security-policy'), null);
   assert.equal(protectedReport.headers.get('cache-control'), 'private, no-store');
   const missing = await request('/crm/missing/', { headers: { Cookie: sessionCookie } }); assert.equal(missing.status, 404);
   const csrf = (await sessions.read(sessionCookie.split('=')[1], 'session')).csrf;

@@ -19,7 +19,6 @@
 require("dotenv").config({ path: require("path").join(__dirname, "..", ".env") });
 const path = require("path");
 const { checkOutputExists, deployDashboard, persistToCosmos, deployProjectIndex } = require("./deployer");
-const { deployPortalIndex } = require("./portalIndex");
 
 const ROOT_DIR = path.join(__dirname, "..");
 
@@ -69,15 +68,6 @@ async function main() {
     currentMeeting: { meetingId, meetingDate },
   });
   console.log(`Project index updated: ${indexUrl}`);
-
-  // Update the root portal index (non-fatal - the dashboard is already live;
-  // rerun with `npm run deploy:portal`)
-  try {
-    const portalUrl = await deployPortalIndex();
-    console.log(`Portal index updated: ${portalUrl}`);
-  } catch (err) {
-    console.error(`Portal index update failed (non-fatal): ${err.message}`);
-  }
 }
 
 main().catch((err) => {

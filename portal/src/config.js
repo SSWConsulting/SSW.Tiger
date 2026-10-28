@@ -49,7 +49,7 @@ export function safeReturnTo(value) {
   if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//') || /[\\\r\n]/.test(value)) return '/';
   try {
     const url = new URL(value, 'https://return.invalid');
-    if (url.origin !== 'https://return.invalid' || /^\/auth(?:\/|$)/.test(url.pathname)) return '/';
+    if (url.pathname.startsWith('//') || url.origin !== 'https://return.invalid' || /^\/auth(?:\/|$)/.test(url.pathname)) return '/';
     return `${url.pathname}${url.search}`;
   } catch { return '/'; }
 }

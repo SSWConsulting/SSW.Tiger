@@ -11,7 +11,7 @@ The Portal is a standalone Next.js / React application with a custom Node server
 - `src/components.js` and `pages/`: shared React components, pages and styles.
 - `src/auth.js`, `src/users.js` and `src/storage.js`: OIDC, user access and data services.
 
-The home page lists projects. `/{project}/` and `/{project}/index.html` render the project's meeting list directly from published report paths; static project indexes are not required. Individual report HTML is streamed unchanged from private storage after authorization.
+The home page lists projects. `/{project}/` and `/{project}/index.html` render the project's meeting list directly from published report paths; static project indexes are not required. Individual report HTML is streamed unchanged from private storage after authorization, with a CSP sandbox that isolates scripts from the Portal origin. Password unlock scripts and charts can run, but cannot read Portal pages or session data. New reports pin CDN versions and use SRI for Alpine and Chart.js. The Tailwind v3 CDN lacks CORS support, so its pinned script relies on sandbox isolation rather than SRI. Historical report scripts are isolated by the same response policy.
 
 Only `/_next/static/` build assets are public after host validation. Page props contain authorized user/profile summaries and project data; tokens and storage clients stay on the server.
 
@@ -47,9 +47,9 @@ Use `.env.example` as the configuration reference. Keep local `.env` files untra
 | `PORTAL_LEGACY_HOSTS` | Legacy hosts redirected to the canonical origin, preserving path and query |
 | `PORT` | HTTP listener port |
 
-Azure data access uses managed identity in hosting and `DefaultAzureCredential` for local development. The runtime identity needs read access to reports and meeting metadata, and write access to sessions and users.
+Azure data access uses managed identity in hosting and `DefaultAzureCredential` for local development. Infrastructure creates a dedicated `id-tiger-portal-{environment}` identity, separate from the processor. It receives container-scoped read access to reports and meeting metadata, and write access to sessions and users. Enable `manageRoleAssignments` when provisioning these grants, or have an administrator apply them before deploying. Existing apps must detach the processor identity; release preflight rejects extra identities. No processor Key Vault access is granted.
 
-Changing the Portal origin does not migrate historical reports or remove public copies. The processor's `DASHBOARD_BASE_URL` and `DASHBOARD_CONTAINER` determine where new reports are linked and stored. Existing `$web` reports require a separate migration; `scripts/migrate-reports.js` provides copy/verification and manifest-based cleanup. Deployment, migration and acceptance records are maintained outside this repository.
+Changing the Portal origin does not migrate historical reports or remove public copies. The processor's `DASHBOARD_BASE_URL` and `DASHBOARD_CONTAINER` determine where new reports are linked and stored. The pipeline does not publish a root project listing in either container; the authenticated Portal generates it on request. Existing `$web` reports require a separate migration; `scripts/migrate-reports.js` provides copy/verification and manifest-based cleanup. Deployment, migration and acceptance records are maintained outside this repository.
 
 ## Local development
 
