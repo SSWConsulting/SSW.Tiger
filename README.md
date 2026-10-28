@@ -277,20 +277,6 @@ npm run tiger:security -- show --project <project> --meeting-id <meeting-id> --e
 npm run tiger:security -- rotate --dashboard-url <dashboard-url> --yes --env-file .env.test
 ```
 
-## Authenticated Portal and hostname migration
-
-The Portal runs on **Azure App Service** and signs SSW employees in through the existing IdentityServer using application-managed OIDC with Authorization Code + PKCE. Users browse all published projects and their meeting reports. Existing report passwords remain required.
-
-Test and production use separate Web Apps on one shared Linux B1 App Service Plan. Manage the plan once with `infra/portal-plan.bicep`; each `infra/portal.bicep` deployment references that existing plan. App settings, identities, storage and IdentityServer clients remain separate.
-
-The Portal hostname must point to App Service, **not** the Storage static website. Reports are served from the private `reports` container through the authenticated application. The old dashboard hostname redirects to Portal while preserving report paths and query parameters.
-
-Follow [the Portal integration guide](portal/README.md) for architecture, IdentityServer client registration and migration requirements. Keep temporary deployment records and acceptance evidence outside this repository. Do not change production infrastructure, IdentityServer production registrations, DNS or public storage while validating test.
-
-At cutover, configure both `DASHBOARD_BASE_URL` and `DASHBOARD_CONTAINER` in the processor, Function job overrides and local publishing/password-management tools. Changing the hostname alone leaves reports publicly accessible.
-
-`npm run deploy:portal` is a **static index rebuild utility**, not the authenticated Portal application deployment. It uses the configured report container, and continues to support legacy `$web` publishing before cutover. After cutover, set `DASHBOARD_CONTAINER=reports`. Deploy the Web application using the manual deployment instructions in [the Portal integration guide](portal/README.md).
-
 ## 📝 Example Output
 
 After processing a transcript, you'll get:
