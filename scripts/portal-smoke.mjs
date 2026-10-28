@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { releaseConfig } from './portal-release.mjs';
 
 export async function checkPortal({ origin, issuer, revision }, request = fetch) {
   const get = url => request(url, { redirect: 'manual', signal: AbortSignal.timeout(10000), headers: { 'Cache-Control': 'no-cache' } });
@@ -40,10 +39,9 @@ export async function checkPortal({ origin, issuer, revision }, request = fetch)
   assert.match(transaction, /; HttpOnly/i);
 }
 
-async function main() {
-  const config = { ...releaseConfig(process.env), revision: process.env.REVISION };
+export async function waitForPortal(config) {
   assert.match(config.revision || '', /^[a-f0-9]{40}$/);
-  const deadline = Date.now() + 5 * 60 * 1000;
+  const deadline = Date.now() + 15 * 60 * 1000;
   for (;;) {
     try {
       await checkPortal(config);
@@ -56,6 +54,12 @@ async function main() {
       await new Promise(resolve => setTimeout(resolve, 10000));
     }
   }
+}
+
+async function main() {
+  // Load release config only when run standalone, so the deploy command does not wait on its own circular import.
+  const { releaseConfig } = await import('./portal-release.mjs');
+  await waitForPortal({ ...releaseConfig(process.env), revision: process.env.REVISION });
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) await main();

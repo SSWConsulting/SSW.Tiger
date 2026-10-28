@@ -129,6 +129,10 @@ resource app 'Microsoft.Web/sites@2023-12-01' = {
       healthCheckPath: '/healthz'
       appSettings: [
         { name: 'SCM_DO_BUILD_DURING_DEPLOYMENT', value: 'true' }
+        { name: 'CUSTOM_BUILD_COMMAND', value: 'npm ci --prefer-offline --no-audit --no-fund && npm run build' }
+        { name: 'NPM_CONFIG_CACHE', value: '/home/portal-build-cache/npm' }
+        { name: 'PORTAL_BUILD_CACHE_DIR', value: '/home/portal-build-cache/next' }
+        { name: 'NEXT_TELEMETRY_DISABLED', value: '1' }
         { name: 'AZURE_CLIENT_ID', value: identity.properties.clientId }
         { name: 'PORTAL_ORIGIN', value: portalOrigin }
         { name: 'PORTAL_LEGACY_HOSTS', value: legacyHosts }

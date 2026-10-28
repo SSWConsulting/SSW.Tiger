@@ -20,8 +20,8 @@ export function PortalLayout({ user, children }) {
   const name = user?.name || user?.email || 'SSW staff';
   const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map(word => word[0].toUpperCase()).join('') || '?';
   return h('div', null,
-    h('header', null, h('div', { className: 'header-inner' },
-      h('a', { className: 'brand', href: '/' }, h('img', { className: 'brand-logo', src: '/assets/images/app-icon.svg', alt: 'SSW TIGER', width: 128, height: 30 })),
+    h('header', { className: 'portal-header' }, h('div', { className: 'header-inner' },
+      h('a', { className: 'brand', href: '/' }, h('img', { className: 'brand-logo', src: '/assets/images/app-icon.svg', alt: 'SSW TIGER', width: 152, height: 36 })),
       user && h('div', { className: 'account' },
         h('span', { className: 'avatar', 'aria-hidden': true }, initials),
         h('span', { className: 'account-name' }, name),

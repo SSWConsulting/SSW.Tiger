@@ -51,6 +51,8 @@ Azure data access uses managed identity in hosting and `DefaultAzureCredential` 
 
 Changing the Portal origin does not migrate historical reports or remove public copies. The processor's `DASHBOARD_BASE_URL` and `DASHBOARD_CONTAINER` determine where new reports are linked and stored. The pipeline does not publish a root project listing in either container; the authenticated Portal generates it on request. Existing `$web` reports require a separate migration; `scripts/migrate-reports.js` provides copy/verification and manifest-based cleanup. Deployment, migration and acceptance records are maintained outside this repository.
 
+The staging pipeline targets `portal.sswtiger.com` and the private `reports` container for new processing. Historical reports remain in `$web` and keep their existing URLs. This configuration change does not copy, delete or redirect historical reports. Apply both settings to the Function App and Container App Job; the deployed Function must also forward `DASHBOARD_CONTAINER` in its execution environment override.
+
 ## Local development
 
 Requires Node.js 22 or later and access to the configured IdentityServer, Blob storage and Cosmos resources.
@@ -82,3 +84,9 @@ node --test scripts/portal-*.test.mjs
 The suites cover OIDC/token validation, account linking, access checks, sessions, report passthrough, redirects and real Next.js rendering with synthetic data. They do not establish acceptance against live IdentityServer or Azure services.
 
 Release utilities are in `../scripts/portal-release.mjs` (source packaging and configuration checks) and `../scripts/portal-smoke.mjs` (deployed revision and authentication smoke checks). Infrastructure templates are in `../infra/portal*.bicep`.
+
+Portal releases use Oryx with `npm ci --prefer-offline --no-audit --no-fund` and persistent npm / Next.js compiler caches under `/home/portal-build-cache/`, configured in `infra/portal.bicep`. Local builds use the normal `.next/cache`; set `PORTAL_BUILD_CACHE_DIR` only when a separate persistent compiler cache is needed. Cache failures fall back to a normal build, and failed builds do not publish their cache.
+
+App Service runs the custom server with the complete installed `node_modules`. Next.js tracing excludes that directory to avoid scanning dependencies for a trimmed deployment bundle. A future move to standalone/serverless packaging must remove this exclusion and validate the resulting runtime dependencies.
+
+After packaging and environment preflight, deploy with `node scripts/portal-release.mjs deploy /absolute/path/portal.zip` from the repository root, using the same `TARGET`, `OPERATION`, `PORTAL_APP_NAME`, `PORTAL_RESOURCE_GROUP`, `PORTAL_ORIGIN`, `OIDC_ISSUER`, `AZURE_SUBSCRIPTION_ID` and full commit `REVISION` as the release. `AZURE_CLI_PATH` optionally selects the Azure CLI executable. The helper uses Kudu's async ZIP API, follows that deployment's status URL (including pending HTTP 202 responses), restarts only after a successful build, and verifies the expected revision and authentication. Build and readiness checks each allow up to 15 minutes. Upload acceptance alone is not deployment success.

@@ -2,6 +2,63 @@ import assert from 'node:assert/strict';
 import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execute = promisify(execFile);
+
+export async function deploySource(config, source, { cli = process.env.AZURE_CLI_PATH || 'az',
+  run = execute, request = fetch, sleep = ms => new Promise(done => setTimeout(done, ms)),
+  timeout = 15 * 60 * 1000, log = console.log } = {}) {
+  const scope = ['--subscription', config.subscription];
+  const [{ stdout: host }, { stdout: token }] = await Promise.all([
+    run(cli, ['webapp', 'show', ...scope, '--resource-group', config.resourceGroup, '--name', config.app,
+      '--query', "enabledHostNames[?contains(@, '.scm.')] | [0]", '-o', 'tsv']),
+    run(cli, ['account', 'get-access-token', ...scope, '--resource', 'https://management.azure.com/', '--query', 'accessToken', '-o', 'tsv']),
+  ]);
+  assert.ok(host.trim().startsWith(`${config.app}.scm.`) || host.trim().startsWith(`${config.app}-`), 'Unexpected deployment host');
+  assert.ok(host.trim().endsWith('.azurewebsites.net') && host.trim().includes('.scm.'), 'Unexpected deployment host');
+  const origin = `https://${host.trim()}`;
+  const headers = { Authorization: `Bearer ${token.trim()}` };
+  const uploaded = await request(`${origin}/api/zipdeploy?isAsync=true`, {
+    method: 'POST', headers: { ...headers, 'Content-Type': 'application/zip' }, body: await readFile(source),
+    redirect: 'manual', signal: AbortSignal.timeout(60000),
+  });
+  assert.equal(uploaded.status, 202, `Portal upload was not accepted (${uploaded.status})`);
+  const location = uploaded.headers.get('location');
+  assert.ok(location, 'Deployment status URL missing');
+  const statusUrl = new URL(location, origin);
+  assert.equal(statusUrl.origin, origin, 'Deployment status URL changed origin');
+  assert.ok(statusUrl.pathname.startsWith('/api/deployments/'), 'Invalid deployment status URL');
+  log('Portal source accepted asynchronously; waiting for the build.');
+  await waitForDeployment(statusUrl.href, headers, { request, sleep, timeout, log });
+  // Restart only after the build succeeds, so the app does not keep a failed instance started while dependencies were missing.
+  await run(cli, ['webapp', 'restart', ...scope, '--resource-group', config.resourceGroup, '--name', config.app]);
+}
+
+export async function waitForDeployment(statusUrl, headers, { request = fetch,
+  sleep = ms => new Promise(done => setTimeout(done, ms)), timeout = 15 * 60 * 1000, log = console.log } = {}) {
+  const deadline = Date.now() + timeout;
+  let previous;
+  while (Date.now() < deadline) {
+    let response;
+    try {
+      response = await request(statusUrl, { headers, redirect: 'manual', signal: AbortSignal.timeout(30000) });
+    } catch {
+      log('Deployment status connection interrupted; retrying.');
+      await sleep(10000);
+      continue;
+    }
+    if (response.status === 202 || response.status === 429 || response.status >= 500) { await sleep(10000); continue; }
+    assert.equal(response.status, 200, `Deployment status unavailable (${response.status})`);
+    const deployment = await response.json();
+    assert.notEqual(deployment.status, 3, 'Portal build failed; inspect Azure deployment logs.');
+    if (deployment.status === 4) { log('Portal remote build succeeded.'); return; }
+    if (deployment.status !== previous) { log(`Portal deployment status: ${deployment.status}.`); previous = deployment.status; }
+    await sleep(10000);
+  }
+  throw new Error(`Portal deployment wait exceeded ${timeout / 1000} seconds; inspect Azure deployment status.`);
+}
 
 const operations = ['deploy', 'preview-infrastructure', 'apply-infrastructure-and-deploy'];
 
@@ -82,6 +139,10 @@ export async function packageSource(directory, revision, source = 'portal') {
   for (const entry of ['src', 'pages', 'public', 'next.config.mjs', 'package.json', 'package-lock.json']) {
     await cp(resolve(source, entry), resolve(directory, entry), { recursive: true });
   }
+  await mkdir(resolve(directory, 'scripts'), { recursive: true });
+  await cp(resolve(source, 'scripts/build.mjs'), resolve(directory, 'scripts/build.mjs'));
+  await writeFile(resolve(directory, '.deployment'), '[config]\nSCM_DO_BUILD_DURING_DEPLOYMENT=true\nCUSTOM_BUILD_COMMAND=npm ci --prefer-offline --no-audit --no-fund && PORTAL_BUILD_CACHE_DIR=/home/portal-build-cache/next npm run build\n');
+  await writeFile(resolve(directory, '.npmrc'), 'cache=/home/portal-build-cache/npm\nprefer-offline=true\naudit=false\nfund=false\n');
   await writeFile(resolve(directory, 'release.json'), JSON.stringify({ revision }) + '\n');
 }
 
@@ -94,7 +155,14 @@ async function main() {
     return;
   }
   const config = releaseConfig(process.env);
-  if (command === 'configure') {
+  if (command === 'deploy') {
+    assert.ok(destination, 'A Portal source zip is required');
+    assert.match(process.env.REVISION || '', /^[a-f0-9]{40}$/);
+    // Async upload avoids gateway timeouts; the release succeeds only once the new revision and auth checks pass.
+    await deploySource(config, destination);
+    const { waitForPortal } = await import('./portal-smoke.mjs');
+    await waitForPortal({ ...config, revision: process.env.REVISION });
+  } else if (command === 'configure') {
     await writeFile(destination, JSON.stringify(infrastructureParameters(config), null, 2));
   } else if (command === 'preflight') {
     const [app, runtime, settings] = await Promise.all(['app', 'runtime', 'settings'].map(async name =>

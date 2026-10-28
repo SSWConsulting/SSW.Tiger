@@ -7,7 +7,7 @@
     "start": "NODE_ENV=production node src/server.js",
     "test": "node --test test/*.test.js",
     "dev": "node src/server.js --dev",
-    "build": "next build --webpack",
+    "build": "node scripts/build.mjs",
     "test:next": "npm run build && NODE_ENV=production node --test test/next.integration.mjs"
   },
   "engines": {
