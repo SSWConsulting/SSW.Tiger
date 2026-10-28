@@ -93,7 +93,7 @@ resource userWriter 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@20
     scope: '${cosmos.id}/dbs/${database.name}/colls/${users.name}'
   }
 }
-// 仅允许读取会议摘要，保留用户容器原有写入权限。
+// Allow read-only access to meeting summaries while preserving existing write access to the users container.
 resource meetingReader 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-11-15' = if (manageRoleAssignments) {
   parent: cosmos
   name: guid(cosmos.id, identity.id, 'portal-meetings-reader')

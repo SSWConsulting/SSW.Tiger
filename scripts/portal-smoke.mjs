@@ -50,7 +50,7 @@ async function main() {
       console.log(`Portal smoke checks passed for ${config.revision}.`);
       return;
     } catch {
-      // 重试期间不记录登录 URL、Cookie 或应用响应。
+      // Do not log login URLs, cookies, or application responses during retries.
       if (Date.now() >= deadline) throw new Error('Portal post-deployment checks failed; inspect App Service logs and configuration.');
       console.log('Waiting for the expected Portal revision and login readiness...');
       await new Promise(resolve => setTimeout(resolve, 10000));

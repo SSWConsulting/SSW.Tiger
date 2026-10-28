@@ -18,7 +18,7 @@ const auth = {
   revoke: async token => (await getAuth()).revoke(token),
   logout: async idToken => (await getAuth()).logout(idToken),
 };
-// 发布包内保存 commit，避免把旧进程误判为本次部署成功。
+// Store the commit in the release package to avoid mistaking an old process for a successful deployment.
 const release = await readFile(new URL('../release.json', import.meta.url), 'utf8')
   .then(JSON.parse).catch(error => { if (error.code === 'ENOENT') return { revision: 'development' }; throw error; });
 const server = createServer(createHandler({ config, ...storage, auth, apiAuth: createApiAuth(config), revision: release.revision }));

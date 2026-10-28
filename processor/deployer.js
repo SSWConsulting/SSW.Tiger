@@ -86,7 +86,7 @@ function quoteForShell(args, useShell) {
   });
 }
 
-function buildDashboardUploadArgs({ dashboardDir, blobDestination, storageAccount }) {
+function buildDashboardUploadArgs({ dashboardDir, blobDestination, storageAccount, displayName }) {
   return [
     "storage", "blob", "upload-batch",
     "--source", dashboardDir,
@@ -94,6 +94,7 @@ function buildDashboardUploadArgs({ dashboardDir, blobDestination, storageAccoun
     "--account-name", storageAccount,
     "--auth-mode", "login",
     "--content-cache-control", DASHBOARD_HTML_CACHE_CONTROL,
+    ...(displayName ? ["--metadata", `displayname=${encodeURIComponent(displayName)}`] : []),
     "--overwrite",
   ];
 }
@@ -107,7 +108,7 @@ function buildDashboardUploadArgs({ dashboardDir, blobDestination, storageAccoun
  *   even where prepareDashboardForDeployment would otherwise fail open
  * @returns {string} deployed URL
  */
-async function deployDashboard({ dashboardPath, projectName, meetingId, requireProtection = false }) {
+async function deployDashboard({ dashboardPath, projectName, meetingId, displayName, requireProtection = false }) {
   const storageAccount = process.env.DASHBOARD_STORAGE_ACCOUNT;
   if (!storageAccount) {
     throw new Error("DASHBOARD_STORAGE_ACCOUNT not set");
@@ -162,6 +163,7 @@ async function deployDashboard({ dashboardPath, projectName, meetingId, requireP
       dashboardDir,
       blobDestination,
       storageAccount,
+      displayName,
     }), isWindows), { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], shell: isWindows });
   } catch (err) {
     log("error", "Blob upload failed", { stderr: err.stderr });
@@ -371,6 +373,12 @@ function readPublishedDisplayName({ execFileSync, isWindows, storageAccount, blo
  * @returns {string} deployed index URL (without hostname lookup, path only on fallback)
  */
 async function deployProjectIndex({ projectName, displayName, currentMeeting }) {
+  // The Portal lists private reports dynamically, so static project pages no longer need to be published.
+  if (process.env.DASHBOARD_CONTAINER && process.env.DASHBOARD_CONTAINER !== "$web") {
+    return process.env.DASHBOARD_BASE_URL
+      ? `${dashboardUrl(process.env.DASHBOARD_BASE_URL, [projectName])}/`
+      : `/${encodeURIComponent(projectName)}/`;
+  }
   const storageAccount = process.env.DASHBOARD_STORAGE_ACCOUNT;
   if (!storageAccount) {
     throw new Error("DASHBOARD_STORAGE_ACCOUNT not set");

@@ -202,7 +202,7 @@ test('different login subjects share user roles while sessions and refresh retai
     assert.equal(me.id, original.id);
     assert.equal(me.sub, expectedSub);
     assert.deepEqual(me.roles, ['Admin']);
-    // 再次刷新验证页面处理没有把登录身份替换为主用户的 sub。
+    // Refresh again to verify page handling has not replaced the login identity with the primary user subject.
     await sessions.update(id, session => ({ ...session, accessTokenExpiresAt: 0 }));
     assert.equal((await request('/crm/meeting/', { headers: { Cookie: cookie } })).status, 200);
   }

@@ -47,7 +47,7 @@ export class UserStore {
       if (!stored) throw new Error('Identity user missing');
       return stored;
     }
-    // 兼容旧会话和旧用户，首次登录时补齐身份映射。
+    // Support legacy sessions and users by backfilling identity mappings on first login.
     const stored = await this.readUser(this.id(subject));
     if (stored && stored.user.sub !== subject) throw new Error('Invalid stored user');
     return stored;
@@ -88,7 +88,7 @@ export class UserStore {
     const id = this.emailId(email);
     let index = await this.document(id);
     if (!index) {
-      // 旧记录可能尚无邮箱索引；重复记录需人工确认，不能丢失停用状态和角色。
+      // Legacy records may lack an email index; duplicates require manual review to preserve disabled status and roles.
       const { resources } = await this.container.items.query({
         query: 'SELECT * FROM c WHERE c.type = @type AND c.issuer = @issuer AND LOWER(c.email) = @email',
         parameters: [{ name: '@type', value: 'user' }, { name: '@issuer', value: this.issuer }, { name: '@email', value: email }],
@@ -117,14 +117,14 @@ export class UserStore {
       const previous = stored?.user;
       if (previous) {
         await this.assertAllowed(previous);
-        // 已绑定身份可更新邮箱；旧邮箱索引保留，防止邮箱被重新绑定给其他人。
+        // Allow linked identities to update email addresses; retain old email indexes to prevent reassignment to another user.
         if (!existing && previous.email !== email) throw new UserAccessError('account_link_conflict');
       }
       const user = {
         id, type: 'user', issuer: this.issuer, sub: previous?.sub || claims.sub,
         name: text(claims.full_name) || text(claims.name) || previous?.name,
         email, emailVerified: true,
-        // 所有关联身份共享内部用户的角色和停用状态，不采纳令牌中的角色。
+        // All linked identities share the internal user roles and disabled status; ignore roles from tokens.
         roles: previous?.roles || ['User'], isActive: previous?.isActive ?? true,
         createdAt: previous?.createdAt || this.now().toISOString(),
         ...(previous?.lastLoginAt ? { lastLoginAt: previous.lastLoginAt } : {}),
@@ -141,7 +141,7 @@ export class UserStore {
             await this.container.items.create(next);
           }
         }
-        // 每个身份仅能绑定一次；失败重试不会改变已有的绑定。
+        // Link each identity only once; retries after failures must preserve existing links.
         await this.createOnce({ id: this.identityId(claims.sub), type: 'identity', issuer: this.issuer, sub: claims.sub, userId: id });
         await this.assertEmailAllowed(email);
         return this.authorize(claims.sub);
@@ -152,6 +152,6 @@ export class UserStore {
 }
 
 export function publicUser(user, subject = user.sub) {
-  // 会话保留本次登录的 sub，刷新令牌时仍与签发身份核对。
+  // Keep the login subject in the session and validate it against the issuing identity when refreshing tokens.
   return { id: user.id, sub: subject, name: user.name, email: user.email, roles: user.roles };
 }

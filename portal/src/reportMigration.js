@@ -43,7 +43,7 @@ export async function migrateReports({ source, target, manifest, saveManifest, a
       try {
         await to.upload(bytes, bytes.length, {
           conditions: { ifNoneMatch: '*' },
-          // 历史 Blob 的空元数据可能被 SDK 解析为空字符串。
+          // The SDK may parse empty metadata from historical blobs as an empty string.
           metadata: item.metadata && typeof item.metadata === 'object' ? item.metadata : {},
           blobHTTPHeaders: { blobContentType: item.properties.contentType, blobCacheControl: 'no-cache, max-age=0, must-revalidate' },
         });

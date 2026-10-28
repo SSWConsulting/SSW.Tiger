@@ -154,6 +154,7 @@ async function processTranscript(transcriptPath, projectSlug) {
     dashboardPath: canonicalPath,
     projectName: projectSlug,
     meetingId,
+    displayName,
     requireProtection: history.includesProtectedMeetings === true,
   });
 

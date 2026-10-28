@@ -50,7 +50,7 @@ export class SessionStore {
       throw error;
     }
   }
-  // 条件写入避免并发刷新覆盖新令牌，或在退出后重建会话。
+  // Use conditional writes to prevent concurrent refreshes from overwriting new tokens or recreating sessions after logout.
   async update(id, transform) {
     const blob = this.blob(id, 'session');
     if (!blob) return null;
@@ -86,7 +86,7 @@ export async function listProjects(container, project, meetings) {
   for await (const blob of container.listBlobsFlat({ includeMetadata: true, ...(project ? { prefix: `${project}/` } : {}) })) blobs.push(blob);
   const projects = projectsFromBlobs(blobs);
   if (!meetings || !projects.length) return projects;
-  // 只查询卡片摘要，报告清单仍以已发布的 Blob 为准。
+  // Query card summaries only; published blobs remain the source of truth for the report list.
   const { resources } = await meetings.items.query({
     query: 'SELECT c.projectName, c.meetingId, c.metadata FROM c WHERE c.type = @type' + (project ? ' AND c.projectName = @project' : ''),
     parameters: [{ name: '@type', value: 'meeting' }, ...(project ? [{ name: '@project', value: project }] : [])],

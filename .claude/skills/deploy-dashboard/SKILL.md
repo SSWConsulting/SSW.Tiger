@@ -31,7 +31,7 @@ The script (`processor/deploy-local.js`) reuses the same `deployer.js` as the Az
 
 ## Deployment URL Convention
 
-URLs use `DASHBOARD_BASE_URL`. After authenticated Portal cutover, set **both** `DASHBOARD_BASE_URL` to the Portal hostname and `DASHBOARD_CONTAINER=reports`. Point the hostname at App Service, not public Storage hosting. Follow `portal/TEST-DEPLOYMENT.md` for test-only validation and `portal/README.md` for migration. Do not switch production while testing. Do not hardcode the hostname when reporting a deployment.
+URLs use `DASHBOARD_BASE_URL`. After authenticated Portal cutover, set **both** `DASHBOARD_BASE_URL` to the Portal hostname and `DASHBOARD_CONTAINER=reports`. Point the hostname at App Service, not public Storage hosting. Follow `portal/README.md` for validation, deployment and migration. Do not switch production while testing. Do not hardcode the hostname when reporting a deployment.
 
 Current example: `https://dashboards.sswtiger.com/{project}/{meeting-id}`
 

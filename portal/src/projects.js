@@ -1,4 +1,4 @@
-// 从会议报告生成项目列表；兼容旧项目页上的名称元数据。
+// Build the project list from meeting reports while supporting name metadata from legacy project pages.
 
 // en-AU abbreviates September as "Sept", which breaks the 3-letter date tile.
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -8,7 +8,7 @@ function decodeName(value, fallback) {
   try { return value ? decodeURIComponent(value) : fallback; } catch { return fallback; }
 }
 
-// 隐藏时间后的随机编号；可读的旧会议名称仍可作为标题。
+// Hide random identifiers after timestamps; retain readable legacy meeting names as titles.
 function suffixLabel(suffix = '') {
   const time = /^(\d{2})(\d{2})(\d{2})?(?:-|$)/.exec(suffix);
   if (time && Number(time[1]) < 24 && Number(time[2]) < 60 && (!time[3] || Number(time[3]) < 60)) {

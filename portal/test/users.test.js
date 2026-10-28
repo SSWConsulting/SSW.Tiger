@@ -122,7 +122,7 @@ test('disabled and ambiguous legacy accounts never get replaced by a new active 
   assert.equal(await users.read('new'), null);
   container.documents.set(disabled.id, { ...disabled, isActive: true });
   const duplicate = legacyUser(users, 'duplicate'); container.documents.set(duplicate.id, duplicate);
-  // 清除未完成的邮箱预留，模拟上线前已有两条同邮箱旧记录。
+  // Clear the incomplete email reservation to simulate two existing legacy records with the same email before rollout.
   container.documents.delete(users.emailId(claims.email));
   await assert.rejects(users.register({ ...claims, sub: 'new' }), /account_link_conflict/);
   assert.equal(await users.read('new'), null);

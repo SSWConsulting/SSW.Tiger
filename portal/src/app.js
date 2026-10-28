@@ -8,11 +8,11 @@ import { ReauthenticationRequired } from './auth.js';
 import { ApiAuthError } from './apiAuth.js';
 import { publicUser, UserAccessError } from './users.js';
 
-// 与 IdentityServer 刷新授权的绝对上限一致，不因刷新无限延长。
+// Match the absolute IdentityServer refresh grant lifetime; refreshing must not extend it indefinitely.
 const SESSION_SECONDS = 30 * 24 * 60 * 60;
 const SESSION = '__Host-tiger_session';
 const TRANSACTION = '__Host-tiger_login';
-// 每次登录使用独立 Cookie，避免多个标签页互相覆盖。
+// Use a separate cookie for each login to prevent tabs from overwriting each other.
 const loginCookieName = state => `${TRANSACTION}_${createHash('sha256').update(state || '').digest('hex')}`;
 const validSession = (session, config) => session && session.issuer === config.issuer
   && typeof session.user?.sub === 'string';
@@ -114,7 +114,7 @@ export function createHandler({ config, auth, apiAuth, reports, sessions, users,
         const scopedName = loginCookieName(state);
         const transactionName = jar[scopedName] ? scopedName : TRANSACTION;
         const transactionId = jar[transactionName];
-        // 兼容更新前发起的登录；不消费其他登录请求的记录。
+        // Support logins started before the update without consuming records from other login requests.
         let transaction = await sessions.read(transactionId, 'login');
         if (transaction && transaction.state === state) {
           transaction = await sessions.read(transactionId, 'login', true);
@@ -198,7 +198,7 @@ export function createHandler({ config, auth, apiAuth, reports, sessions, users,
       if (url.pathname.split('/').filter(Boolean).length <= 2 && !url.pathname.endsWith('/') && !url.pathname.endsWith('.html')) {
         return redirect(res, `${url.pathname}/${url.search}`);
       }
-      // 项目地址由 Portal 渲染，不读取旧的静态汇总页。
+      // Render project URLs through the Portal without reading legacy static index pages.
       if (/^[^/]+\/index\.html$/.test(name)) {
         const [project] = await listProjects(reports, name.split('/')[0], meetings);
         if (!project) return html(res, 404, messagePage('Project not found', 'Return to All projects to find a meeting.'));

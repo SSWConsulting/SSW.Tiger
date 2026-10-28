@@ -13,7 +13,7 @@ import { SessionStore } from '../src/storage.js';
 import { UserStore } from '../src/users.js';
 import { memoryContainer, memoryUsers, serve } from './helpers.js';
 
-// 仅替换身份提供方的传输层，保留真实的 OIDC、签名和回调校验。
+// Replace only the identity provider transport layer, preserving real OIDC, signature, and callback validation.
 function mockIdentityServer(config) {
   const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const codes = new Map(); const refreshTokens = new Map(); const refreshedSubjects = [];

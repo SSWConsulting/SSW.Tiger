@@ -54,7 +54,7 @@ h2 { font-size: 20px; }
 .project-card .meetings li + li { border-top: 0; }
 .project-card .meeting { border-radius: 8px; padding: 10px 12px; height: 100%; flex-wrap: wrap; gap: 10px; align-content: start; align-items: flex-start; }
 .project-card .meeting-details { flex-basis: 0; }
-/* 首页标题和日期各占一行，完整名称可通过悬停查看。 */
+/* Place home page titles and dates on separate lines; show full names on hover. */
 .project-card .meeting strong, .project-card .meeting-when { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .project-card .meeting-metadata { flex-basis: 100%; padding-left: 54px; justify-content: flex-start; }
 .project-card .meeting .arrow { display: none; }
@@ -122,7 +122,7 @@ h2 { font-size: 20px; }
   .message-actions .button { width: 100%; }
 }
 
-/* 项目页沿用原静态索引的品牌和会议卡片。 */
+/* Preserve the branding and meeting cards from the original static index on project pages. */
 .project-page { max-width: 976px; margin: 0 auto; }
 .project-page .breadcrumb { margin-bottom: 24px; font-size: 16px; }
 .project-page .breadcrumb a { color: var(--accent); font-weight: 500; }

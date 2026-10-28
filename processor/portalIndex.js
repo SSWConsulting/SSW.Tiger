@@ -43,8 +43,11 @@ function renderPortalIndex({ template, projects, generatedAt }) {
   return template.replace(/\{\{(PROJECT_COUNT|PROJECT_LIST|GENERATED_AT)\}\}/g, (_, key) => values[key]);
 }
 
-async function deployPortalIndex({ container = getWebContainerClient() } = {}) {
+async function deployPortalIndex({ container } = {}) {
   const url = process.env.DASHBOARD_BASE_URL ? dashboardUrl(process.env.DASHBOARD_BASE_URL) : '/';
+  // Use Portal project links for private containers while preserving publishing compatibility with legacy static sites.
+  if (process.env.DASHBOARD_CONTAINER && process.env.DASHBOARD_CONTAINER !== '$web') return url;
+  container ||= getWebContainerClient();
   const template = await fs.readFile(path.join(__dirname, '..', 'templates', 'portal-index.html'), 'utf8');
   const blob = container.getBlockBlobClient('index.html');
   // ETag guard: a parallel job must not overwrite a newer portal with a stale listing.

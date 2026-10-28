@@ -67,7 +67,7 @@ export function validateRuntime(config, app, runtime, settings) {
     COSMOS_DATABASE: 'tiger', PORTAL_USER_CONTAINER: 'users', PORTAL_SESSION_CONTAINER: 'portal-sessions',
     PORTAL_LEGACY_HOSTS: config.legacyHosts, AZURE_CLIENT_ID: identity.clientId,
   };
-  // 只报告配置项名称，不输出应用设置中的凭据。
+  // Report setting names only; never print credentials from application settings.
   for (const [key, value] of Object.entries(expected)) assert.ok(values[key] === value, `App setting mismatch: ${key}`);
   assert.ok(new URL(values.COSMOS_ENDPOINT).origin === `https://${config.cosmos}.documents.azure.com`, 'App setting mismatch: COSMOS_ENDPOINT');
   assert.ok(values.SCM_DO_BUILD_DURING_DEPLOYMENT?.toLowerCase() === 'true', 'Remote dependency build must be enabled');
@@ -78,7 +78,7 @@ export function validateRuntime(config, app, runtime, settings) {
 export async function packageSource(directory, revision, source = 'portal') {
   assert.match(revision || '', /^[a-f0-9]{40}$/, 'A full commit SHA is required');
   await mkdir(directory, { recursive: true });
-  // 仅打包运行文件，排除本地密钥、测试和 node_modules。
+  // Package runtime files only, excluding local secrets, tests, and node_modules.
   for (const entry of ['src', 'public', 'package.json', 'package-lock.json']) {
     await cp(resolve(source, entry), resolve(directory, entry), { recursive: true });
   }
