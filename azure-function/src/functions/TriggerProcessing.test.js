@@ -21,12 +21,12 @@ let graphCalls;
 let queued;
 let context;
 
-function postRequest() {
+function postRequest(body = {}) {
   return {
     method: "POST",
     query: new URLSearchParams(),
     headers: new Headers({ accept: "application/json" }),
-    json: async () => ({ joinUrl: JOIN_URL }),
+    json: async () => ({ joinUrl: JOIN_URL, ...body }),
   };
 }
 
@@ -86,6 +86,35 @@ describe("TriggerProcessing", () => {
       ["today-a", "today-b"],
     );
     assert.ok(queued.every((m) => m.userId === ORGANIZER && m.meetingId === MEETING_ID && m.manualTrigger));
+  });
+
+  it("queues only the given transcript when the skipped card passes one", async () => {
+    const response = await handler(postRequest({ transcriptId: "today-a" }), context);
+
+    assert.equal(response.status, 202);
+    assert.deepEqual(
+      queued.map((m) => m.transcriptId),
+      ["today-a"],
+    );
+  });
+
+  it("reads the transcript ID from the query string (the form POSTs back to the card's URL)", async () => {
+    const request = postRequest();
+    request.query = new URLSearchParams({ joinUrl: JOIN_URL, transcriptId: "last-week" });
+
+    await handler(request, context);
+
+    assert.deepEqual(
+      queued.map((m) => m.transcriptId),
+      ["last-week"],
+    );
+  });
+
+  it("reports not found for a transcript the meeting doesn't have", async () => {
+    const response = await handler(postRequest({ transcriptId: "nope" }), context);
+
+    assert.equal(response.status, 404);
+    assert.equal(queued, null);
   });
 
   it("still reports not found when the meeting doesn't exist by ID either", async () => {

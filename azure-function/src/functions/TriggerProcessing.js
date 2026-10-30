@@ -16,8 +16,12 @@ const { meetingIdFromJoinUrl, latestOccurrenceTranscripts } = require("./meeting
  *
  * Usage:
  *   POST /api/TriggerProcessing
- *   Body: { "joinUrl": "https://teams.microsoft.com/l/meetup-join/..." }
- *   (or POST with the same ?joinUrl=... query string)
+ *   Body: { "joinUrl": "https://teams.microsoft.com/l/meetup-join/...", "transcriptId": "..." }
+ *   (or POST with the same ?joinUrl=...&transcriptId=... query string)
+ *
+ *   transcriptId is optional. The "skipped" card passes the transcript it is
+ *   about, so each card processes only its own transcript. Without it, every
+ *   transcript from the meeting's latest occurrence is queued.
  *
  *   GET /api/TriggerProcessing?joinUrl=... renders a confirmation page.
  */
@@ -398,11 +402,13 @@ app.http("TriggerProcessing", {
   handler: async (request, context) => {
     // Extract joinUrl from query string (GET/POST) or POST body
     let joinUrl = request.query.get("joinUrl");
+    let transcriptId = request.query.get("transcriptId");
 
     if (!joinUrl && request.method === "POST") {
       try {
         const body = await request.json();
         joinUrl = body.joinUrl;
+        transcriptId = transcriptId || body.transcriptId;
       } catch {
         // Body might not be JSON
       }
@@ -497,10 +503,26 @@ app.http("TriggerProcessing", {
         );
       }
 
-      // Step 5: Queue every transcript from the latest occurrence. Stopping
-      // and restarting transcription mid-meeting produces several, and the
-      // webhook path processes each one, so the manual path should too.
-      const occurrence = latestOccurrenceTranscripts(transcripts);
+      // Step 5: Queue the requested transcript, or every transcript from the
+      // latest occurrence. Stopping and restarting transcription mid-meeting
+      // produces several, and the webhook path processes each one, so the
+      // manual path should too.
+      const occurrence = transcriptId
+        ? transcripts.filter((t) => t.id === transcriptId)
+        : latestOccurrenceTranscripts(transcripts);
+      if (occurrence.length === 0) {
+        structuredLog(context, "warn", "Requested transcript not found for meeting", {
+          meetingId,
+          transcriptId,
+        });
+        return createResponse(
+          request,
+          false,
+          `That transcript is no longer available for meeting "${subject}".`,
+          404,
+          { subject },
+        );
+      }
       const latestTranscript = occurrence[occurrence.length - 1];
 
       structuredLog(context, "info", "Queuing transcripts for processing", {

@@ -657,7 +657,7 @@ ContainerAppConsoleLogs_CL
 **Issue**: A recurring meeting silently stopped being processed (no webhook, no error)
 - **Check**: Is the meeting's organizer still active? The organizer is whoever created the Teams meeting (the `Oid` in the join URL), even for channel meetings that Outlook shows as organised by the team. Graph sends no transcript notification for meetings whose organizer is disabled. The meeting and its transcripts are still served by ID while the account is disabled (not deleted), but the `$filter=JoinWebUrl` lookup returns `404 - 3004: Meeting properties are not found`.
 - **Solution**: Hand the meeting over - see [What to Do When a Meeting Organiser Leaves](https://sswtiger.com/docs/when-a-meeting-organiser-leaves). `CheckMeetingOrganizers` warns the team automatically (see below).
-- **Recover a missed meeting**: POST its join URL to `TriggerProcessing`. When the JoinWebUrl lookup 404s it builds the meeting ID from the join URL (`base64("1*{organizerId}*{messageId}**{threadId}")`, see `meetingId.js`) and queues every transcript from the latest occurrence.
+- **Recover a missed meeting**: POST its join URL to `TriggerProcessing`. When the JoinWebUrl lookup 404s it builds the meeting ID from the join URL (`base64("1*{organizerId}*{messageId}**{threadId}")`, see `meetingId.js`) and queues every transcript from the latest occurrence. Pass `transcriptId` to queue just that one; the "skipped" card's Process Anyway button does, so each card only processes its own transcript.
 
 ### Organizer check (`CheckMeetingOrganizers`)
 

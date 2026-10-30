@@ -178,6 +178,7 @@ run_pipeline() {
             MEETING_SUBJECT=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).meetingSubject || ''" 2>/dev/null)
             PARTICIPANTS_JSON=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.stringify(JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).participants || [])" 2>/dev/null)
             JOIN_WEB_URL=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).joinWebUrl || ''" 2>/dev/null)
+            SKIPPED_TRANSCRIPT_ID=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).transcriptId || ''" 2>/dev/null)
             MEETING_DURATION=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).meetingDuration || ''" 2>/dev/null)
 
             # Build trigger URL from the cancel URL base (same Azure Function host)
@@ -187,6 +188,11 @@ run_pipeline() {
                 ENCODED_JOIN_URL=$(node -pe "encodeURIComponent('$JOIN_WEB_URL')" 2>/dev/null || echo "")
                 if [ -n "$ENCODED_JOIN_URL" ]; then
                     TRIGGER_URL="${FUNCTION_HOST}/api/TriggerProcessing?joinUrl=${ENCODED_JOIN_URL}"
+                    # Each skipped card processes only its own transcript
+                    if [ -n "$SKIPPED_TRANSCRIPT_ID" ]; then
+                        ENCODED_TRANSCRIPT_ID=$(node -pe "encodeURIComponent(process.argv[1])" "$SKIPPED_TRANSCRIPT_ID" 2>/dev/null || echo "")
+                        [ -n "$ENCODED_TRANSCRIPT_ID" ] && TRIGGER_URL="${TRIGGER_URL}&transcriptId=${ENCODED_TRANSCRIPT_ID}"
+                    fi
                 fi
             fi
 
