@@ -1,0 +1,24 @@
+{
+  "_comment": "Paste into the TigerTeams Logic App: For_each > Switch > add case. Also add 'organizerName' and 'docsUrl' (string) to the HTTP trigger's request body schema. See README-AUTOMATION.md > Organizer check.",
+  "Case_organizer_disabled": {
+    "case": "organizer-disabled",
+    "actions": {
+      "Post_organizer_disabled_card": {
+        "type": "ApiConnection",
+        "inputs": {
+          "host": {
+            "connection": {
+              "name": "@parameters('$connections')['teams']['connectionId']"
+            }
+          },
+          "method": "post",
+          "body": {
+            "recipient": "@item()?['userId']",
+            "messageBody": "{\"type\": \"AdaptiveCard\", \"$schema\": \"http://adaptivecards.io/schemas/adaptive-card.json\", \"version\": \"1.4\", \"body\": [{\"type\": \"ColumnSet\", \"columns\": [{\"type\": \"Column\", \"width\": \"auto\", \"verticalContentAlignment\": \"Center\", \"items\": [{\"type\": \"Image\", \"url\": \"https://satigerstagingweb.blob.core.windows.net/assets/Logo.png\", \"size\": \"Medium\", \"width\": \"50px\"}]}, {\"type\": \"Column\", \"width\": \"stretch\", \"verticalContentAlignment\": \"Center\", \"items\": [{\"type\": \"TextBlock\", \"text\": \"SSW Tiger\", \"weight\": \"Bolder\", \"size\": \"Medium\", \"color\": \"Accent\"}, {\"type\": \"TextBlock\", \"text\": \"Meeting Organiser Has Left\", \"spacing\": \"None\", \"isSubtle\": true}]}]}, {\"type\": \"TextBlock\", \"text\": \"Tiger can no longer create dashboards for this meeting because the person who scheduled it has left SSW. Hand the meeting over to an active account so the next meeting gets a dashboard.\", \"wrap\": true, \"spacing\": \"Medium\"}, {\"type\": \"FactSet\", \"facts\": [{\"title\": \"Meeting\", \"value\": \"@{triggerBody()?['meetingSubject']}\"}, {\"title\": \"Project\", \"value\": \"@{triggerBody()?['projectName']}\"}, {\"title\": \"Organiser\", \"value\": \"@{triggerBody()?['organizerName']}\"}, {\"title\": \"Status\", \"value\": \"⚠️ Not being processed\"}]}], \"actions\": [{\"type\": \"Action.OpenUrl\", \"title\": \"How to fix it (2 min)\", \"url\": \"@{triggerBody()?['docsUrl']}\"}]}"
+          },
+          "path": "/v1.0/teams/conversation/adaptivecard/poster/Flow bot/location/@{encodeURIComponent('Chat with Flow bot')}"
+        }
+      }
+    }
+  }
+}

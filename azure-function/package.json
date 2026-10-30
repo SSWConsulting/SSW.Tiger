@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@azure/arm-appcontainers": "^2.0.0",
+    "@azure/cosmos": "^4.10.1",
     "@azure/functions": "^4.0.0",
     "@azure/identity": "^4.13.0"
   },

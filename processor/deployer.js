@@ -309,6 +309,34 @@ async function prepareDashboardForDeployment({ dashboardPath, projectName, meeti
 }
 
 /**
+ * The Teams meeting this run came from, read from the env the container job
+ * exports. Stored so the daily organizer check can find recurring meetings
+ * whose organizer has since been disabled. Null for local runs.
+ */
+function teamsMeetingFromEnv(env = process.env) {
+  const organizerUserId = env.GRAPH_USER_ID;
+  const onlineMeetingId = env.GRAPH_MEETING_ID;
+  if (!organizerUserId || !onlineMeetingId) return null;
+
+  let participantUserIds = [];
+  try {
+    const parsed = JSON.parse(env.PARTICIPANTS_JSON || "[]");
+    if (Array.isArray(parsed)) {
+      participantUserIds = [...new Set(parsed.map((p) => p && p.userId).filter(Boolean))];
+    }
+  } catch {
+    log("warn", "PARTICIPANTS_JSON unreadable, storing Teams meeting without participants");
+  }
+
+  return {
+    organizerUserId,
+    onlineMeetingId,
+    subject: env.MEETING_SUBJECT || "",
+    participantUserIds,
+  };
+}
+
+/**
  * Persist meeting metadata and consolidated JSON to Cosmos DB.
  */
 async function persistToCosmos({ projectName, meetingId, meetingDate, dashboardPath, meetingPath }) {
@@ -339,6 +367,7 @@ async function persistToCosmos({ projectName, meetingId, meetingDate, dashboardP
     dashboardPath,
     consolidated,
     metadata,
+    teamsMeeting: teamsMeetingFromEnv(),
   });
 
   log("info", "Persisted meeting to Cosmos DB", { id: result.id });
@@ -473,4 +502,5 @@ module.exports = {
   persistToCosmos,
   deployProjectIndex,
   prepareDashboardForDeployment,
+  teamsMeetingFromEnv,
 };
