@@ -1,4 +1,5 @@
 const { app, output } = require("@azure/functions");
+const { meetingIdFromJoinUrl, latestOccurrenceTranscripts } = require("./meetingId");
 
 /**
  * Manual trigger for transcript processing.
@@ -323,6 +324,13 @@ async function findMeetingByJoinUrl(token, userId, joinUrl) {
     headers: { Authorization: `Bearer ${token}` },
   });
 
+  if (response.status === 404) {
+    // Graph answers the JoinWebUrl filter with 404 ("3004: Meeting properties
+    // are not found") once the organizer is disabled, even though the meeting
+    // is still served by ID. Callers fall back to findMeetingById.
+    return null;
+  }
+
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`Failed to find meeting: ${response.status} - ${errorText}`);
@@ -336,6 +344,30 @@ async function findMeetingByJoinUrl(token, userId, joinUrl) {
   }
 
   return meetings[0];
+}
+
+/**
+ * Get a meeting by the ID built from its join URL. Works for departed
+ * (disabled) organizers, where the JoinWebUrl filter does not.
+ * GET /users/{userId}/onlineMeetings/{meetingId}
+ */
+async function findMeetingById(token, userId, joinUrl) {
+  const meetingId = meetingIdFromJoinUrl(joinUrl, userId);
+  if (!meetingId) return null;
+
+  const graphUrl = `https://graph.microsoft.com/v1.0/users/${userId}/onlineMeetings/${meetingId}`;
+  const response = await fetch(graphUrl, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to get meeting by ID: ${response.status} - ${errorText}`);
+  }
+
+  return response.json();
 }
 
 /**
@@ -421,7 +453,15 @@ app.http("TriggerProcessing", {
       const token = await getGraphToken();
 
       // Step 3: Find the meeting by join URL
-      const meeting = await findMeetingByJoinUrl(token, userId, joinUrl);
+      let meeting = await findMeetingByJoinUrl(token, userId, joinUrl);
+      if (!meeting) {
+        meeting = await findMeetingById(token, userId, joinUrl);
+        if (meeting) {
+          structuredLog(context, "info", "Found meeting by ID after JoinWebUrl lookup missed (organizer likely disabled)", {
+            userId,
+          });
+        }
+      }
       if (!meeting) {
         structuredLog(context, "warn", "No meeting found for join URL", {
           userId,
@@ -457,39 +497,40 @@ app.http("TriggerProcessing", {
         );
       }
 
-      // Step 5: Queue the latest transcript for processing
-      // Sort by createdDateTime descending and take the latest
-      transcripts.sort(
-        (a, b) =>
-          new Date(b.createdDateTime) - new Date(a.createdDateTime),
-      );
-      const latestTranscript = transcripts[0];
-      const transcriptId = latestTranscript.id;
+      // Step 5: Queue every transcript from the latest occurrence. Stopping
+      // and restarting transcription mid-meeting produces several, and the
+      // webhook path processes each one, so the manual path should too.
+      const occurrence = latestOccurrenceTranscripts(transcripts);
+      const latestTranscript = occurrence[occurrence.length - 1];
 
-      structuredLog(context, "info", "Queuing transcript for processing", {
+      structuredLog(context, "info", "Queuing transcripts for processing", {
         userId,
         meetingId,
-        transcriptId,
+        transcriptIds: occurrence.map((t) => t.id),
         subject,
         transcriptCount: transcripts.length,
         createdDateTime: latestTranscript.createdDateTime,
       });
 
-      const queueMessage = {
-        userId,
-        meetingId,
-        transcriptId,
-        skipSubjectFilter: true,
-        manualTrigger: true,
-        timestamp: new Date().toISOString(),
-      };
+      const timestamp = new Date().toISOString();
+      context.extraOutputs.set(
+        queueOutput,
+        occurrence.map((transcript) => ({
+          userId,
+          meetingId,
+          transcriptId: transcript.id,
+          skipSubjectFilter: true,
+          manualTrigger: true,
+          timestamp,
+        })),
+      );
 
-      context.extraOutputs.set(queueOutput, [queueMessage]);
-
+      const queuedText =
+        occurrence.length === 1 ? "Processing has been queued" : `Processing of ${occurrence.length} transcripts has been queued`;
       return createResponse(
         request,
         true,
-        `Processing has been queued for "${subject}". You'll receive a Teams notification when the dashboard is ready.`,
+        `${queuedText} for "${subject}". You'll receive a Teams notification when the dashboard is ready.`,
         202,
         { subject, transcriptCreated: latestTranscript.createdDateTime },
       );
