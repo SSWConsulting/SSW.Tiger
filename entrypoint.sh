@@ -210,6 +210,8 @@ run_pipeline() {
     MEETING_DURATION=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).meetingDuration || ''")
     INVITEES_JSON=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.stringify(JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).invitees || [])")
     VTT_INFO_JSON=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.stringify(JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).vttInfo || {})")
+    # The transcript actually downloaded - differs from GRAPH_TRANSCRIPT_ID when 404 recovery picked another
+    PROCESSED_TRANSCRIPT_ID=$(echo "$DOWNLOAD_RESULT" | node -pe "JSON.parse(require('fs').readFileSync('/dev/stdin').toString()).transcriptId || ''")
 
     # Export variables for notifications
     export PROJECT_NAME="$PROJECT_NAME"
@@ -218,6 +220,7 @@ run_pipeline() {
     export MEETING_DURATION="$MEETING_DURATION"
     export INVITEES_JSON="$INVITEES_JSON"
     export VTT_INFO_JSON="$VTT_INFO_JSON"
+    export PROCESSED_TRANSCRIPT_ID="$PROCESSED_TRANSCRIPT_ID"
 
     # Step 2: Send "started" notification (if configured)
     # Includes cancel URL if available, allowing users to cancel processing

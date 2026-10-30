@@ -64,6 +64,8 @@ describe("teamsMeetingFromEnv", () => {
     const ref = teamsMeetingFromEnv({
       GRAPH_USER_ID: "organizer-1",
       GRAPH_MEETING_ID: "meeting-1",
+      GRAPH_TRANSCRIPT_ID: "notified-transcript",
+      PROCESSED_TRANSCRIPT_ID: "recovered-transcript",
       MEETING_SUBJECT: "SSW Design - Sprint Review",
       PARTICIPANTS_JSON: JSON.stringify([{ userId: "organizer-1" }, { userId: "user-2" }, { userId: "user-2" }, {}]),
     });
@@ -71,6 +73,7 @@ describe("teamsMeetingFromEnv", () => {
     assert.deepEqual(ref, {
       organizerUserId: "organizer-1",
       onlineMeetingId: "meeting-1",
+      transcriptId: "recovered-transcript",
       subject: "SSW Design - Sprint Review",
       participantUserIds: ["organizer-1", "user-2"],
     });
@@ -85,5 +88,11 @@ describe("teamsMeetingFromEnv", () => {
     const ref = teamsMeetingFromEnv({ GRAPH_USER_ID: "o", GRAPH_MEETING_ID: "m", PARTICIPANTS_JSON: "not json" });
     assert.deepEqual(ref.participantUserIds, []);
     assert.equal(ref.subject, "");
+    assert.equal(ref.transcriptId, null);
+  });
+
+  it("falls back to the notified transcript ID when the download step reported none", () => {
+    const ref = teamsMeetingFromEnv({ GRAPH_USER_ID: "o", GRAPH_MEETING_ID: "m", GRAPH_TRANSCRIPT_ID: "notified" });
+    assert.equal(ref.transcriptId, "notified");
   });
 });

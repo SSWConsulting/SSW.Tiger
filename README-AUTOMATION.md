@@ -663,7 +663,7 @@ ContainerAppConsoleLogs_CL
 
 A timer function that runs daily at 22:00 UTC (8-9am Sydney):
 
-1. Reads meetings processed in the last 45 days from Cosmos that have a `teamsMeeting` (organizer, Graph meeting ID, subject, participants - written by the processor from `GRAPH_USER_ID`, `GRAPH_MEETING_ID`, `MEETING_SUBJECT` and `PARTICIPANTS_JSON`)
+1. Reads meetings processed in the last 45 days from Cosmos that have a `teamsMeeting` (organizer, Graph meeting ID, transcript ID, subject, participants - written by the processor from `GRAPH_USER_ID`, `GRAPH_MEETING_ID`, `PROCESSED_TRANSCRIPT_ID` (falling back to `GRAPH_TRANSCRIPT_ID`), `MEETING_SUBJECT` and `PARTICIPANTS_JSON`)
 2. Keeps the latest occurrence of each series, skipping any series already alerted
 3. Looks up each organizer with `GET /users/{id}?$select=accountEnabled,displayName` (`User.Read.All`)
 4. For each series whose organizer is disabled (or deleted), posts a `notificationType: "organizer-disabled"` card to the series' participants (minus the organizer) via the Logic App, linking to the docs page

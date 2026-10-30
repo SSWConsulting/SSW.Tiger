@@ -311,7 +311,8 @@ async function prepareDashboardForDeployment({ dashboardPath, projectName, meeti
 /**
  * The Teams meeting this run came from, read from the env the container job
  * exports. Stored so the daily organizer check can find recurring meetings
- * whose organizer has since been disabled. Null for local runs.
+ * whose organizer has since been disabled, and so processed transcripts can
+ * be told apart from unprocessed ones. Null for local runs.
  */
 function teamsMeetingFromEnv(env = process.env) {
   const organizerUserId = env.GRAPH_USER_ID;
@@ -331,6 +332,7 @@ function teamsMeetingFromEnv(env = process.env) {
   return {
     organizerUserId,
     onlineMeetingId,
+    transcriptId: env.PROCESSED_TRANSCRIPT_ID || env.GRAPH_TRANSCRIPT_ID || null,
     subject: env.MEETING_SUBJECT || "",
     participantUserIds,
   };
