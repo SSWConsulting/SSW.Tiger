@@ -356,6 +356,8 @@ LOGIC_APP_URL (Logic App HTTP trigger)
 
 **Permissions Required**:
 - `OnlineMeetings.Read.All` - Read meeting metadata
+- `OnlineMeetingTranscript.Read.All` - Access transcripts
+- `User.Read.All` - Check whether meeting organizers are still active (organizer check)
 - `CallRecords.Read.All` - Access transcripts
 - `Chat.Create` - Send notifications (optional)
 
@@ -652,6 +654,38 @@ ContainerAppConsoleLogs_CL
 - **Check**: DASHBOARD_STORAGE_ACCOUNT is set
 - **Solution**: Verify DASHBOARD_STORAGE_ACCOUNT and run az login
 
+**Issue**: A recurring meeting silently stopped being processed (no webhook, no error)
+- **Check**: Is the meeting's organizer still active? The organizer is whoever created the Teams meeting (the `Oid` in the join URL), even for channel meetings that Outlook shows as organised by the team. Graph sends no transcript notification for meetings whose organizer is disabled. The meeting and its transcripts are still served by ID while the account is disabled (not deleted), but the `$filter=JoinWebUrl` lookup returns `404 - 3004: Meeting properties are not found`.
+- **Solution**: Hand the meeting over - see [What to Do When a Meeting Organiser Leaves](https://sswtiger.com/docs/when-a-meeting-organiser-leaves). `CheckMeetingOrganizers` warns the team automatically (see below).
+- **Recover a missed meeting**: POST its join URL to `TriggerProcessing`. When the JoinWebUrl lookup 404s it builds the meeting ID from the join URL (`base64("1*{organizerId}*{messageId}**{threadId}")`, see `meetingId.js`) and queues every transcript from the latest occurrence. Pass `transcriptId` to queue just that one; the "skipped" card's Process Anyway button does, so each card only processes its own transcript.
+
+### Organizer check (`CheckMeetingOrganizers`)
+
+A timer function that runs daily at 22:00 UTC (8-9am Sydney):
+
+1. Reads meetings processed in the last 45 days from Cosmos that have a `teamsMeeting` (organizer, Graph meeting ID, transcript ID, subject, participants - written by the processor from `GRAPH_USER_ID`, `GRAPH_MEETING_ID`, `PROCESSED_TRANSCRIPT_ID` (falling back to `GRAPH_TRANSCRIPT_ID`), `MEETING_SUBJECT` and `PARTICIPANTS_JSON`)
+2. Keeps the latest occurrence of each series, skipping any series already alerted
+3. Looks up each organizer with `GET /users/{id}?$select=accountEnabled,displayName` (`User.Read.All`)
+4. For each series whose organizer is disabled (or deleted), posts a `notificationType: "organizer-disabled"` card to the series' participants (minus the organizer) via the Logic App, linking to the docs page
+5. Sets `organizerAlertSentAt` on that meeting's Cosmos document, so each series is alerted once. If the Logic App call fails it isn't set, so the next run retries
+
+Meetings processed before this change have no `teamsMeeting`, so they aren't checked.
+
+**One-off setup** - the Logic App is configured in the Portal, so add the new card there:
+
+1. Open the `TigerTeams` Logic App > Logic app code view
+2. In the HTTP trigger's request schema, add `"organizerName": { "type": "string" }` and `"docsUrl": { "type": "string" }`
+3. Add the case from [`infra/logic-app/organizer-disabled-case.json`](infra/logic-app/organizer-disabled-case.json) under `For_each > Switch > cases`. Without it, the payload falls through to the default "dashboard ready" card
+
+Optional app setting: `ORGANIZER_DOCS_URL` overrides the docs link.
+
+**Logs**:
+```kusto
+AppTraces
+| where Message has "Organizer"
+| project TimeGenerated, Message
+```
+
 ---
 
 ## 🔐 Secrets Management
@@ -707,6 +741,7 @@ SSW.Tiger/
 │   │       ├── TranscriptWebhook.js        # Webhook receiver
 │   │       ├── ProcessTranscriptQueue.js   # Job trigger
 │   │       ├── RenewSubscription.js        # Auto-renewal (timer)
+│   │       ├── CheckMeetingOrganizers.js   # Departed-organizer warning (timer)
 │   │       └── CancelProcessing.js         # Cancel endpoint
 │   └── scripts/
 │       └── Create-GraphSubscription.ps1    # Initial subscription setup

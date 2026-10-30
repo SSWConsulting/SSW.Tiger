@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
 const { DASHBOARD_HTML_CACHE_CONTROL } = require("../lib/dashboardBlob");
-const { buildDashboardUploadArgs } = require("./deployer");
+const { buildDashboardUploadArgs, teamsMeetingFromEnv } = require("./deployer");
 
 describe("dashboard deployment upload arguments", () => {
   it("stores the project display name on reports without a project index", () => {
@@ -56,5 +56,43 @@ describe("deployDashboard", () => {
         else process.env[key] = value;
       }
     }
+  });
+});
+
+describe("teamsMeetingFromEnv", () => {
+  it("captures the Teams organizer, meeting and participants for the organizer check", () => {
+    const ref = teamsMeetingFromEnv({
+      GRAPH_USER_ID: "organizer-1",
+      GRAPH_MEETING_ID: "meeting-1",
+      GRAPH_TRANSCRIPT_ID: "notified-transcript",
+      PROCESSED_TRANSCRIPT_ID: "recovered-transcript",
+      MEETING_SUBJECT: "SSW Design - Sprint Review",
+      PARTICIPANTS_JSON: JSON.stringify([{ userId: "organizer-1" }, { userId: "user-2" }, { userId: "user-2" }, {}]),
+    });
+
+    assert.deepEqual(ref, {
+      organizerUserId: "organizer-1",
+      onlineMeetingId: "meeting-1",
+      transcriptId: "recovered-transcript",
+      subject: "SSW Design - Sprint Review",
+      participantUserIds: ["organizer-1", "user-2"],
+    });
+  });
+
+  it("returns null for local runs that have no Teams meeting", () => {
+    assert.equal(teamsMeetingFromEnv({}), null);
+    assert.equal(teamsMeetingFromEnv({ GRAPH_USER_ID: "organizer-1" }), null);
+  });
+
+  it("keeps the meeting reference when the participant list is unreadable", () => {
+    const ref = teamsMeetingFromEnv({ GRAPH_USER_ID: "o", GRAPH_MEETING_ID: "m", PARTICIPANTS_JSON: "not json" });
+    assert.deepEqual(ref.participantUserIds, []);
+    assert.equal(ref.subject, "");
+    assert.equal(ref.transcriptId, null);
+  });
+
+  it("falls back to the notified transcript ID when the download step reported none", () => {
+    const ref = teamsMeetingFromEnv({ GRAPH_USER_ID: "o", GRAPH_MEETING_ID: "m", GRAPH_TRANSCRIPT_ID: "notified" });
+    assert.equal(ref.transcriptId, "notified");
   });
 });
