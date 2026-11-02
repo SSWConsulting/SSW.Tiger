@@ -22,7 +22,7 @@ const {
 const LOG_PREFIX = "[TIGER]";
 // Covers monthly meetings with room to spare
 const LOOKBACK_DAYS = 45;
-const DEFAULT_DOCS_URL = "https://sswtiger.com/docs/when-a-meeting-organiser-leaves";
+const DEFAULT_DOCS_URL = "https://sswtiger.com/docs/when-someones-account-is-disabled";
 
 app.timer("CheckMeetingOrganizers", {
   schedule: "0 0 22 * * *", // 22:00 UTC = 8-9am Sydney, before the work day

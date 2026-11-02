@@ -80,7 +80,7 @@ describe("buildOrganizerAlert", () => {
     const payload = buildOrganizerAlert({
       series: meeting(),
       organizerName: "Ulysses Maclaren [SSW]",
-      docsUrl: "https://sswtiger.com/docs/when-a-meeting-organiser-leaves",
+      docsUrl: "https://sswtiger.com/docs/when-someones-account-is-disabled",
     });
 
     assert.deepEqual(payload, {
@@ -88,7 +88,7 @@ describe("buildOrganizerAlert", () => {
       projectName: "ssw-design",
       meetingSubject: "SSW Design - Sprint Review",
       organizerName: "Ulysses Maclaren [SSW]",
-      docsUrl: "https://sswtiger.com/docs/when-a-meeting-organiser-leaves",
+      docsUrl: "https://sswtiger.com/docs/when-someones-account-is-disabled",
       participants: [{ userId: "isaac" }, { userId: "tiago" }],
     });
   });
