@@ -358,6 +358,7 @@ LOGIC_APP_URL (Logic App HTTP trigger)
 - `OnlineMeetings.Read.All` - Read meeting metadata
 - `OnlineMeetingTranscript.Read.All` - Access transcripts
 - `User.Read.All` - Check whether meeting organizers are still active (organizer check)
+- `Chat.Read.All` - Read meeting chat messages (actual participants) and the meeting chat's topic (subject fallback when the organizer is disabled)
 - `CallRecords.Read.All` - Access transcripts
 - `Chat.Create` - Send notifications (optional)
 
@@ -658,6 +659,7 @@ ContainerAppConsoleLogs_CL
 - **Check**: Is the meeting's organizer still active? The organizer is whoever created the Teams meeting (the `Oid` in the join URL), even for channel meetings that Outlook shows as organised by the team. Graph sends no transcript notification for meetings whose organizer is disabled. The meeting and its transcripts are still served by ID while the account is disabled (not deleted), but the `$filter=JoinWebUrl` lookup returns `404 - 3004: Meeting properties are not found`.
 - **Solution**: Hand the meeting over - see [What to Do When Someone's Account Is Disabled](https://sswtiger.com/docs/when-someones-account-is-disabled). `CheckMeetingOrganizers` warns the team automatically (see below).
 - **Recover a missed meeting**: POST its join URL to `TriggerProcessing`. When the JoinWebUrl lookup 404s it builds the meeting ID from the join URL (`base64("1*{organizerId}*{messageId}**{threadId}")`, see `meetingId.js`) and queues every transcript from the latest occurrence. Pass `transcriptId` to queue just that one; the "skipped" card's Process Anyway button does, so each card only processes its own transcript.
+- **Subject and project**: Graph also leaves out the subject (and invitees) of a meeting whose organizer is disabled, which would file it under `general`. The processor (`resolveMeetingSubject()` in `downloadTranscript.js`) then uses, in order: the subject stored by the latest earlier run of the same series in Cosmos (`teamsMeeting.subject`, matched on `teamsMeeting.onlineMeetingId`), then the meeting chat's topic (`GET /chats/{threadId}`, meeting chats only). Channel meetings have no meeting chat, so they rely on Cosmos. With neither, it files under `general` and logs `Graph returned no subject and none could be recovered`. Meetings processed before `teamsMeeting` was stored can't be recovered from Cosmos.
 
 ### Organizer check (`CheckMeetingOrganizers`)
 

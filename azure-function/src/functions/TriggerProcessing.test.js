@@ -78,6 +78,27 @@ describe("TriggerProcessing", () => {
     assert.ok(graphCalls.some((url) => url.endsWith(`/users/${ORGANIZER}/onlineMeetings/${MEETING_ID}`)));
   });
 
+  it("uses the JoinWebUrl lookup and skips the by-ID fallback while the organizer is active", async () => {
+    const departedFetch = global.fetch;
+    global.fetch = async (url, options) => {
+      if (url.includes("$filter=JoinWebUrl")) {
+        graphCalls.push(url);
+        return Response.json({ value: [{ id: MEETING_ID, subject: "SSW Design - Sprint Review" }] });
+      }
+      return departedFetch(url, options);
+    };
+
+    const response = await handler(postRequest(), context);
+
+    assert.equal(response.status, 202);
+    assert.equal(response.jsonBody.subject, "SSW Design - Sprint Review");
+    assert.ok(!graphCalls.some((url) => url.endsWith(`/onlineMeetings/${MEETING_ID}`)));
+    assert.deepEqual(
+      queued.map((m) => m.transcriptId),
+      ["today-a", "today-b"],
+    );
+  });
+
   it("queues every transcript from the latest occurrence, not last week's", async () => {
     await handler(postRequest(), context);
 

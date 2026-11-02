@@ -38,6 +38,7 @@ const fs = require("fs").promises;
 const path = require("path");
 const { log } = require("../lib/logger");
 const { sanitizeId } = require("../lib/sanitize");
+const cosmos = require("../lib/cosmosClient");
 
 // Configuration from environment
 const CONFIG = {
@@ -282,6 +283,87 @@ async function fetchMeeting(token) {
     ...meeting,
     participants,
   };
+}
+
+/**
+ * The topic of a meeting's chat, or "" when there is none to use. Only a
+ * meeting chat's topic is the meeting title: a channel meeting's thread is the
+ * channel itself (named "General" and the like), and a group chat's topic
+ * names the group. Never throws.
+ * GET /chats/{chatId} (Chat.Read.All)
+ */
+async function fetchMeetingChatTopic(token, chatId) {
+  if (!chatId) return "";
+
+  try {
+    const graphUrl = `https://graph.microsoft.com/v1.0/chats/${encodeURIComponent(chatId)}?$select=topic,chatType`;
+    const response = await fetch(graphUrl, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!response.ok) {
+      log("warn", `Could not read the meeting chat for its topic: ${response.status}`, { chatId });
+      return "";
+    }
+
+    const chat = await response.json();
+    return chat.chatType === "meeting" ? (chat.topic || "").trim() : "";
+  } catch (error) {
+    log("warn", "Could not read the meeting chat for its topic", { chatId, error: error.message });
+    return "";
+  }
+}
+
+/**
+ * The meeting's subject, recovered when Graph leaves it out. Graph omits the
+ * subject (and invitees) of a meeting whose organizer's account is disabled,
+ * though it still serves the meeting by ID; without a subject the transcript
+ * is filed under "general". Falls back to, in order:
+ *   1. our Cosmos record of an earlier run of the same meeting (a recurring
+ *      series keeps one online meeting ID)
+ *   2. the meeting chat's topic
+ * The organizer's calendar event is not tried: the app has no calendar
+ * permission, and a disabled organizer's mailbox may be gone.
+ *
+ * @returns {{ subject: string, source: "graph"|"priorRun"|"chatTopic"|"none" }}
+ */
+async function resolveMeetingSubject(token, meeting, { findPriorSubject = cosmos.findPriorMeetingSubject } = {}) {
+  if (meeting.subject) return { subject: meeting.subject, source: "graph" };
+
+  const ids = { userId: CONFIG.userId, meetingId: CONFIG.meetingId };
+
+  try {
+    const prior = await findPriorSubject(CONFIG.meetingId);
+    if (prior?.subject) {
+      log("warn", "Graph returned no subject (organizer likely disabled), using the subject from an earlier run", {
+        ...ids,
+        subject: prior.subject,
+        fromMeeting: `${prior.projectName}/${prior.meetingId}`,
+      });
+      return { subject: prior.subject, source: "priorRun" };
+    }
+  } catch (error) {
+    log("warn", "Could not look up an earlier run of this meeting for its subject", {
+      ...ids,
+      error: error.message,
+    });
+  }
+
+  const topic = await fetchMeetingChatTopic(token, meeting.chatInfo?.threadId);
+  if (topic) {
+    log("warn", "Graph returned no subject (organizer likely disabled), using the meeting chat's topic", {
+      ...ids,
+      subject: topic,
+    });
+    return { subject: topic, source: "chatTopic" };
+  }
+
+  log("warn", "Graph returned no subject and none could be recovered, filing under 'general'", {
+    ...ids,
+    chatId: meeting.chatInfo?.threadId || null,
+  });
+  return { subject: "", source: "none" };
 }
 
 async function fetchTranscriptMetadata(token) {
@@ -1036,10 +1118,11 @@ async function main() {
     const meeting = await fetchMeeting(token);
 
     // Log meeting context early so we know which meeting failed if errors occur later
-    const subject = meeting.subject || "";
+    const { subject, source: subjectSource } = await resolveMeetingSubject(token, meeting);
     meetingSubject = subject; // Store for error reporting
     log("info", "Processing meeting", {
       subject,
+      subjectSource,
       userId: CONFIG.userId,
       meetingId: CONFIG.meetingId,
     });
@@ -1203,6 +1286,8 @@ if (require.main === module) {
 module.exports = {
   getGraphToken,
   fetchMeeting,
+  fetchMeetingChatTopic,
+  resolveMeetingSubject,
   fetchTranscriptMetadata,
   recoverTranscriptFromList,
   fetchActualParticipantsFromChat,
