@@ -78,7 +78,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
     keyVaultReferenceIdentity: managedIdentityId
     siteConfig: {
       keyVaultReferenceIdentity: managedIdentityId
-      linuxFxVersion: 'NODE|20'
+      linuxFxVersion: 'NODE|22'
       ftpsState: 'Disabled'
       http20Enabled: true
       minTlsVersion: '1.2'
@@ -105,7 +105,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         // Function runtime settings
         { name: 'FUNCTIONS_EXTENSION_VERSION', value: '~4' }
         { name: 'FUNCTIONS_WORKER_RUNTIME', value: 'node' }
-        { name: 'WEBSITE_NODE_DEFAULT_VERSION', value: '~20' }
+        { name: 'WEBSITE_NODE_DEFAULT_VERSION', value: '~22' }
         // Key Vault references for Graph API credentials
         {
           name: 'GRAPH_CLIENT_ID'

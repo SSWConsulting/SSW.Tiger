@@ -1119,6 +1119,8 @@ async function main() {
         reason: `Subject does not match filter pattern '${CONFIG.meetingFilterPattern}': "${subject}"`,
         meetingSubject: subject,
         joinWebUrl: meeting.joinWebUrl || "",
+        // So the card's Process Anyway queues this transcript, not every one
+        transcriptId: CONFIG.transcriptId,
         participants: meeting.participants || [],
         meetingDuration,
       });
