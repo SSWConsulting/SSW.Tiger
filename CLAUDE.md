@@ -298,6 +298,21 @@ projects/{project-name}/
 3. Replace ALL placeholders with actual content from `consolidated.json`
 4. Save the final HTML to `projects/{project}/{meeting-id}/dashboard/index.html`
 
+### Title and date placeholders
+
+- `{{PROJECT_NAME}}` - the project display name, as given (e.g. `SSW TV`, `YakShaver`).
+- `{{DATE}}` - the meeting date as `DD/MM/YYYY` only (e.g. `09/10/2026`). Do NOT add a
+  weekday or "days ago": the template script adds both in the browser
+  (`Fri 09/10/2026 · 24 days ago`).
+- `{{DASHBOARD_TITLE}}` - the HTML `<title>`. Use the `Dashboard title` line from the prompt
+  exactly as given (if you set `{{PROJECT_NAME}}` to a different name than the `Project`
+  line, e.g. for `general` meetings, swap that name into the title). Format: `SSW Tiger - {Project} - Meeting Dashboard ({Ddd} {DD/MM/YYYY})`,
+  where `{Project}` is `{{PROJECT_NAME}}` without a leading "SSW" prefix (`SSW TV` -> `TV`,
+  `SSW.YakShaver` -> `YakShaver`, `YakShaver` stays as is) and `{Ddd}` is the 3-letter
+  weekday (`Fri`). The processor recomputes the title from `{{PROJECT_NAME}}` and the
+  meeting date after you finish, so never guess a weekday yourself - if there is no
+  `Dashboard title` line, fill the title without the weekday.
+
 **DO NOT create HTML from scratch - USE THE TEMPLATE!**
 
 ### CRITICAL: Build the dashboard incrementally - never in one write
@@ -315,10 +330,10 @@ assemble the finished HTML in memory and write it out in a single call.
 2. Replace placeholders by editing the destination file in place. Each edit's
    replacement text is only that section's content - never the surrounding HTML.
 3. **Batch the small placeholders, split only the large ones.** The template has
-   29 placeholders; one edit each would cost 29 round trips for no benefit. What
+   30 placeholders; one edit each would cost 30 round trips for no benefit. What
    blows the output limit is re-emitting the whole document in one write, not the
    number of placeholders per message.
-   - **Small placeholders** (`{{PROJECT_NAME}}`, `{{DATE}}`, `{{MEETING_TYPE}}`,
+   - **Small placeholders** (`{{DASHBOARD_TITLE}}`, `{{PROJECT_NAME}}`, `{{DATE}}`, `{{MEETING_TYPE}}`,
      `{{DURATION}}`, `{{QUICK_STATS}}`, `{{SUMMARY}}`, `{{KEY_DECISIONS}}`,
      `{{DONE_THIS_SPRINT}}`, `{{NEXT_STEPS}}`, `{{HARD_TRUTHS}}`,
      `{{TRAJECTORY_SUMMARY}}`, `{{TRAJECTORY_INDICATOR}}`, `{{GENERATED_AT}}`, …):
@@ -329,7 +344,7 @@ assemble the finished HTML in memory and write it out in a single call.
      each, on its own. If a single one is still large, split it further - e.g.
      insert participant cards a few at a time rather than all in one edit.
 
-   A full dashboard should take roughly 6-8 rounds, not 29.
+   A full dashboard should take roughly 6-8 rounds, not 30.
 4. When every placeholder is replaced, verify no `{{` remains:
    ```bash
    grep -o '{{[A-Z_]*}}' projects/{project}/{meeting-id}/dashboard/index.html

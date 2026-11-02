@@ -23,6 +23,7 @@ const { checkOutputExists, copyToOutputDirectory, deployDashboard, persistToCosm
 const { validateAndRepairDashboard } = require("./dashboardValidator");
 const { publishTranscript } = require("./transcriptHubPublisher");
 const { writeMeetingHistory } = require("./meetingHistory");
+const { applyDashboardTitle } = require("../lib/dashboardTitle");
 
 const ROOT_DIR = path.join(__dirname, "..");
 const OUTPUT_DIR = process.env.OUTPUT_DIR || path.join(ROOT_DIR, "output");
@@ -141,6 +142,17 @@ async function processTranscript(transcriptPath, projectSlug) {
     );
   } catch (err) {
     log("warn", "Dashboard validation step failed (non-fatal)", { error: err.message });
+  }
+
+  // Set the <title> in code: "SSW Tiger - TV - Meeting Dashboard (Fri 09/10/2026)".
+  // The model has written wrong weekdays before, and the title is what browser
+  // tabs, link previews and Teams show.
+  try {
+    const html = await fs.readFile(canonicalPath, "utf-8");
+    const titled = applyDashboardTitle(html, { fallbackProjectName: displayName, meetingDate });
+    if (titled !== html) await fs.writeFile(canonicalPath, titled, "utf-8");
+  } catch (err) {
+    log("warn", "Dashboard title step failed (non-fatal)", { error: err.message });
   }
 
   // Deploy to Azure Blob Storage
