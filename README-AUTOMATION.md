@@ -741,7 +741,7 @@ SSW.Tiger/
 │   │       ├── TranscriptWebhook.js        # Webhook receiver
 │   │       ├── ProcessTranscriptQueue.js   # Job trigger
 │   │       ├── RenewSubscription.js        # Auto-renewal (timer)
-│   │       ├── CheckMeetingOrganizers.js   # Departed-organizer warning (timer)
+│   │       ├── CheckMeetingOrganizers.js   # Disabled-organizer warning (timer)
 │   │       └── CancelProcessing.js         # Cancel endpoint
 │   └── scripts/
 │       └── Create-GraphSubscription.ps1    # Initial subscription setup
