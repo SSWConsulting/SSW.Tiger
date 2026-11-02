@@ -667,7 +667,7 @@ A timer function that runs daily at 22:00 UTC (8-9am Sydney):
 2. Keeps the latest occurrence of each series, skipping any series already alerted
 3. Looks up each organizer with `GET /users/{id}?$select=accountEnabled,displayName` (`User.Read.All`)
 4. For each series whose organizer is disabled (or deleted), posts a `notificationType: "organizer-disabled"` card to the series' participants (minus the organizer) via the Logic App, linking to the docs page
-5. Sets `organizerAlertSentAt` on that meeting's Cosmos document, so each series is alerted once. If the Logic App call fails it isn't set, so the next run retries
+5. Sets `organizerAlertSentAt` on that meeting's Cosmos document, so each series is alerted once. If the Logic App call fails it isn't set, so the next run retries. Reprocessing the meeting keeps the marker (`upsertMeeting()` carries it over), so it doesn't trigger a second alert
 
 Meetings processed before this change have no `teamsMeeting`, so they aren't checked.
 
