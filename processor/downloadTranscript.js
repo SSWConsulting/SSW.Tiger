@@ -23,6 +23,8 @@
  *
  * Optional:
  *   OUTPUT_PATH          - Where to save the file (default: ./dropzone/{filename})
+ *   MEETING_SUBJECT_OVERRIDE - Subject passed to TriggerProcessing, used when
+ *                          Graph returns none (organizer disabled)
  *
  * Output (JSON to stdout):
  *   Success: {"success": true, "transcriptPath": "...", "projectName": "...", "meetingDate": "...", "filename": "..."}
@@ -38,6 +40,7 @@ const fs = require("fs").promises;
 const path = require("path");
 const { log } = require("../lib/logger");
 const { sanitizeId } = require("../lib/sanitize");
+const cosmos = require("../lib/cosmosClient");
 
 // Configuration from environment
 const CONFIG = {
@@ -59,6 +62,8 @@ const CONFIG = {
   meetingFilterPattern: process.env.MEETING_FILTER_PATTERN || "sprint",
   // Skip subject filter when manually triggered (set by TriggerProcessing function)
   skipSubjectFilter: process.env.SKIP_SUBJECT_FILTER === "true",
+  // Subject passed to TriggerProcessing, for meetings Graph returns without one
+  subjectOverride: (process.env.MEETING_SUBJECT_OVERRIDE || "").trim(),
   // SSW tenant ID for filtering external meetings
   sswTenantId: "ac2f7c34-b935-48e9-abdc-11e5d4fcb2b0",
 };
@@ -282,6 +287,112 @@ async function fetchMeeting(token) {
     ...meeting,
     participants,
   };
+}
+
+// A meeting chat's thread ID. Channel threads end @thread.skype or @thread.tacv2.
+const MEETING_CHAT_ID = /^19:meeting_.+@thread\.v2$/;
+
+/**
+ * The topic of a meeting's chat, or "" when there is none to use. Only a
+ * meeting chat's topic is the meeting title: a channel meeting's thread is the
+ * channel itself, which /chats answers with 400, and a group chat's topic
+ * names the group. So only meeting chat IDs are looked up. Never throws.
+ * GET /chats/{chatId} (Chat.Read.All)
+ */
+async function fetchMeetingChatTopic(token, chatId) {
+  if (!chatId) return "";
+  if (!MEETING_CHAT_ID.test(chatId)) {
+    log("info", "Not a meeting chat (likely a channel meeting), so no chat topic to use", { chatId });
+    return "";
+  }
+
+  try {
+    const graphUrl = `https://graph.microsoft.com/v1.0/chats/${encodeURIComponent(chatId)}?$select=topic,chatType`;
+    const response = await fetch(graphUrl, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!response.ok) {
+      log("warn", `Could not read the meeting chat for its topic: ${response.status}`, { chatId });
+      return "";
+    }
+
+    const chat = await response.json();
+    return chat.chatType === "meeting" ? (chat.topic || "").trim() : "";
+  } catch (error) {
+    log("warn", "Could not read the meeting chat for its topic", { chatId, error: error.message });
+    return "";
+  }
+}
+
+/**
+ * The meeting's subject, recovered when Graph leaves it out. Graph omits the
+ * subject (and invitees) of a meeting whose organizer's account is disabled,
+ * though it still serves the meeting by ID; without a subject the transcript
+ * is filed under "general". Falls back to, in order:
+ *   1. the subject passed to TriggerProcessing (MEETING_SUBJECT_OVERRIDE)
+ *   2. our Cosmos record of an earlier run of the same meeting (a recurring
+ *      series keeps one online meeting ID)
+ *   3. the meeting chat's topic
+ * The organizer's calendar event is not tried: the app has no calendar
+ * permission, and a disabled organizer's mailbox may be gone.
+ *
+ * @returns {{ subject: string, source: "graph"|"manual"|"priorRun"|"chatTopic"|"none" }}
+ */
+async function resolveMeetingSubject(token, meeting, { findPriorSubject = cosmos.findPriorMeetingSubject } = {}) {
+  const ids = { userId: CONFIG.userId, meetingId: CONFIG.meetingId };
+
+  if (meeting.subject) {
+    if (CONFIG.subjectOverride) {
+      log("info", "Graph returned the subject, so the manual subject isn't needed", {
+        ...ids,
+        subject: meeting.subject,
+        manualSubject: CONFIG.subjectOverride,
+      });
+    }
+    return { subject: meeting.subject, source: "graph" };
+  }
+
+  if (CONFIG.subjectOverride) {
+    log("info", "Graph returned no subject (organizer likely disabled), using the manual subject", {
+      ...ids,
+      subject: CONFIG.subjectOverride,
+    });
+    return { subject: CONFIG.subjectOverride, source: "manual" };
+  }
+
+  try {
+    const prior = await findPriorSubject(CONFIG.meetingId);
+    if (prior?.subject) {
+      log("warn", "Graph returned no subject (organizer likely disabled), using the subject from an earlier run", {
+        ...ids,
+        subject: prior.subject,
+        fromMeeting: `${prior.projectName}/${prior.meetingId}`,
+      });
+      return { subject: prior.subject, source: "priorRun" };
+    }
+  } catch (error) {
+    log("warn", "Could not look up an earlier run of this meeting for its subject", {
+      ...ids,
+      error: error.message,
+    });
+  }
+
+  const topic = await fetchMeetingChatTopic(token, meeting.chatInfo?.threadId);
+  if (topic) {
+    log("warn", "Graph returned no subject (organizer likely disabled), using the meeting chat's topic", {
+      ...ids,
+      subject: topic,
+    });
+    return { subject: topic, source: "chatTopic" };
+  }
+
+  log("warn", "Graph returned no subject and none could be recovered, filing under 'general'", {
+    ...ids,
+    chatId: meeting.chatInfo?.threadId || null,
+  });
+  return { subject: "", source: "none" };
 }
 
 async function fetchTranscriptMetadata(token) {
@@ -1036,10 +1147,11 @@ async function main() {
     const meeting = await fetchMeeting(token);
 
     // Log meeting context early so we know which meeting failed if errors occur later
-    const subject = meeting.subject || "";
+    const { subject, source: subjectSource } = await resolveMeetingSubject(token, meeting);
     meetingSubject = subject; // Store for error reporting
     log("info", "Processing meeting", {
       subject,
+      subjectSource,
       userId: CONFIG.userId,
       meetingId: CONFIG.meetingId,
     });
@@ -1203,6 +1315,8 @@ if (require.main === module) {
 module.exports = {
   getGraphToken,
   fetchMeeting,
+  fetchMeetingChatTopic,
+  resolveMeetingSubject,
   fetchTranscriptMetadata,
   recoverTranscriptFromList,
   fetchActualParticipantsFromChat,

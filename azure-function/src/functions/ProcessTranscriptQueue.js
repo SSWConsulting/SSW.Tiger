@@ -152,6 +152,7 @@ function createRestartSignature({
   meetingId,
   transcriptId,
   expiresAt,
+  subject,
 }) {
   const secret = getRestartTokenSecret();
   if (!secret) {
@@ -163,9 +164,15 @@ function createRestartSignature({
   return crypto
     .createHmac("sha256", secret)
     .update(
-      [executionId, userId, meetingId, transcriptId, String(expiresAt)].join(
-        "|",
-      ),
+      [
+        executionId,
+        userId,
+        meetingId,
+        transcriptId,
+        String(expiresAt),
+        // Only when set, so links signed before subjects existed stay valid
+        ...(subject ? [subject] : []),
+      ].join("|"),
     )
     .digest("hex");
 }
@@ -214,7 +221,7 @@ app.storageQueue("ProcessTranscriptQueue", {
       data = message;
     }
 
-    const { userId, meetingId, transcriptId, skipSubjectFilter, manualTrigger, restartTrigger, restartId, restartedFromExecutionId } = data;
+    const { userId, meetingId, transcriptId, skipSubjectFilter, subject, manualTrigger, restartTrigger, restartId, restartedFromExecutionId } = data;
 
     if (!userId || !meetingId || !transcriptId) {
       structuredLog(context, "error", "Missing IDs in queue message", { userId, meetingId, transcriptId });
@@ -263,7 +270,7 @@ app.storageQueue("ProcessTranscriptQueue", {
     processedCache.set(dedupKey, Date.now());
 
     try {
-      await triggerContainerAppJob({ userId, meetingId, transcriptId, skipSubjectFilter }, context);
+      await triggerContainerAppJob({ userId, meetingId, transcriptId, skipSubjectFilter, subject }, context);
     } catch (err) {
       // Remove from cache on failure to allow retry
       processedCache.delete(dedupKey);
@@ -273,7 +280,7 @@ app.storageQueue("ProcessTranscriptQueue", {
 });
 
 async function triggerContainerAppJob(params, context) {
-  const { userId, meetingId, transcriptId, skipSubjectFilter } = params;
+  const { userId, meetingId, transcriptId, skipSubjectFilter, subject } = params;
 
   // Validate all required environment variables
   const subscriptionId = process.env.SUBSCRIPTION_ID;
@@ -316,6 +323,7 @@ async function triggerContainerAppJob(params, context) {
         meetingId,
         transcriptId,
         expiresAt: restartTokenExpiresAt,
+        subject,
       })
     : "";
 
@@ -345,6 +353,8 @@ async function triggerContainerAppJob(params, context) {
           transcriptId,
           expiresAt: String(restartTokenExpiresAt),
           token: restartToken,
+          // A manual subject survives a restart; signed, so the link can't swap it
+          ...(subject ? { subject } : {}),
         },
       )
     : "";
@@ -384,6 +394,7 @@ async function triggerContainerAppJob(params, context) {
               checkCancellationUrl,
               restartUrl,
               skipSubjectFilter,
+              subjectOverride: subject,
             }),
           },
         ],

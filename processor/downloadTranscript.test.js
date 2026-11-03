@@ -4,6 +4,8 @@ const { describe, it, beforeEach, afterEach } = require("node:test");
 const {
   fetchTranscriptMetadata,
   downloadTranscriptContent,
+  resolveMeetingSubject,
+  parseSubject,
   CONFIG,
 } = require("./downloadTranscript");
 
@@ -267,5 +269,165 @@ describe("transcript fetch retry and recovery (#153)", () => {
     // Content URL is built from CONFIG.transcriptId at call time, so a
     // recovery that mutated it is honoured here.
     assert.match(seenUrls[0], /transcripts\/transcript-1\/content/);
+  });
+});
+
+describe("resolveMeetingSubject (organizer disabled)", () => {
+  const originalFetch = global.fetch;
+  const originalMeetingId = CONFIG.meetingId;
+  const originalSubjectOverride = CONFIG.subjectOverride;
+  const SERIES_ID = "series-1";
+  const SUBJECT = "🏃‍♂️ SSW Design - Sprint Review, Retro, Planning";
+  // What Graph serves by ID once the organizer is disabled: no subject
+  const subjectless = (threadId) => ({ id: SERIES_ID, subject: null, chatInfo: { threadId } });
+
+  let chatCalls;
+  let priorLookups;
+  const chatReturns = (status, body) => {
+    global.fetch = async (url) => {
+      chatCalls.push(url);
+      return jsonResponse(status, body);
+    };
+  };
+  const priorRun = (result) => async (onlineMeetingId) => {
+    priorLookups.push(onlineMeetingId);
+    if (result instanceof Error) throw result;
+    return result;
+  };
+
+  beforeEach(() => {
+    CONFIG.meetingId = SERIES_ID;
+    CONFIG.subjectOverride = "";
+    chatCalls = [];
+    priorLookups = [];
+    chatReturns(500, "chat should not be read");
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    CONFIG.meetingId = originalMeetingId;
+    CONFIG.subjectOverride = originalSubjectOverride;
+  });
+
+  it("keeps Graph's subject without looking anywhere else", async () => {
+    const result = await resolveMeetingSubject(
+      "token",
+      { id: SERIES_ID, subject: SUBJECT, chatInfo: { threadId: "19:meeting_x@thread.v2" } },
+      { findPriorSubject: priorRun({ subject: "something else" }) },
+    );
+
+    assert.deepEqual(result, { subject: SUBJECT, source: "graph" });
+    assert.deepEqual(priorLookups, []);
+    assert.deepEqual(chatCalls, []);
+  });
+
+  it("prefers Graph's subject over a manual one", async () => {
+    CONFIG.subjectOverride = "Something typed by hand";
+
+    const result = await resolveMeetingSubject(
+      "token",
+      { id: SERIES_ID, subject: SUBJECT, chatInfo: { threadId: "19:meeting_x@thread.v2" } },
+      { findPriorSubject: priorRun(null) },
+    );
+
+    assert.deepEqual(result, { subject: SUBJECT, source: "graph" });
+  });
+
+  it("uses the manual subject before an earlier run or the chat topic", async () => {
+    CONFIG.subjectOverride = SUBJECT;
+    chatReturns(200, { chatType: "meeting", topic: "Chat topic" });
+
+    const result = await resolveMeetingSubject("token", subjectless("19:meeting_abc@thread.v2"), {
+      findPriorSubject: priorRun({ subject: "Earlier run", projectName: "earlier", meetingId: "2026-11-06-103000" }),
+    });
+
+    assert.deepEqual(result, { subject: SUBJECT, source: "manual" });
+    assert.deepEqual(priorLookups, []);
+    assert.deepEqual(chatCalls, []);
+    assert.equal(parseSubject(result.subject).projectSlug, "ssw-design");
+  });
+
+  it("recovers the subject from an earlier run of the same series", async () => {
+    const result = await resolveMeetingSubject(
+      "token",
+      subjectless("19:881bf4b4ec6d41a1aeebf5b2d174fa44@thread.skype"),
+      {
+        findPriorSubject: priorRun({
+          subject: SUBJECT,
+          projectName: "ssw-design",
+          meetingId: "2026-11-06-103000",
+        }),
+      },
+    );
+
+    assert.deepEqual(result, { subject: SUBJECT, source: "priorRun" });
+    assert.deepEqual(priorLookups, [SERIES_ID]);
+    assert.deepEqual(chatCalls, []);
+    assert.equal(parseSubject(result.subject).projectSlug, "ssw-design");
+  });
+
+  it("falls back to the meeting chat's topic when no earlier run has a subject", async () => {
+    chatReturns(200, { chatType: "meeting", topic: " Tina - Sprint Review " });
+
+    const result = await resolveMeetingSubject("token", subjectless("19:meeting_abc@thread.v2"), {
+      findPriorSubject: priorRun(null),
+    });
+
+    assert.deepEqual(result, { subject: "Tina - Sprint Review", source: "chatTopic" });
+    assert.match(chatCalls[0], /\/chats\/19%3Ameeting_abc%40thread\.v2\?\$select=topic,chatType$/);
+    assert.equal(parseSubject(result.subject).projectSlug, "tina");
+  });
+
+  it("still tries the chat topic when Cosmos can't be read", async () => {
+    chatReturns(200, { chatType: "meeting", topic: "Tina - Sprint Review" });
+
+    const result = await resolveMeetingSubject("token", subjectless("19:meeting_abc@thread.v2"), {
+      findPriorSubject: priorRun(new Error("COSMOS_ENDPOINT is required")),
+    });
+
+    assert.deepEqual(result, { subject: "Tina - Sprint Review", source: "chatTopic" });
+  });
+
+  it("ignores a group chat's topic, which names the group rather than the meeting", async () => {
+    chatReturns(200, { chatType: "group", topic: "Design team" });
+
+    const result = await resolveMeetingSubject("token", subjectless("19:meeting_abc@thread.v2"), {
+      findPriorSubject: priorRun(null),
+    });
+
+    assert.deepEqual(result, { subject: "", source: "none" });
+  });
+
+  it("doesn't read a group chat, whose ID isn't a meeting chat's", async () => {
+    const result = await resolveMeetingSubject("token", subjectless("19:abc@thread.v2"), {
+      findPriorSubject: priorRun(null),
+    });
+
+    assert.deepEqual(result, { subject: "", source: "none" });
+    assert.deepEqual(chatCalls, []);
+  });
+
+  it("files a channel meeting with no earlier run under general, without reading the channel as a chat", async () => {
+    // A channel meeting's thread is the channel; /chats answers it with 400
+    for (const threadId of ["19:881bf4b4ec6d41a1aeebf5b2d174fa44@thread.skype", "19:abc123@thread.tacv2"]) {
+      const result = await resolveMeetingSubject("token", subjectless(threadId), {
+        findPriorSubject: priorRun(null),
+      });
+
+      assert.deepEqual(result, { subject: "", source: "none" });
+      assert.equal(parseSubject(result.subject).projectSlug, "general");
+    }
+    assert.deepEqual(chatCalls, []);
+  });
+
+  it("files a meeting with no chat and no earlier run under general", async () => {
+    const result = await resolveMeetingSubject(
+      "token",
+      { id: SERIES_ID, subject: "" },
+      { findPriorSubject: priorRun(null) },
+    );
+
+    assert.deepEqual(result, { subject: "", source: "none" });
+    assert.deepEqual(chatCalls, []);
   });
 });

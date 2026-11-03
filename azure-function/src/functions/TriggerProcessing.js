@@ -16,17 +16,29 @@ const { meetingIdFromJoinUrl, latestOccurrenceTranscripts } = require("./meeting
  *
  * Usage:
  *   POST /api/TriggerProcessing
- *   Body: { "joinUrl": "https://teams.microsoft.com/l/meetup-join/...", "transcriptId": "..." }
- *   (or POST with the same ?joinUrl=...&transcriptId=... query string)
+ *   Body: { "joinUrl": "https://teams.microsoft.com/l/meetup-join/...", "transcriptId": "...", "subject": "..." }
+ *   (or POST with the same ?joinUrl=...&transcriptId=...&subject=... query string)
  *
  *   transcriptId is optional. The "skipped" card passes the transcript it is
  *   about, so each card processes only its own transcript. Without it, every
  *   transcript from the meeting's latest occurrence is queued.
  *
+ *   subject is optional. Graph leaves out the subject of a meeting whose
+ *   organizer is disabled, which would file it under "general". The processor
+ *   uses this subject when Graph's is missing; Graph's still wins when present.
+ *
  *   GET /api/TriggerProcessing?joinUrl=... renders a confirmation page.
  */
 
 const LOG_PREFIX = "[TIGER]";
+
+// Longer than any real meeting title. It ends up in the job env, dashboard and cards.
+const MAX_SUBJECT_LENGTH = 255;
+
+/** A caller-supplied subject, trimmed and capped, or "" to ignore it. */
+function cleanSubject(value) {
+  return typeof value === "string" ? value.trim().slice(0, MAX_SUBJECT_LENGTH).trim() : "";
+}
 
 const TIGER_LOGO_URL =
   process.env.TIGER_LOGO_URL ||
@@ -46,7 +58,7 @@ function generateHtmlResponse(success, message, details = {}) {
 
   const detailsHtml = details.subject
     ? `<div class="details">
-        <p><strong>Meeting:</strong> ${details.subject}</p>
+        <p><strong>Meeting:</strong> ${escapeHtml(details.subject)}</p>
         ${details.transcriptCreated ? `<p><strong>Transcript:</strong> ${new Date(details.transcriptCreated).toLocaleString()}</p>` : ""}
       </div>`
     : "";
@@ -100,7 +112,7 @@ function generateHtmlResponse(success, message, details = {}) {
   <div class="card">
     ${iconHtml}
     <div class="title">${title}</div>
-    <div class="message">${message}</div>
+    <div class="message">${escapeHtml(message)}</div>
     ${detailsHtml}
     <div class="close-hint">You can close this window now.</div>
   </div>
@@ -403,16 +415,19 @@ app.http("TriggerProcessing", {
     // Extract joinUrl from query string (GET/POST) or POST body
     let joinUrl = request.query.get("joinUrl");
     let transcriptId = request.query.get("transcriptId");
+    let manualSubject = request.query.get("subject");
 
     if (!joinUrl && request.method === "POST") {
       try {
         const body = await request.json();
         joinUrl = body.joinUrl;
         transcriptId = transcriptId || body.transcriptId;
+        manualSubject = manualSubject || body.subject;
       } catch {
         // Body might not be JSON
       }
     }
+    manualSubject = cleanSubject(manualSubject);
 
     if (!joinUrl) {
       return createResponse(
@@ -438,6 +453,7 @@ app.http("TriggerProcessing", {
     structuredLog(context, "info", "Manual trigger requested", {
       ...getRequestDiagnostics(request),
       joinUrl: joinUrl.substring(0, 80) + "...",
+      manualSubject: manualSubject || null,
     });
 
     // Step 1: Parse the join URL to extract organizer user ID
@@ -481,10 +497,13 @@ app.http("TriggerProcessing", {
       }
 
       const meetingId = meeting.id;
-      const subject = meeting.subject || "(no subject)";
+      // What the processor will use: Graph's subject wins, then the manual one.
+      // Without either it falls back to an earlier run in Cosmos, which isn't known here.
+      const subject = meeting.subject || manualSubject || "(no subject)";
       structuredLog(context, "info", "Found meeting", {
         meetingId,
         subject,
+        graphSubject: !!meeting.subject,
       });
 
       // Step 4: List transcripts for this meeting
@@ -543,6 +562,7 @@ app.http("TriggerProcessing", {
           transcriptId: transcript.id,
           skipSubjectFilter: true,
           manualTrigger: true,
+          ...(manualSubject ? { subject: manualSubject } : {}),
           timestamp,
         })),
       );

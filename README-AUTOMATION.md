@@ -358,6 +358,7 @@ LOGIC_APP_URL (Logic App HTTP trigger)
 - `OnlineMeetings.Read.All` - Read meeting metadata
 - `OnlineMeetingTranscript.Read.All` - Access transcripts
 - `User.Read.All` - Check whether meeting organizers are still active (organizer check)
+- `Chat.Read.All` - Read meeting chat messages (actual participants) and the meeting chat's topic (subject fallback when the organizer is disabled)
 - `CallRecords.Read.All` - Access transcripts
 - `Chat.Create` - Send notifications (optional)
 
@@ -657,7 +658,16 @@ ContainerAppConsoleLogs_CL
 **Issue**: A recurring meeting silently stopped being processed (no webhook, no error)
 - **Check**: Is the meeting's organizer still active? The organizer is whoever created the Teams meeting (the `Oid` in the join URL), even for channel meetings that Outlook shows as organised by the team. Graph sends no transcript notification for meetings whose organizer is disabled. The meeting and its transcripts are still served by ID while the account is disabled (not deleted), but the `$filter=JoinWebUrl` lookup returns `404 - 3004: Meeting properties are not found`.
 - **Solution**: Hand the meeting over - see [What to Do When Someone's Account Is Disabled](https://sswtiger.com/docs/when-someones-account-is-disabled). `CheckMeetingOrganizers` warns the team automatically (see below).
-- **Recover a missed meeting**: POST its join URL to `TriggerProcessing`. When the JoinWebUrl lookup 404s it builds the meeting ID from the join URL (`base64("1*{organizerId}*{messageId}**{threadId}")`, see `meetingId.js`) and queues every transcript from the latest occurrence. Pass `transcriptId` to queue just that one; the "skipped" card's Process Anyway button does, so each card only processes its own transcript.
+- **Recover a missed meeting**: POST its join URL to `TriggerProcessing`. When the JoinWebUrl lookup 404s it builds the meeting ID from the join URL (`base64("1*{organizerId}*{messageId}**{threadId}")`, see `meetingId.js`) and queues every transcript from the latest occurrence. Pass `transcriptId` to queue just that one; the "skipped" card's Process Anyway button does, so each card only processes its own transcript. Pass `subject` too, so the meeting files under its project rather than `general` (see below):
+
+  ```bash
+  curl -X POST https://func-tiger-staging.azurewebsites.net/api/TriggerProcessing \
+    -H "Content-Type: application/json" -H "Accept: application/json" \
+    -d '{"joinUrl": "https://teams.microsoft.com/l/meetup-join/...", "subject": "SSW Design - Sprint Review"}'
+  ```
+
+  Or open `.../api/TriggerProcessing?joinUrl=<encoded>&subject=<encoded>` in a browser and confirm. `subject` is trimmed and capped at 255 characters; a blank one is ignored.
+- **Subject and project**: Graph also leaves out the subject (and invitees) of a meeting whose organizer is disabled, which would file it under `general`. The processor (`resolveMeetingSubject()` in `downloadTranscript.js`) uses, in order: Graph's subject when present (a manual one is then ignored, logged at info); the `subject` passed to `TriggerProcessing` (reaches the job as `MEETING_SUBJECT_OVERRIDE`); the subject stored by the latest earlier run of the same series in Cosmos (`teamsMeeting.subject`, matched on `teamsMeeting.onlineMeetingId`); then the meeting chat's topic (`GET /chats/{threadId}`, only for meeting chats, `19:meeting_…@thread.v2`). Channel meetings (`@thread.skype`, `@thread.tacv2`) have no meeting chat, so the lookup is skipped. With none of these, it files under `general` and logs `Graph returned no subject and none could be recovered`. The resolved subject feeds the project, dashboard, cards and Cosmos, so once a manual run is stored, later runs of the series recover it from Cosmos. The Restart button on a run's card keeps its manual subject. Meetings processed before `teamsMeeting` was stored can't be recovered from Cosmos.
 
 ### Organizer check (`CheckMeetingOrganizers`)
 
