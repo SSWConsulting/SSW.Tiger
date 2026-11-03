@@ -21,7 +21,8 @@ Create a beautiful HTML dashboard from meeting analysis.
 
 4. Replace template placeholders with actual content:
    - `{{PROJECT_NAME}}` → Project display name (convert kebab-case to Title Case)
-   - `{{DATE}}` → Meeting date formatted nicely
+   - `{{DATE}}` → Meeting date as DD/MM/YYYY (the template adds the weekday and "days ago" in the browser)
+   - `{{DASHBOARD_TITLE}}` → `SSW Tiger - {Project without "SSW " / "SSW." prefix} - Meeting Dashboard ({Ddd} {DD/MM/YYYY})`; see CLAUDE.md "Title and date placeholders"
    - `{{MEETING_TYPE}}` → Type of meeting (standup, sprint review, etc.)
    - `{{SUMMARY}}` → Meeting summary paragraph
    - `{{ATTENDEES}}` → HTML list items for each attendee

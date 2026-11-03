@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{PROJECT_NAME}} - Meeting Dashboard ({{DATE}})</title>
+    <title>{{DASHBOARD_TITLE}}</title>
     <script src="https://cdn.tailwindcss.com/3.4.17"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js" integrity="sha384-9Ax3MmS9AClxJyd5/zafcXXjxmwFhZCdsT6HJoJjarvCaAkJlk5QDzjLJm+Wdx5F" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js" integrity="sha384-b0GXujLkk9eYYSmcSfoyZbfyElGAQnDyY0skCHSG6w3JgTMFnz11ggrTAr7seu9f" crossorigin="anonymous"></script>
@@ -641,8 +641,10 @@
         Chart.defaults.font.family = "'Inter', 'Helvetica Neue', 'Helvetica', sans-serif";
         Chart.defaults.color = '#333333';
 
-        // Prefix the meeting date with a 3-letter weekday (e.g. "25/05/2026" -> "Mon 25/05/2026").
-        // Date format is DD/MM/YYYY per CLAUDE.md; if parsing fails the original text stays untouched.
+        // Prefix the meeting date with a 3-letter weekday and follow it with how long ago it was
+        // (e.g. "09/10/2026" -> "Fri 09/10/2026 · 24 days ago"). Computed in the browser so the
+        // age stays current. Date format is DD/MM/YYYY per CLAUDE.md; if parsing fails the
+        // original text stays untouched.
         document.querySelectorAll('.js-meeting-date').forEach(function (el) {
             var match = (el.textContent || '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
             if (!match) return;
@@ -650,9 +652,20 @@
             var month = parseInt(match[2], 10) - 1;
             var year = parseInt(match[3], 10);
             var d = new Date(year, month, day);
-            if (isNaN(d.getTime())) return;
+            if (isNaN(d.getTime()) || d.getDate() !== day || d.getMonth() !== month) return;
             var weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-            el.textContent = weekdays[d.getDay()] + ' ' + el.textContent;
+            el.textContent = weekdays[d.getDay()] + ' ' + el.textContent.trim();
+
+            // Whole calendar days between the meeting and today. Both dates go through Date.UTC
+            // so daylight-saving changes cannot shift the count by one.
+            var now = new Date();
+            var days = Math.round((Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) -
+                Date.UTC(year, month, day)) / 86400000);
+            if (days < 0) return;
+            var age = document.createElement('span');
+            age.className = 'js-meeting-age';
+            age.textContent = '\u00b7 ' + (days === 0 ? 'today' : days === 1 ? 'yesterday' : days + ' days ago');
+            el.insertAdjacentElement('afterend', age);
         });
 
         // Handle profile image load failures - falls back to initials

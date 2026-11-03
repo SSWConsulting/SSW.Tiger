@@ -3,6 +3,7 @@ const path = require("path");
 const { spawn } = require("child_process");
 const readline = require("readline");
 const { log, truncate } = require("../lib/logger");
+const { formatDashboardTitle } = require("../lib/dashboardTitle");
 
 // Configuration
 const CONFIG = {
@@ -264,6 +265,7 @@ async function invokeClaude({ projectName, projectSlug, meetingId, meetingDate, 
   const context = `Project: ${projectName}
 Meeting ID: ${meetingId}
 Meeting Date: ${meetingDate}
+Dashboard title ({{DASHBOARD_TITLE}}): ${formatDashboardTitle(projectName, meetingDate)}
 Meeting folder: projects/${projectSlug}/${meetingId}/
 Transcript: projects/${projectSlug}/${meetingId}/transcript.vtt
 Attendees (meeting invite list - use as suggestion for name resolution): projects/${projectSlug}/${meetingId}/attendees.json
