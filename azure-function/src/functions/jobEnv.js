@@ -19,6 +19,7 @@ function buildJobEnv({
   checkCancellationUrl,
   restartUrl,
   skipSubjectFilter,
+  subjectOverride,
   env = process.env,
 }) {
   return [
@@ -34,6 +35,8 @@ function buildJobEnv({
     { name: "RESTART_URL", value: restartUrl },
     // Manual trigger: skip subject filter when explicitly requested
     ...(skipSubjectFilter ? [{ name: "SKIP_SUBJECT_FILTER", value: "true" }] : []),
+    // Manual trigger: subject to use when Graph returns none (organizer disabled)
+    ...(subjectOverride ? [{ name: "MEETING_SUBJECT_OVERRIDE", value: subjectOverride }] : []),
     // Static values - must be included as template override replaces the env array
     { name: "NODE_ENV", value: "production" },
     { name: "AZURE_CLIENT_ID", value: env.AZURE_CLIENT_ID },

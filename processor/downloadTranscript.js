@@ -23,6 +23,8 @@
  *
  * Optional:
  *   OUTPUT_PATH          - Where to save the file (default: ./dropzone/{filename})
+ *   MEETING_SUBJECT_OVERRIDE - Subject passed to TriggerProcessing, used when
+ *                          Graph returns none (organizer disabled)
  *
  * Output (JSON to stdout):
  *   Success: {"success": true, "transcriptPath": "...", "projectName": "...", "meetingDate": "...", "filename": "..."}
@@ -60,6 +62,8 @@ const CONFIG = {
   meetingFilterPattern: process.env.MEETING_FILTER_PATTERN || "sprint",
   // Skip subject filter when manually triggered (set by TriggerProcessing function)
   skipSubjectFilter: process.env.SKIP_SUBJECT_FILTER === "true",
+  // Subject passed to TriggerProcessing, for meetings Graph returns without one
+  subjectOverride: (process.env.MEETING_SUBJECT_OVERRIDE || "").trim(),
   // SSW tenant ID for filtering external meetings
   sswTenantId: "ac2f7c34-b935-48e9-abdc-11e5d4fcb2b0",
 };
@@ -285,15 +289,22 @@ async function fetchMeeting(token) {
   };
 }
 
+// A meeting chat's thread ID. Channel threads end @thread.skype or @thread.tacv2.
+const MEETING_CHAT_ID = /^19:meeting_.+@thread\.v2$/;
+
 /**
  * The topic of a meeting's chat, or "" when there is none to use. Only a
  * meeting chat's topic is the meeting title: a channel meeting's thread is the
- * channel itself (named "General" and the like), and a group chat's topic
- * names the group. Never throws.
+ * channel itself, which /chats answers with 400, and a group chat's topic
+ * names the group. So only meeting chat IDs are looked up. Never throws.
  * GET /chats/{chatId} (Chat.Read.All)
  */
 async function fetchMeetingChatTopic(token, chatId) {
   if (!chatId) return "";
+  if (!MEETING_CHAT_ID.test(chatId)) {
+    log("info", "Not a meeting chat (likely a channel meeting), so no chat topic to use", { chatId });
+    return "";
+  }
 
   try {
     const graphUrl = `https://graph.microsoft.com/v1.0/chats/${encodeURIComponent(chatId)}?$select=topic,chatType`;
@@ -320,18 +331,36 @@ async function fetchMeetingChatTopic(token, chatId) {
  * subject (and invitees) of a meeting whose organizer's account is disabled,
  * though it still serves the meeting by ID; without a subject the transcript
  * is filed under "general". Falls back to, in order:
- *   1. our Cosmos record of an earlier run of the same meeting (a recurring
+ *   1. the subject passed to TriggerProcessing (MEETING_SUBJECT_OVERRIDE)
+ *   2. our Cosmos record of an earlier run of the same meeting (a recurring
  *      series keeps one online meeting ID)
- *   2. the meeting chat's topic
+ *   3. the meeting chat's topic
  * The organizer's calendar event is not tried: the app has no calendar
  * permission, and a disabled organizer's mailbox may be gone.
  *
- * @returns {{ subject: string, source: "graph"|"priorRun"|"chatTopic"|"none" }}
+ * @returns {{ subject: string, source: "graph"|"manual"|"priorRun"|"chatTopic"|"none" }}
  */
 async function resolveMeetingSubject(token, meeting, { findPriorSubject = cosmos.findPriorMeetingSubject } = {}) {
-  if (meeting.subject) return { subject: meeting.subject, source: "graph" };
-
   const ids = { userId: CONFIG.userId, meetingId: CONFIG.meetingId };
+
+  if (meeting.subject) {
+    if (CONFIG.subjectOverride) {
+      log("info", "Graph returned the subject, so the manual subject isn't needed", {
+        ...ids,
+        subject: meeting.subject,
+        manualSubject: CONFIG.subjectOverride,
+      });
+    }
+    return { subject: meeting.subject, source: "graph" };
+  }
+
+  if (CONFIG.subjectOverride) {
+    log("info", "Graph returned no subject (organizer likely disabled), using the manual subject", {
+      ...ids,
+      subject: CONFIG.subjectOverride,
+    });
+    return { subject: CONFIG.subjectOverride, source: "manual" };
+  }
 
   try {
     const prior = await findPriorSubject(CONFIG.meetingId);

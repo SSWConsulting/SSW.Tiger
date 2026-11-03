@@ -138,6 +138,75 @@ describe("TriggerProcessing", () => {
     assert.equal(queued, null);
   });
 
+  describe("manual subject", () => {
+    // What Graph serves by ID once the organizer is disabled: no subject
+    beforeEach(() => {
+      const departedFetch = global.fetch;
+      global.fetch = async (url, options) =>
+        url.endsWith(`/onlineMeetings/${MEETING_ID}`)
+          ? (graphCalls.push(url), Response.json({ id: MEETING_ID, subject: null }))
+          : departedFetch(url, options);
+    });
+
+    it("carries a subject from the body to every queued transcript", async () => {
+      const response = await handler(postRequest({ subject: "  SSW Design - Sprint Review  " }), context);
+
+      assert.equal(response.status, 202);
+      assert.equal(response.jsonBody.subject, "SSW Design - Sprint Review");
+      assert.deepEqual(
+        queued.map((m) => m.subject),
+        ["SSW Design - Sprint Review", "SSW Design - Sprint Review"],
+      );
+    });
+
+    it("reads the subject from the query string", async () => {
+      const request = postRequest();
+      request.query = new URLSearchParams({ joinUrl: JOIN_URL, subject: "SSW Design - Sprint Review" });
+
+      await handler(request, context);
+
+      assert.ok(queued.every((m) => m.subject === "SSW Design - Sprint Review"));
+    });
+
+    it("caps a long subject", async () => {
+      await handler(postRequest({ subject: "x".repeat(1000) }), context);
+
+      assert.equal(queued[0].subject.length, 255);
+    });
+
+    it("ignores a blank subject, leaving the queue message as before", async () => {
+      const response = await handler(postRequest({ subject: "   " }), context);
+
+      assert.equal(response.jsonBody.subject, "(no subject)");
+      assert.ok(queued.every((m) => !("subject" in m)));
+    });
+
+    it("reports Graph's subject when Graph has one, but still passes the manual one on", async () => {
+      global.fetch = async (url) => {
+        if (url.includes("/oauth2/v2.0/token")) return Response.json({ access_token: "token" });
+        if (url.includes("$filter=JoinWebUrl")) {
+          return Response.json({ value: [{ id: MEETING_ID, subject: "From Graph - Sprint Review" }] });
+        }
+        return Response.json({ value: [{ id: "today-a", createdDateTime: "2026-10-29T23:33:01Z" }] });
+      };
+
+      const response = await handler(postRequest({ subject: "Typed - Sprint Review" }), context);
+
+      assert.equal(response.jsonBody.subject, "From Graph - Sprint Review");
+      assert.equal(queued[0].subject, "Typed - Sprint Review");
+    });
+
+    it("escapes the subject on the browser result page", async () => {
+      const request = postRequest({ subject: "<img src=x onerror=alert(1)>" });
+      request.headers = new Headers();
+
+      const response = await handler(request, context);
+
+      assert.ok(!response.body.includes("<img src=x"));
+      assert.ok(response.body.includes("&lt;img src=x onerror=alert(1)&gt;"));
+    });
+  });
+
   it("still reports not found when the meeting doesn't exist by ID either", async () => {
     const fetchWithMissingMeeting = global.fetch;
     global.fetch = async (url, options) =>

@@ -77,4 +77,15 @@ describe("buildJobEnv", () => {
     assert.ok(!off.includes("SKIP_SUBJECT_FILTER"));
     assert.ok(on.includes("SKIP_SUBJECT_FILTER"));
   });
+
+  it("passes a manual subject through as MEETING_SUBJECT_OVERRIDE, and nothing without one", () => {
+    const off = buildJobEnv({ ...args, env: {} }).map((e) => e.name);
+    const on = buildJobEnv({ ...args, subjectOverride: "SSW Design - Sprint Review", env: {} });
+
+    assert.ok(!off.includes("MEETING_SUBJECT_OVERRIDE"));
+    assert.equal(
+      on.find((e) => e.name === "MEETING_SUBJECT_OVERRIDE").value,
+      "SSW Design - Sprint Review",
+    );
+  });
 });

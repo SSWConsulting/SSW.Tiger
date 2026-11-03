@@ -22,6 +22,8 @@ const TIGER_LOGO_URL =
  *   - transcriptId  : Graph transcript ID
  *   - expiresAt     : token expiry timestamp in milliseconds
  *   - token         : HMAC signature for the restart request
+ *   - subject       : optional manual subject the original run was started
+ *                     with (TriggerProcessing), covered by the signature
  *
  * Concurrency defence:
  *   1. List Container App Job executions and check if one is already running
@@ -109,16 +111,23 @@ function createRestartSignature({
   meetingId,
   transcriptId,
   expiresAt,
+  subject,
 }) {
   const secret = getRestartTokenSecret();
   if (!secret) return "";
 
+  // Must match ProcessTranscriptQueue's createRestartSignature
   return crypto
     .createHmac("sha256", secret)
     .update(
-      [executionId, userId, meetingId, transcriptId, String(expiresAt)].join(
-        "|",
-      ),
+      [
+        executionId,
+        userId,
+        meetingId,
+        transcriptId,
+        String(expiresAt),
+        ...(subject ? [subject] : []),
+      ].join("|"),
     )
     .digest("hex");
 }
@@ -129,6 +138,7 @@ function isValidRestartToken({
   meetingId,
   transcriptId,
   expiresAt,
+  subject,
   token,
 }) {
   if (!token || !expiresAt) return false;
@@ -144,6 +154,7 @@ function isValidRestartToken({
     meetingId,
     transcriptId,
     expiresAt,
+    subject,
   });
   if (!expected || expected.length !== token.length) {
     return false;
@@ -323,6 +334,7 @@ app.http("RestartProcessing", {
     const transcriptId = request.query.get("transcriptId");
     const expiresAt = request.query.get("expiresAt");
     const token = request.query.get("token");
+    const subject = request.query.get("subject") || "";
     const sourceIp =
       request.headers.get("x-forwarded-for") ||
       request.headers.get("x-azure-clientip") ||
@@ -362,6 +374,7 @@ app.http("RestartProcessing", {
         meetingId,
         transcriptId,
         expiresAt,
+        subject,
         token,
       })
     ) {
@@ -554,6 +567,7 @@ app.http("RestartProcessing", {
       meetingId,
       transcriptId,
       skipSubjectFilter: true,
+      ...(subject ? { subject } : {}),
       restartTrigger: true,
       restartId,
       restartedFromExecutionId: executionId,

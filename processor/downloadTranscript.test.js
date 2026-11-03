@@ -275,6 +275,7 @@ describe("transcript fetch retry and recovery (#153)", () => {
 describe("resolveMeetingSubject (organizer disabled)", () => {
   const originalFetch = global.fetch;
   const originalMeetingId = CONFIG.meetingId;
+  const originalSubjectOverride = CONFIG.subjectOverride;
   const SERIES_ID = "series-1";
   const SUBJECT = "🏃‍♂️ SSW Design - Sprint Review, Retro, Planning";
   // What Graph serves by ID once the organizer is disabled: no subject
@@ -296,6 +297,7 @@ describe("resolveMeetingSubject (organizer disabled)", () => {
 
   beforeEach(() => {
     CONFIG.meetingId = SERIES_ID;
+    CONFIG.subjectOverride = "";
     chatCalls = [];
     priorLookups = [];
     chatReturns(500, "chat should not be read");
@@ -304,6 +306,7 @@ describe("resolveMeetingSubject (organizer disabled)", () => {
   afterEach(() => {
     global.fetch = originalFetch;
     CONFIG.meetingId = originalMeetingId;
+    CONFIG.subjectOverride = originalSubjectOverride;
   });
 
   it("keeps Graph's subject without looking anywhere else", async () => {
@@ -316,6 +319,32 @@ describe("resolveMeetingSubject (organizer disabled)", () => {
     assert.deepEqual(result, { subject: SUBJECT, source: "graph" });
     assert.deepEqual(priorLookups, []);
     assert.deepEqual(chatCalls, []);
+  });
+
+  it("prefers Graph's subject over a manual one", async () => {
+    CONFIG.subjectOverride = "Something typed by hand";
+
+    const result = await resolveMeetingSubject(
+      "token",
+      { id: SERIES_ID, subject: SUBJECT, chatInfo: { threadId: "19:meeting_x@thread.v2" } },
+      { findPriorSubject: priorRun(null) },
+    );
+
+    assert.deepEqual(result, { subject: SUBJECT, source: "graph" });
+  });
+
+  it("uses the manual subject before an earlier run or the chat topic", async () => {
+    CONFIG.subjectOverride = SUBJECT;
+    chatReturns(200, { chatType: "meeting", topic: "Chat topic" });
+
+    const result = await resolveMeetingSubject("token", subjectless("19:meeting_abc@thread.v2"), {
+      findPriorSubject: priorRun({ subject: "Earlier run", projectName: "earlier", meetingId: "2026-11-06-103000" }),
+    });
+
+    assert.deepEqual(result, { subject: SUBJECT, source: "manual" });
+    assert.deepEqual(priorLookups, []);
+    assert.deepEqual(chatCalls, []);
+    assert.equal(parseSubject(result.subject).projectSlug, "ssw-design");
   });
 
   it("recovers the subject from an earlier run of the same series", async () => {
@@ -362,25 +391,33 @@ describe("resolveMeetingSubject (organizer disabled)", () => {
   it("ignores a group chat's topic, which names the group rather than the meeting", async () => {
     chatReturns(200, { chatType: "group", topic: "Design team" });
 
-    const result = await resolveMeetingSubject("token", subjectless("19:abc@thread.v2"), {
+    const result = await resolveMeetingSubject("token", subjectless("19:meeting_abc@thread.v2"), {
       findPriorSubject: priorRun(null),
     });
 
     assert.deepEqual(result, { subject: "", source: "none" });
   });
 
-  it("files a channel meeting with no earlier run under general", async () => {
-    // A channel meeting's thread is the channel, which /chats doesn't serve
-    chatReturns(404, { error: { code: "NotFound" } });
-
-    const result = await resolveMeetingSubject(
-      "token",
-      subjectless("19:881bf4b4ec6d41a1aeebf5b2d174fa44@thread.skype"),
-      { findPriorSubject: priorRun(null) },
-    );
+  it("doesn't read a group chat, whose ID isn't a meeting chat's", async () => {
+    const result = await resolveMeetingSubject("token", subjectless("19:abc@thread.v2"), {
+      findPriorSubject: priorRun(null),
+    });
 
     assert.deepEqual(result, { subject: "", source: "none" });
-    assert.equal(parseSubject(result.subject).projectSlug, "general");
+    assert.deepEqual(chatCalls, []);
+  });
+
+  it("files a channel meeting with no earlier run under general, without reading the channel as a chat", async () => {
+    // A channel meeting's thread is the channel; /chats answers it with 400
+    for (const threadId of ["19:881bf4b4ec6d41a1aeebf5b2d174fa44@thread.skype", "19:abc123@thread.tacv2"]) {
+      const result = await resolveMeetingSubject("token", subjectless(threadId), {
+        findPriorSubject: priorRun(null),
+      });
+
+      assert.deepEqual(result, { subject: "", source: "none" });
+      assert.equal(parseSubject(result.subject).projectSlug, "general");
+    }
+    assert.deepEqual(chatCalls, []);
   });
 
   it("files a meeting with no chat and no earlier run under general", async () => {
